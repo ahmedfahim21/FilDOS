@@ -1,0 +1,39 @@
+# FilDOS - AI-Native Decentralized Storage
+
+## Overview
+FilDOS is a secure, AI-native, meaning-first decentralized drive built on Filecoin. It enables users to store, search, and share files by meaning rather than cryptic identifiers like CIDs.
+
+## Project Description
+FilDOS combines the power of blockchain technology with AI-driven semantic search to create a truly human-centric storage experience. The platform is built on the Filecoin network, providing decentralized, secure, and permanent storage solutions.
+
+## Key Features
+- **AI-Native Storage**: Intelligent data organization powered by AI and semantic search
+- **Meaning-First Approach**: Search and retrieve files by their content and meaning, not just filenames
+- **Decentralized Architecture**: Built on Filecoin for secure, distributed storage
+- **Semantic Search**: Advanced search capabilities using embeddings and AI
+- **User-Friendly Interface**: Human-centric design that simplifies blockchain storage
+
+## Technology Stack
+- Next.js 15
+- React 19
+- TypeScript
+- Tailwind CSS
+- Filecoin
+- Web3 Integration
+
+## Use Cases
+- Secure document storage with AI-powered retrieval
+- NFT-based folder organization and sharing
+- Privacy-first cloud storage alternative
+- Decentralized file sharing with semantic search
+- Enterprise-grade blockchain storage solutions
+
+## Links
+- Website: https://fildos.cloud
+
+## Organization
+Developer: ArqosLabs
+Focus: Decentralized storage, AI integration, Web3 infrastructure
+
+## Contact
+For inquiries and collaboration, visit our website at https://fildos.cloud
