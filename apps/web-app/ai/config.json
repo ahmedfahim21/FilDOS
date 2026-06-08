@@ -1,0 +1,24 @@
+{
+  "models": {
+    "clip": {
+      "model_name": "openai/clip-vit-base-patch32",
+      "cache_dir": "clip-vit-base-patch32",
+      "description": "CLIP model for image embeddings"
+    },
+    "sentence_transformer": {
+      "model_name": "all-MiniLM-L6-v2",
+      "cache_dir": "all-MiniLM-L6-v2",
+      "description": "SentenceTransformer model for text embeddings"
+    }
+  },
+  "settings": {
+    "cache_base_dir": "models",
+    "device": "auto",
+    "download_timeout": 300,
+    "max_retries": 3
+  },
+  "supported_formats": {
+    "images": ["jpg", "jpeg", "png", "bmp", "webp"],
+    "documents": ["pdf", "docx", "txt", "md"]
+  }
+}

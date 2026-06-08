@@ -1,0 +1,58 @@
+services:
+  fildos-ai:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - WORKERS=1
+      - HOST=0.0.0.0
+      - FLASK_ENV=production
+      - WEAVIATE_URL=http://weaviate:8080
+    volumes:
+      # Persist model cache to avoid re-downloading on container restart
+      - ./models:/app/models
+      - ./temp_files:/app/temp_files
+    restart: unless-stopped
+    depends_on:
+      - weaviate
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G  # Adjust based on your models
+        reservations:
+          memory: 2G
+  weaviate:
+    command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8080'
+    - --scheme
+    - http
+    image: cr.weaviate.io/semitechnologies/weaviate:1.33.0
+    ports:
+    - 8080:8080
+    - 50051:50051
+    volumes:
+    - weaviate_data:/var/lib/weaviate
+    restart: on-failure:0
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      ENABLE_API_BASED_MODULES: 'true'
+      CLUSTER_HOSTNAME: 'node1'
+
+networks:
+  default:
+    name: fildos-network
+
+volumes:
+  weaviate_data:
