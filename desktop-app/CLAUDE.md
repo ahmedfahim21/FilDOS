@@ -30,9 +30,10 @@ copy, move, …) are true integration tests: they exercise real files in an
 builds first. On a headless Linux box run it under `xvfb-run`.
 
 **Lint + hooks.** ESLint flat config splits env along the process boundary
-(node vs. browser + React Hooks rules). A `simple-git-hooks` pre-commit hook runs
-`lint-staged` (`eslint --fix` on staged files); it installs via the `prepare`
-script on `npm install`.
+(node vs. browser + React Hooks rules). A git pre-commit hook runs `lint-staged`
+(`eslint --fix` on staged files); the `prepare` script installs it on
+`npm install` via `scripts/install-hooks.mjs`, which resolves the real git hooks
+dir with `git rev-parse` so it works from this subdirectory of the monorepo.
 
 After changes, run `npm run lint`, `npm run typecheck`, `npm test`, and
 `npm run build`; for behavior, `npm run dev` and exercise it by hand. CI

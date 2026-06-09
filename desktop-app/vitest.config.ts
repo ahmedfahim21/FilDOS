@@ -8,9 +8,11 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   resolve: {
+    // Resolve from the project root (cwd), matching electron.vite.config.ts —
+    // avoids relying on __dirname, which isn't defined when the config is ESM.
     alias: {
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@': resolve(__dirname, 'src/renderer/src'),
+      '@shared': resolve('src/shared'),
+      '@': resolve('src/renderer/src'),
     },
   },
   test: {

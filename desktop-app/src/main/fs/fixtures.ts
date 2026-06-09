@@ -16,9 +16,15 @@ export function useTempDir(): () => string {
     dir = await fs.mkdtemp(join(os.tmpdir(), 'fildos-test-'));
   });
   afterEach(async () => {
-    await fs.rm(dir, { recursive: true, force: true });
+    // Only remove what we actually created — never an empty path (which would
+    // resolve to the cwd) if beforeEach failed before mkdtemp ran.
+    if (dir) await fs.rm(dir, { recursive: true, force: true });
+    dir = '';
   });
-  return () => dir;
+  return () => {
+    if (!dir) throw new Error('Temp directory not initialised (did beforeEach run?)');
+    return dir;
+  };
 }
 
 /** Sorted base names directly inside a directory, for terse assertions. */

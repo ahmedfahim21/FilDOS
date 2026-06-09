@@ -13,7 +13,11 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['github'], ['list']] : 'list',
+  // In CI also emit the HTML report so the workflow can upload it as an
+  // artifact on failure (github + list alone write nothing to disk).
+  reporter: process.env.CI
+    ? [['github'], ['list'], ['html', { open: 'never' }]]
+    : 'list',
   timeout: 60_000,
   expect: { timeout: 15_000 },
 });

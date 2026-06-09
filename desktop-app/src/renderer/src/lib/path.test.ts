@@ -45,6 +45,18 @@ describe('parentOf (Windows)', () => {
     withSep('\\');
     expect(parentOf('C:\\Users\\me\\notes.txt')).toBe('C:\\Users\\me');
   });
+
+  it('returns the drive root when going up one level from it', () => {
+    withSep('\\');
+    expect(parentOf('C:\\Users')).toBe('C:\\');
+  });
+
+  it('keeps a drive root as its own (absolute) parent', () => {
+    withSep('\\');
+    // Must stay "C:\\" — returning "C:" would not be an absolute path and would
+    // break the "navigate up" guard (parent === current) at the root.
+    expect(parentOf('C:\\')).toBe('C:\\');
+  });
 });
 
 describe('baseName', () => {
