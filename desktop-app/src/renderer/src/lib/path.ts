@@ -8,7 +8,7 @@ export function sep(): string {
 export function parentOf(p: string): string {
   const s = sep();
   // Strip a single trailing separator (but keep a lone root like "/" or "C:\").
-  let cleaned = p.length > 1 && p.endsWith(s) ? p.slice(0, -1) : p;
+  const cleaned = p.length > 1 && p.endsWith(s) ? p.slice(0, -1) : p;
   const idx = cleaned.lastIndexOf(s);
   if (idx <= 0) {
     // POSIX root.

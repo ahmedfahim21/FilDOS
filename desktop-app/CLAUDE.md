@@ -12,18 +12,32 @@ npm run dev          # electron-vite dev (HMR for renderer; main/preload rebuild
 npm run build        # production build into out/
 npm start            # preview a production build
 npm run typecheck    # tsc for both node (main/preload) and web (renderer) projects
+npm run lint         # eslint (flat config, eslint.config.mjs)
 npm test             # vitest run — unit + integration tests (CI runs this on all 3 OSes)
 npm run test:watch   # vitest in watch mode
+npm run test:e2e     # build, then Playwright smoke test against the packaged app
 ```
 
-Tests live beside the code as `*.test.ts`, split per feature, and run under
-**Vitest** (reuses the vite aliases via `vitest.config.ts`): renderer tests under
-jsdom, main-process tests under node. The FS service tests
+**Unit + integration (Vitest).** Tests live beside the code as `*.test.ts`,
+split per feature, reusing the vite aliases via `vitest.config.ts`: renderer
+tests run under jsdom, main-process tests under node. The FS service tests
 (`src/main/fs/service.*.test.ts`, one file per operation — create, read, rename,
 copy, move, …) are true integration tests: they exercise real files in an
-`os.tmpdir()` sandbox provisioned by `src/main/fs/fixtures.ts`. After changes,
-run `npm run typecheck`, `npm test`, and `npm run build`; for behavior,
-`npm run dev` and exercise it by hand.
+`os.tmpdir()` sandbox provisioned by `src/main/fs/fixtures.ts`.
+
+**E2E (Playwright).** `e2e/*.spec.ts` launch the *built* Electron app via
+`_electron` (`playwright.config.ts`) and assert the shell boots — so `test:e2e`
+builds first. On a headless Linux box run it under `xvfb-run`.
+
+**Lint + hooks.** ESLint flat config splits env along the process boundary
+(node vs. browser + React Hooks rules). A `simple-git-hooks` pre-commit hook runs
+`lint-staged` (`eslint --fix` on staged files); it installs via the `prepare`
+script on `npm install`.
+
+After changes, run `npm run lint`, `npm run typecheck`, `npm test`, and
+`npm run build`; for behavior, `npm run dev` and exercise it by hand. CI
+(`.github/workflows/desktop-app-ci.yml`) runs lint, typecheck+unit, and e2e on
+Ubuntu, macOS, and Windows.
 
 ## Architecture
 
