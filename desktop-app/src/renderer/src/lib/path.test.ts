@@ -1,0 +1,104 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { baseName, parentOf, segments, sep } from './path';
+
+/** Pretend the preload bridge reported a given OS separator. */
+function withSep(separator: string): void {
+  vi.stubGlobal('platform', { sep: separator, os: separator === '\\' ? 'win32' : 'linux' });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('sep', () => {
+  it('reads the separator from the preload-provided platform info', () => {
+    withSep('\\');
+    expect(sep()).toBe('\\');
+  });
+
+  it('defaults to POSIX when platform is unavailable', () => {
+    vi.stubGlobal('platform', undefined);
+    expect(sep()).toBe('/');
+  });
+});
+
+describe('parentOf (POSIX)', () => {
+  it('returns the containing directory', () => {
+    withSep('/');
+    expect(parentOf('/home/user/file.txt')).toBe('/home/user');
+  });
+
+  it('ignores a single trailing separator', () => {
+    withSep('/');
+    expect(parentOf('/home/user/')).toBe('/home');
+  });
+
+  it('stays at the root', () => {
+    withSep('/');
+    expect(parentOf('/')).toBe('/');
+    expect(parentOf('/file')).toBe('/');
+  });
+});
+
+describe('parentOf (Windows)', () => {
+  it('walks up a backslash path', () => {
+    withSep('\\');
+    expect(parentOf('C:\\Users\\me\\notes.txt')).toBe('C:\\Users\\me');
+  });
+
+  it('returns the drive root when going up one level from it', () => {
+    withSep('\\');
+    expect(parentOf('C:\\Users')).toBe('C:\\');
+  });
+
+  it('keeps a drive root as its own (absolute) parent', () => {
+    withSep('\\');
+    // Must stay "C:\\" — returning "C:" would not be an absolute path and would
+    // break the "navigate up" guard (parent === current) at the root.
+    expect(parentOf('C:\\')).toBe('C:\\');
+  });
+});
+
+describe('baseName', () => {
+  it('returns the last component (POSIX)', () => {
+    withSep('/');
+    expect(baseName('/home/user/file.txt')).toBe('file.txt');
+  });
+
+  it('ignores a trailing separator', () => {
+    withSep('/');
+    expect(baseName('/home/user/')).toBe('user');
+  });
+
+  it('returns the last component (Windows)', () => {
+    withSep('\\');
+    expect(baseName('C:\\Users\\me\\notes.txt')).toBe('notes.txt');
+  });
+});
+
+describe('segments (POSIX)', () => {
+  it('builds cumulative breadcrumb paths from root', () => {
+    withSep('/');
+    expect(segments('/home/user')).toEqual([
+      { label: '/', path: '/' },
+      { label: 'home', path: '/home' },
+      { label: 'user', path: '/home/user' },
+    ]);
+  });
+
+  it('yields just the root for "/"', () => {
+    withSep('/');
+    expect(segments('/')).toEqual([{ label: '/', path: '/' }]);
+  });
+});
+
+describe('segments (Windows)', () => {
+  it('builds drive-rooted breadcrumb paths', () => {
+    withSep('\\');
+    expect(segments('C:\\Users\\me')).toEqual([
+      { label: 'C:', path: 'C:\\' },
+      { label: 'Users', path: 'C:\\Users' },
+      { label: 'me', path: 'C:\\Users\\me' },
+    ]);
+  });
+});

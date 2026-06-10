@@ -90,7 +90,8 @@ function Browser() {
       if (mods.toggle) {
         setSelection((prev) => {
           const next = new Set(prev);
-          next.has(entry.path) ? next.delete(entry.path) : next.add(entry.path);
+          if (next.has(entry.path)) next.delete(entry.path);
+          else next.add(entry.path);
           return next;
         });
       } else {

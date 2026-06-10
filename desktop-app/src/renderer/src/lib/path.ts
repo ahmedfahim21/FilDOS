@@ -7,17 +7,24 @@ export function sep(): string {
 /** Parent directory of a path, or the path itself if already at a root. */
 export function parentOf(p: string): string {
   const s = sep();
-  // Strip a single trailing separator (but keep a lone root like "/" or "C:\").
-  let cleaned = p.length > 1 && p.endsWith(s) ? p.slice(0, -1) : p;
-  const idx = cleaned.lastIndexOf(s);
-  if (idx <= 0) {
-    // POSIX root.
-    if (s === '/') return '/';
-    // Windows drive root like "C:".
-    return cleaned.slice(0, idx + 1) || cleaned;
+
+  if (s === '/') {
+    const cleaned = p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
+    const idx = cleaned.lastIndexOf('/');
+    return idx <= 0 ? '/' : cleaned.slice(0, idx);
   }
-  // Preserve POSIX leading slash.
-  return s === '/' && idx === 0 ? '/' : cleaned.slice(0, idx);
+
+  // Windows. Strip trailing backslashes, then locate the last separator.
+  const cleaned = p.replace(/\\+$/, '');
+  const idx = cleaned.lastIndexOf('\\');
+  // No separator left → already at a drive root like "C:"; its parent is the
+  // root itself, kept absolute as "C:\".
+  if (idx === -1) return `${cleaned}\\`;
+  // The only separator follows the drive letter ("C:\Users") → parent is "C:\".
+  if (idx === 2 && /^[A-Za-z]:$/.test(cleaned.slice(0, 2))) {
+    return cleaned.slice(0, idx + 1);
+  }
+  return cleaned.slice(0, idx);
 }
 
 /** Last path component. */

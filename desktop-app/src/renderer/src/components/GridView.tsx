@@ -31,6 +31,10 @@ export function GridView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
+  // The scroll container only exists once we leave the loading/error/empty
+  // states, so re-observe when that emptiness toggles.
+  const isEmpty = entries.length === 0;
+
   // Track the scroll container's width to compute the column count.
   useEffect(() => {
     const el = scrollRef.current;
@@ -39,7 +43,7 @@ export function GridView({
     ro.observe(el);
     setWidth(el.clientWidth);
     return () => ro.disconnect();
-  }, [loading, error, entries.length === 0]);
+  }, [loading, error, isEmpty]);
 
   const perRow = Math.max(1, Math.floor((width || TILE_WIDTH) / TILE_WIDTH));
   const rowCount = Math.ceil(entries.length / perRow);

@@ -12,10 +12,33 @@ npm run dev          # electron-vite dev (HMR for renderer; main/preload rebuild
 npm run build        # production build into out/
 npm start            # preview a production build
 npm run typecheck    # tsc for both node (main/preload) and web (renderer) projects
+npm run lint         # eslint (flat config, eslint.config.mjs)
+npm test             # vitest run — unit + integration tests (CI runs this on all 3 OSes)
+npm run test:watch   # vitest in watch mode
+npm run test:e2e     # build, then Playwright smoke test against the packaged app
 ```
 
-There is no test suite yet. After changes, run `npm run typecheck` and `npm run build`;
-for behavior, `npm run dev` and exercise it by hand.
+**Unit + integration (Vitest).** Tests live beside the code as `*.test.ts`,
+split per feature, reusing the vite aliases via `vitest.config.ts`: renderer
+tests run under jsdom, main-process tests under node. The FS service tests
+(`src/main/fs/service.*.test.ts`, one file per operation — create, read, rename,
+copy, move, …) are true integration tests: they exercise real files in an
+`os.tmpdir()` sandbox provisioned by `src/main/fs/fixtures.ts`.
+
+**E2E (Playwright).** `e2e/*.spec.ts` launch the *built* Electron app via
+`_electron` (`playwright.config.ts`) and assert the shell boots — so `test:e2e`
+builds first. On a headless Linux box run it under `xvfb-run`.
+
+**Lint + hooks.** ESLint flat config splits env along the process boundary
+(node vs. browser + React Hooks rules). A git pre-commit hook runs `lint-staged`
+(`eslint --fix` on staged files); the `prepare` script installs it on
+`npm install` via `scripts/install-hooks.mjs`, which resolves the real git hooks
+dir with `git rev-parse` so it works from this subdirectory of the monorepo.
+
+After changes, run `npm run lint`, `npm run typecheck`, `npm test`, and
+`npm run build`; for behavior, `npm run dev` and exercise it by hand. CI
+(`.github/workflows/desktop-app-ci.yml`) runs lint, typecheck+unit, and e2e on
+Ubuntu, macOS, and Windows.
 
 ## Architecture
 
@@ -105,7 +128,7 @@ location is occupied or the OS renamed on collision, and the UI says so. Code:
 
 ## Out of scope (future)
 
-Bookmarks, mounted-drives sidebar, tabs, automated tests, Open-With picker, archives
+Bookmarks, mounted-drives sidebar, tabs, Open-With picker, archives
 — and the **AI phase**. The service/IPC/shared-types seams are built so an AI module
 and new channels slot in without touching the FS core.
 
