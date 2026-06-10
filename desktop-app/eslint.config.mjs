@@ -2,6 +2,12 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Anchor type-aware linting to this directory regardless of cwd or Node version
+// (avoids relying on import.meta.dirname, added only in Node 20.11+).
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Flat ESLint config. The codebase splits cleanly along the Electron process
@@ -60,7 +66,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         project: ['./tsconfig.node.json', './tsconfig.web.json'],
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir,
       },
     },
     rules: {
