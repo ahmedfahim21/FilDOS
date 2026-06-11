@@ -6,11 +6,10 @@ import {
   useReducer,
   type ReactNode,
 } from 'react';
+import type { IconSize, SortDir, SortKey, ViewMode } from '@shared/types';
 import { parentOf } from '@/lib/path';
 
-export type SortKey = 'name' | 'size' | 'type' | 'modified';
-export type SortDir = 'asc' | 'desc';
-export type ViewMode = 'list' | 'grid';
+export type { IconSize, SortDir, SortKey, ViewMode };
 export interface ColumnWidths {
   size: number;
   type: number;
@@ -19,13 +18,27 @@ export interface ColumnWidths {
 
 const DEFAULT_COLUMN_WIDTHS: ColumnWidths = { size: 100, type: 140, modified: 200 };
 
+/** The view settings a folder can remember (and prefs store globally). */
+export interface ViewState {
+  sort: { key: SortKey; dir: SortDir };
+  viewMode: ViewMode;
+  iconSize: IconSize;
+}
+
 interface NavState {
   history: string[];
   index: number;
   showHidden: boolean;
   sort: { key: SortKey; dir: SortDir };
   viewMode: ViewMode;
+  iconSize: IconSize;
   columnWidths: ColumnWidths;
+  /**
+   * Bumped on every USER view change (sort/viewMode/iconSize) — but not when
+   * a folder's remembered view is applied — so persistence effects can tell
+   * deliberate edits apart from navigation.
+   */
+  viewEdit: number;
   /** Filter / search query for the current directory. */
   query: string;
   /** When true, the query searches subfolders recursively (else filters in place). */
@@ -42,6 +55,8 @@ type Action =
   | { type: 'toggleHidden' }
   | { type: 'setSort'; key: SortKey }
   | { type: 'setViewMode'; mode: ViewMode }
+  | { type: 'setIconSize'; size: IconSize }
+  | { type: 'applyView'; view: ViewState }
   | { type: 'setColumnWidth'; column: keyof ColumnWidths; width: number }
   | { type: 'setQuery'; query: string }
   | { type: 'setSearchRecursive'; value: boolean }
@@ -71,16 +86,24 @@ function reducer(state: NavState, action: Action): NavState {
     case 'toggleHidden':
       return { ...state, showHidden: !state.showHidden };
     case 'setSort': {
-      if (state.sort.key === action.key) {
-        return {
-          ...state,
-          sort: { key: action.key, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' },
-        };
-      }
-      return { ...state, sort: { key: action.key, dir: 'asc' } };
+      const sort =
+        state.sort.key === action.key
+          ? { key: action.key, dir: (state.sort.dir === 'asc' ? 'desc' : 'asc') as SortDir }
+          : { key: action.key, dir: 'asc' as SortDir };
+      return { ...state, sort, viewEdit: state.viewEdit + 1 };
     }
     case 'setViewMode':
-      return { ...state, viewMode: action.mode };
+      return { ...state, viewMode: action.mode, viewEdit: state.viewEdit + 1 };
+    case 'setIconSize':
+      return { ...state, iconSize: action.size, viewEdit: state.viewEdit + 1 };
+    case 'applyView':
+      // A folder's remembered view; deliberately does NOT bump viewEdit.
+      return {
+        ...state,
+        sort: action.view.sort,
+        viewMode: action.view.viewMode,
+        iconSize: action.view.iconSize,
+      };
     case 'setQuery':
       return { ...state, query: action.query };
     case 'setSearchRecursive':
@@ -111,6 +134,8 @@ interface NavContextValue extends NavState {
   toggleHidden: () => void;
   setSort: (key: SortKey) => void;
   setViewMode: (mode: ViewMode) => void;
+  setIconSize: (size: IconSize) => void;
+  applyView: (view: ViewState) => void;
   setColumnWidth: (column: keyof ColumnWidths, width: number) => void;
   setQuery: (query: string) => void;
   setSearchRecursive: (value: boolean) => void;
@@ -123,6 +148,7 @@ export interface NavInitial {
   showHidden?: boolean;
   sort?: { key: SortKey; dir: SortDir };
   viewMode?: ViewMode;
+  iconSize?: IconSize;
   columnWidths?: ColumnWidths;
 }
 
@@ -141,7 +167,9 @@ export function NavigationProvider({
     showHidden: initial?.showHidden ?? false,
     sort: initial?.sort ?? { key: 'name', dir: 'asc' },
     viewMode: initial?.viewMode ?? 'list',
+    iconSize: initial?.iconSize ?? 'medium',
     columnWidths: initial?.columnWidths ?? DEFAULT_COLUMN_WIDTHS,
+    viewEdit: 0,
     query: '',
     searchRecursive: false,
     refreshToken: 0,
@@ -154,6 +182,8 @@ export function NavigationProvider({
   const toggleHidden = useCallback(() => dispatch({ type: 'toggleHidden' }), []);
   const setSort = useCallback((key: SortKey) => dispatch({ type: 'setSort', key }), []);
   const setViewMode = useCallback((mode: ViewMode) => dispatch({ type: 'setViewMode', mode }), []);
+  const setIconSize = useCallback((size: IconSize) => dispatch({ type: 'setIconSize', size }), []);
+  const applyView = useCallback((view: ViewState) => dispatch({ type: 'applyView', view }), []);
   const setColumnWidth = useCallback(
     (column: keyof ColumnWidths, width: number) =>
       dispatch({ type: 'setColumnWidth', column, width }),
@@ -179,6 +209,8 @@ export function NavigationProvider({
       toggleHidden,
       setSort,
       setViewMode,
+      setIconSize,
+      applyView,
       setColumnWidth,
       setQuery,
       setSearchRecursive,
@@ -193,6 +225,8 @@ export function NavigationProvider({
       toggleHidden,
       setSort,
       setViewMode,
+      setIconSize,
+      applyView,
       setColumnWidth,
       setQuery,
       setSearchRecursive,

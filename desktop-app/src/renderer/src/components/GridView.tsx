@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { Entry } from '@shared/types';
+import type { Entry, IconSize, Tag } from '@shared/types';
+import { useNavigation } from '@/state/navigation';
 import { isImage } from '@/lib/format';
 import { useThumbnail } from '@/hooks/useThumbnail';
 import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
+import { TagDots } from './TagDots';
 import type { FileViewProps, SelectMods } from './viewTypes';
 
-const TILE_WIDTH = 128;
-const TILE_HEIGHT = 116;
-const THUMB_SIZE = 96;
+/** Tile geometry per icon-size preference. */
+const TILE: Record<IconSize, { width: number; height: number; thumb: number; icon: number }> = {
+  small: { width: 96, height: 92, thumb: 60, icon: 30 },
+  medium: { width: 128, height: 116, thumb: 96, icon: 44 },
+  large: { width: 176, height: 158, thumb: 136, icon: 62 },
+};
 
 export function GridView({
   entries,
@@ -17,6 +22,7 @@ export function GridView({
   error,
   selection,
   renamingPath,
+  getTags,
   onSelect,
   onActivate,
   onContextMenu,
@@ -28,6 +34,8 @@ export function GridView({
   onDropOnFolder,
   onDropOnPane,
 }: FileViewProps) {
+  const { iconSize } = useNavigation();
+  const tile = TILE[iconSize];
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -45,15 +53,20 @@ export function GridView({
     return () => ro.disconnect();
   }, [loading, error, isEmpty]);
 
-  const perRow = Math.max(1, Math.floor((width || TILE_WIDTH) / TILE_WIDTH));
+  const perRow = Math.max(1, Math.floor((width || tile.width) / tile.width));
   const rowCount = Math.ceil(entries.length / perRow);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => TILE_HEIGHT,
+    estimateSize: () => tile.height,
     overscan: 6,
   });
+
+  // Row height changed with the icon size; drop cached measurements.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [virtualizer, iconSize]);
 
   if (loading) return <div className="pane__state">Loading…</div>;
   if (error) {
@@ -91,7 +104,7 @@ export function GridView({
                 top: 0,
                 left: 0,
                 right: 0,
-                height: TILE_HEIGHT,
+                height: tile.height,
                 transform: `translateY(${vi.start}px)`,
               }}
             >
@@ -99,6 +112,8 @@ export function GridView({
                 <GridTile
                   key={entry.path}
                   entry={entry}
+                  tile={tile}
+                  tags={getTags(entry.path)}
                   selected={selection.has(entry.path)}
                   editing={renamingPath === entry.path}
                   onSelect={onSelect}
@@ -120,6 +135,8 @@ export function GridView({
 
 function GridTile({
   entry,
+  tile,
+  tags,
   selected,
   editing,
   onSelect,
@@ -131,6 +148,8 @@ function GridTile({
   onDropOnFolder,
 }: {
   entry: Entry;
+  tile: (typeof TILE)[IconSize];
+  tags: Tag[];
   selected: boolean;
   editing: boolean;
   onSelect: (entry: Entry, mods: SelectMods) => void;
@@ -141,7 +160,7 @@ function GridTile({
   onItemDragStart: (entry: Entry, e: DragEvent) => void;
   onDropOnFolder: (folder: Entry, e: DragEvent) => void;
 }) {
-  const thumb = useThumbnail(entry.path, THUMB_SIZE, isImage(entry));
+  const thumb = useThumbnail(entry.path, tile.thumb, isImage(entry));
   const [over, setOver] = useState(false);
 
   return (
@@ -150,6 +169,7 @@ function GridTile({
       className={`tile${selected ? ' is-selected' : ''}${entry.isHidden ? ' is-hidden' : ''}${
         over ? ' is-droptarget' : ''
       }`}
+      style={{ width: tile.width, height: tile.height }}
       onDragStart={(e) => onItemDragStart(entry, e)}
       onDragOver={
         entry.isDirectory
@@ -186,11 +206,11 @@ function GridTile({
         onContextMenu(entry, e.clientX, e.clientY);
       }}
     >
-      <div className="tile__thumb">
+      <div className="tile__thumb" style={{ height: tile.thumb }}>
         {thumb ? (
           <img src={thumb} alt="" draggable={false} />
         ) : (
-          <Icon name={entry.isDirectory ? 'folder' : 'file'} size={44} />
+          <Icon name={entry.isDirectory ? 'folder' : 'file'} size={tile.icon} />
         )}
       </div>
       {editing ? (
@@ -202,6 +222,7 @@ function GridTile({
         />
       ) : (
         <div className="tile__name" title={entry.name}>
+          <TagDots tags={tags} max={3} />
           {entry.name}
         </div>
       )}

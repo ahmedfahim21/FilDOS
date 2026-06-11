@@ -47,3 +47,12 @@ test('lists the contents of the starting directory', async () => {
   // The status bar reports item counts once a directory has loaded.
   await expect(page.locator('.statusbar')).toBeVisible();
 });
+
+test('opens the Recents view (SQLite round-trip)', async () => {
+  // Recents is served from the SQLite metadata DB, so this proves the
+  // database opened and the tags/recents IPC surface is wired up.
+  await page.getByTitle('Recently opened files').click();
+  await expect(page.locator('.panelview')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.panelview')).toBeHidden();
+});

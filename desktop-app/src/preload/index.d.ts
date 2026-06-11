@@ -1,4 +1,4 @@
-import type { FsApi, Prefs } from '@shared/types';
+import type { FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
 
 export interface PlatformInfo {
   /** Platform path separator: "\\" on Windows, "/" elsewhere. */
@@ -33,5 +33,8 @@ declare global {
     watcher: Watcher;
     dnd: Dnd;
     prefs: PrefsApi;
+    tags: TagsApi;
+    recents: RecentsApi;
+    views: ViewsApi;
   }
 }

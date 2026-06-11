@@ -83,13 +83,52 @@ export interface TrashedItem {
   deletedAt: number;
 }
 
-/** Persisted user preferences (window + view state). */
+/** Column the file views sort by. */
+export type SortKey = 'name' | 'size' | 'type' | 'modified';
+export type SortDir = 'asc' | 'desc';
+export type ViewMode = 'list' | 'grid';
+/** Tile size used by the grid view. */
+export type IconSize = 'small' | 'medium' | 'large';
+
+/** A user-defined tag that can be attached to any number of files. */
+export interface Tag {
+  id: number;
+  name: string;
+  /** CSS color for the tag dot, e.g. "#e5534b". */
+  color: string;
+  /** Number of files currently carrying this tag. */
+  count: number;
+}
+
+/** A recently opened file, surfaced in the Recents view. */
+export interface RecentItem {
+  path: string;
+  name: string;
+  /** Last time the file was opened, epoch milliseconds. */
+  openedAt: number;
+  /** How many times it has been opened through FilDOS. */
+  openCount: number;
+}
+
+/**
+ * View settings remembered for one specific folder. Unset fields fall back to
+ * the global defaults in `Prefs`.
+ */
+export interface FolderView {
+  sortKey?: SortKey;
+  sortDir?: SortDir;
+  viewMode?: ViewMode;
+  iconSize?: IconSize;
+}
+
+/** Persisted user preferences (window + global view defaults). */
 export interface Prefs {
   windowBounds?: { x: number; y: number; width: number; height: number };
   lastPath?: string;
   showHidden?: boolean;
-  sort?: { key: string; dir: 'asc' | 'desc' };
-  viewMode?: 'list' | 'grid';
+  sort?: { key: SortKey; dir: SortDir };
+  viewMode?: ViewMode;
+  iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
 }
 
@@ -126,4 +165,37 @@ export interface FsApi {
   search(rootPath: string, query: string): Promise<Result<SearchHit[]>>;
   /** Thumbnail data URL for an image file, or null if unavailable. */
   thumbnail(path: string, size: number): Promise<Result<string | null>>;
+}
+
+/** The API surface exposed on `window.tags`. */
+export interface TagsApi {
+  /** All tags with usage counts, sorted by name. */
+  list(): Promise<Result<Tag[]>>;
+  /** Create a tag; the color is auto-assigned when omitted. */
+  create(name: string, color?: string): Promise<Result<Tag>>;
+  rename(id: number, name: string): Promise<Result<Tag>>;
+  /** Delete a tag everywhere (assignments cascade). */
+  remove(id: number): Promise<Result<void>>;
+  /** Attach a tag to the given files (no-op where already attached). */
+  assign(paths: string[], tagId: number): Promise<Result<void>>;
+  /** Detach a tag from the given files. */
+  unassign(paths: string[], tagId: number): Promise<Result<void>>;
+  /** Map of path → tag ids for the given paths (paths without tags omitted). */
+  forPaths(paths: string[]): Promise<Result<Record<string, number[]>>>;
+  /** Entries currently carrying the tag; vanished files are pruned. */
+  files(tagId: number): Promise<Result<Entry[]>>;
+}
+
+/** The API surface exposed on `window.recents`. */
+export interface RecentsApi {
+  /** Most recently opened files, newest first; vanished files are pruned. */
+  list(limit?: number): Promise<Result<RecentItem[]>>;
+  remove(path: string): Promise<Result<void>>;
+  clear(): Promise<Result<void>>;
+}
+
+/** The API surface exposed on `window.views` (per-folder view settings). */
+export interface ViewsApi {
+  get(path: string): Promise<Result<FolderView | null>>;
+  set(path: string, view: FolderView): Promise<Result<void>>;
 }

@@ -1,15 +1,24 @@
 import { useEffect, useState, type DragEvent } from 'react';
-import type { QuickAccessItem } from '@shared/types';
+import type { QuickAccessItem, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { Icon } from './Icon';
 
 export function Sidebar({
+  tags,
   onDropPath,
+  onOpenTag,
+  onOpenRecents,
   onOpenTrash,
+  onDropOnTag,
 }: {
+  tags: Tag[];
   onDropPath: (path: string, e: DragEvent) => void;
+  onOpenTag: (tag: Tag) => void;
+  onOpenRecents: () => void;
   onOpenTrash: () => void;
+  /** Drop files onto a tag in the sidebar to apply it. */
+  onDropOnTag: (tag: Tag, e: DragEvent) => void;
 }) {
   const { currentPath, navigate } = useNavigation();
   const { notifyError } = useToast();
@@ -51,7 +60,42 @@ export function Sidebar({
         ))}
       </nav>
 
+      {tags.length > 0 && (
+        <>
+          <div className="sidebar__title">Tags</div>
+          <nav>
+            {tags.map((tag) => (
+              <button
+                key={tag.id}
+                className={`sidebar__item${
+                  dropTarget === `tag:${tag.id}` ? ' is-droptarget' : ''
+                }`}
+                onClick={() => onOpenTag(tag)}
+                title={`Files tagged “${tag.name}”`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDropTarget(`tag:${tag.id}`);
+                }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={(e) => {
+                  setDropTarget(null);
+                  onDropOnTag(tag, e);
+                }}
+              >
+                <span className="tagdot" style={{ background: tag.color }} />
+                <span className="sidebar__grow">{tag.name}</span>
+                {tag.count > 0 && <span className="sidebar__count">{tag.count}</span>}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
+
       <div className="sidebar__spacer" />
+      <button className="sidebar__item" onClick={onOpenRecents} title="Recently opened files">
+        <Icon name="clock" size={16} />
+        <span>Recents</span>
+      </button>
       <button className="sidebar__item" onClick={onOpenTrash} title="Trash">
         <Icon name="trash" size={16} />
         <span>Trash</span>

@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
-import type { Entry, Prefs } from '@shared/types';
-import { NavigationProvider, useNavigation, type NavInitial, type SortKey } from '@/state/navigation';
+import type { Entry, Prefs, Tag } from '@shared/types';
+import {
+  NavigationProvider,
+  useNavigation,
+  type NavInitial,
+  type ViewState,
+} from '@/state/navigation';
 import { ToastProvider, useToast } from '@/state/toast';
 import { ClipboardProvider, useClipboard } from '@/state/clipboard';
 import { UndoProvider, useUndo } from '@/state/undo';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
+import { useTagState } from '@/hooks/useTags';
 import { baseName, parentOf } from '@/lib/path';
 import { Sidebar } from '@/components/Sidebar';
 import { Toolbar } from '@/components/Toolbar';
@@ -17,11 +23,14 @@ import { ConfirmDialog, PromptDialog } from '@/components/Dialog';
 import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
 import { TrashView } from '@/components/TrashView';
+import { RecentsView } from '@/components/RecentsView';
+import { TagFilesView } from '@/components/TagFilesView';
 import { Toasts } from '@/components/Toasts';
 
 type DialogState =
   | { kind: 'new-folder' }
   | { kind: 'new-file' }
+  | { kind: 'new-tag'; paths: string[] }
   | { kind: 'trash'; entries: Entry[] }
   | null;
 
@@ -31,13 +40,14 @@ function isEditingTarget(target: EventTarget | null): boolean {
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 }
 
-function Browser() {
+function Browser({ initialView }: { initialView: ViewState }) {
   const nav = useNavigation();
   const clipboard = useClipboard();
   const undo = useUndo();
   const actions = useFileActions();
   const { notify, notifyError } = useToast();
   const { entries, visible, loading, error } = useDirectory();
+  const tagState = useTagState(visible);
 
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [anchorPath, setAnchorPath] = useState<string | null>(null);
@@ -46,20 +56,63 @@ function Browser() {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [infoPath, setInfoPath] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  const [showRecents, setShowRecents] = useState(false);
+  const [openTagId, setOpenTagId] = useState<number | null>(null);
 
-  // Persist view preferences and last folder.
+  // The global view defaults: what a folder without remembered settings shows.
+  // Updated on every deliberate view change (alongside the prefs row).
+  const globalView = useRef<ViewState>(initialView);
+
+  // Persist the non-view-state prefs as they change.
   useEffect(() => {
-    window.prefs.set({
-      showHidden: nav.showHidden,
-      sort: nav.sort,
-      viewMode: nav.viewMode,
-      columnWidths: nav.columnWidths,
-    });
-  }, [nav.showHidden, nav.sort, nav.viewMode, nav.columnWidths]);
+    window.prefs.set({ showHidden: nav.showHidden, columnWidths: nav.columnWidths });
+  }, [nav.showHidden, nav.columnWidths]);
 
   useEffect(() => {
     window.prefs.set({ lastPath: nav.currentPath });
   }, [nav.currentPath]);
+
+  // A deliberate view change (sort / view mode / icon size) becomes both the
+  // new global default and this folder's remembered view. Applying another
+  // folder's remembered view doesn't bump viewEdit, so it never lands here.
+  useEffect(() => {
+    if (nav.viewEdit === 0) return;
+    const view: ViewState = { sort: nav.sort, viewMode: nav.viewMode, iconSize: nav.iconSize };
+    globalView.current = view;
+    window.prefs.set({ sort: view.sort, viewMode: view.viewMode, iconSize: view.iconSize });
+    window.views.set(nav.currentPath, {
+      sortKey: view.sort.key,
+      sortDir: view.sort.dir,
+      viewMode: view.viewMode,
+      iconSize: view.iconSize,
+    });
+    // Depends only on viewEdit: the other nav fields are read at edit time,
+    // and re-running on their navigation-driven changes would wrongly pin a
+    // remembered view onto every visited folder.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav.viewEdit]);
+
+  // Entering a folder restores its remembered view (or the global defaults).
+  useEffect(() => {
+    let cancelled = false;
+    window.views.get(nav.currentPath).then((result) => {
+      if (cancelled || !result.ok) return;
+      const remembered = result.data;
+      const fallback = globalView.current;
+      nav.applyView({
+        sort:
+          remembered?.sortKey != null
+            ? { key: remembered.sortKey, dir: remembered.sortDir ?? 'asc' }
+            : fallback.sort,
+        viewMode: remembered?.viewMode ?? fallback.viewMode,
+        iconSize: remembered?.iconSize ?? fallback.iconSize,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav.currentPath, nav.applyView]);
 
   // Selection/cursor are scoped to a directory; reset on navigation.
   useEffect(() => {
@@ -149,6 +202,37 @@ function Browser() {
     }
   }, [undo, nav, notify, notifyError]);
 
+  // --- Tags ---
+  const isTagOnSelection = useCallback(
+    (tagId: number) =>
+      selectedPaths.length > 0 &&
+      selectedPaths.every((p) => tagState.getTags(p).some((t) => t.id === tagId)),
+    [selectedPaths, tagState],
+  );
+
+  const toggleTagOnPaths = useCallback(
+    (paths: string[], tag: Tag, apply: boolean) => {
+      if (!paths.length) return;
+      if (apply) tagState.assign(paths, tag.id);
+      else tagState.unassign(paths, tag.id);
+    },
+    [tagState],
+  );
+
+  const createTagAndAssign = useCallback(
+    async (name: string, paths: string[]) => {
+      const tag = await tagState.create(name);
+      if (tag && paths.length) await tagState.assign(paths, tag.id);
+    },
+    [tagState],
+  );
+
+  /** Resolve the file paths carried by a drag event. */
+  const droppedPaths = (e: DragEvent) =>
+    Array.from(e.dataTransfer.files)
+      .map((f) => window.dnd.pathForFile(f))
+      .filter(Boolean);
+
   // --- Drag and drop ---
   // Tracks whether the in-progress drag originated inside FilDOS (→ default move)
   // vs. from another app (→ default copy). Any click resets it before a new drag.
@@ -176,9 +260,7 @@ function Browser() {
       e.preventDefault();
       const internal = dragInternal.current;
       dragInternal.current = false;
-      const paths = Array.from(e.dataTransfer.files)
-        .map((f) => window.dnd.pathForFile(f))
-        .filter(Boolean);
+      const paths = droppedPaths(e);
       // Skip items already living in the destination (no-op move).
       const valid = paths.filter((p) => p !== destDir && parentOf(p) !== destDir);
       if (!valid.length) return;
@@ -186,6 +268,19 @@ function Browser() {
       else await actions.copyTo(valid, destDir);
     },
     [actions],
+  );
+
+  const handleDropOnTag = useCallback(
+    (tag: Tag, e: DragEvent) => {
+      e.preventDefault();
+      dragInternal.current = false;
+      const paths = droppedPaths(e);
+      if (paths.length) {
+        tagState.assign(paths, tag.id);
+        notify('success', `Tagged ${paths.length} item${paths.length > 1 ? 's' : ''} “${tag.name}”`);
+      }
+    },
+    [tagState, notify],
   );
 
   // Global keyboard map.
@@ -282,6 +377,7 @@ function Browser() {
     error,
     selection,
     renamingPath,
+    getTags: tagState.getTags,
     onSelect: select,
     onActivate: actions.open,
     onBackgroundClick: () => setSelection(new Set()),
@@ -297,6 +393,8 @@ function Browser() {
     onDropOnPane: (e) => handleDrop(nav.currentPath, e),
   };
 
+  const openTag = openTagId !== null ? tagState.tags.find((t) => t.id === openTagId) : undefined;
+
   return (
     <div className="app">
       <Toolbar
@@ -305,13 +403,25 @@ function Browser() {
       />
       <div className="app__body">
         <Sidebar
+          tags={tagState.tags}
           onDropPath={(path, e) => handleDrop(path, e)}
+          onOpenTag={(tag) => setOpenTagId(tag.id)}
+          onOpenRecents={() => setShowRecents(true)}
           onOpenTrash={() => setShowTrash(true)}
+          onDropOnTag={handleDropOnTag}
         />
         <main className="pane">
           {nav.viewMode === 'grid' ? <GridView {...viewProps} /> : <FileList {...viewProps} />}
         </main>
-        {infoPath && <InfoPanel path={infoPath} onClose={() => setInfoPath(null)} />}
+        {infoPath && (
+          <InfoPanel
+            path={infoPath}
+            tags={tagState.tags}
+            getTags={tagState.getTags}
+            onToggleTag={(path, tag, apply) => toggleTagOnPaths([path], tag, apply)}
+            onClose={() => setInfoPath(null)}
+          />
+        )}
       </div>
 
       <StatusBar
@@ -337,11 +447,18 @@ function Browser() {
           onRename={() => startRename(selectedEntries[0])}
           onTrash={() => setDialog({ kind: 'trash', entries: selectedEntries })}
           onInfo={() => setInfoPath(selectedEntries[0].path)}
+          tags={tagState.tags}
+          isTagOnSelection={isTagOnSelection}
+          onToggleTag={(tag, apply) => toggleTagOnPaths(selectedPaths, tag, apply)}
+          onNewTag={() => setDialog({ kind: 'new-tag', paths: selectedPaths })}
           onNewFolder={() => setDialog({ kind: 'new-folder' })}
           onNewFile={() => setDialog({ kind: 'new-file' })}
           onSelectAll={selectAll}
           onRefresh={nav.refresh}
           onToggleHidden={nav.toggleHidden}
+          sortKey={nav.sort.key}
+          sortDir={nav.sort.dir}
+          onSort={nav.setSort}
         />
       )}
 
@@ -373,6 +490,27 @@ function Browser() {
         />
       )}
 
+      {dialog?.kind === 'new-tag' && (
+        <PromptDialog
+          title="New Tag"
+          label={
+            dialog.paths.length
+              ? `Tag name (applies to ${dialog.paths.length} selected item${
+                  dialog.paths.length > 1 ? 's' : ''
+                })`
+              : 'Tag name'
+          }
+          initialValue=""
+          confirmLabel="Create"
+          onCancel={() => setDialog(null)}
+          onConfirm={(name) => {
+            const paths = dialog.paths;
+            setDialog(null);
+            createTagAndAssign(name, paths);
+          }}
+        />
+      )}
+
       {dialog?.kind === 'trash' && (
         <ConfirmDialog
           title="Move to Trash"
@@ -392,6 +530,24 @@ function Browser() {
         <TrashView onClose={() => setShowTrash(false)} onChanged={() => nav.refresh()} />
       )}
 
+      {showRecents && (
+        <RecentsView onClose={() => setShowRecents(false)} onNavigate={nav.navigate} />
+      )}
+
+      {openTag && (
+        <TagFilesView
+          tag={openTag}
+          onClose={() => setOpenTagId(null)}
+          onNavigate={nav.navigate}
+          onRenameTag={(id, name) => tagState.rename(id, name)}
+          onDeleteTag={(id) => {
+            setOpenTagId(null);
+            tagState.remove(id);
+          }}
+          onChanged={tagState.refresh}
+        />
+      )}
+
       <Toasts />
     </div>
   );
@@ -404,12 +560,16 @@ export default function App({
   initialPath: string;
   initialPrefs: Prefs;
 }) {
+  const initialView: ViewState = {
+    sort: initialPrefs.sort ?? { key: 'name', dir: 'asc' },
+    viewMode: initialPrefs.viewMode ?? 'list',
+    iconSize: initialPrefs.iconSize ?? 'medium',
+  };
   const navInitial: NavInitial = {
     showHidden: initialPrefs.showHidden,
-    sort: initialPrefs.sort
-      ? { key: initialPrefs.sort.key as SortKey, dir: initialPrefs.sort.dir }
-      : undefined,
-    viewMode: initialPrefs.viewMode,
+    sort: initialView.sort,
+    viewMode: initialView.viewMode,
+    iconSize: initialView.iconSize,
     columnWidths: initialPrefs.columnWidths,
   };
   return (
@@ -417,7 +577,7 @@ export default function App({
       <ClipboardProvider>
         <UndoProvider>
           <NavigationProvider initialPath={initialPath} initial={navInitial}>
-            <Browser />
+            <Browser initialView={initialView} />
           </NavigationProvider>
         </UndoProvider>
       </ClipboardProvider>

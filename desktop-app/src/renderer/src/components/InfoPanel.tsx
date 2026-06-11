@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react';
-import type { AppError, FileInfo } from '@shared/types';
+import type { AppError, FileInfo, Tag } from '@shared/types';
 import { formatDate, formatSize, typeLabel } from '@/lib/format';
 import { Icon } from './Icon';
 
-export function InfoPanel({ path, onClose }: { path: string; onClose: () => void }) {
+export function InfoPanel({
+  path,
+  tags,
+  getTags,
+  onToggleTag,
+  onClose,
+}: {
+  path: string;
+  /** All known tags, for the "add" picker. */
+  tags: Tag[];
+  /** Tags currently attached to a visible path. */
+  getTags: (path: string) => Tag[];
+  onToggleTag: (path: string, tag: Tag, apply: boolean) => void;
+  onClose: () => void;
+}) {
   const [info, setInfo] = useState<FileInfo | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   // Recursive folder size: null until computed.
@@ -56,6 +70,13 @@ export function InfoPanel({ path, onClose }: { path: string; onClose: () => void
             </div>
           </div>
 
+          <TagsRow
+            attached={getTags(path)}
+            all={tags}
+            onAdd={(tag) => onToggleTag(path, tag, true)}
+            onRemove={(tag) => onToggleTag(path, tag, false)}
+          />
+
           <Row label="Type" value={typeLabel(info)} />
           <Row
             label="Size"
@@ -78,6 +99,63 @@ export function InfoPanel({ path, onClose }: { path: string; onClose: () => void
         </div>
       )}
     </aside>
+  );
+}
+
+/** Tag chips with a picker to attach any not-yet-applied tag. */
+function TagsRow({
+  attached,
+  all,
+  onAdd,
+  onRemove,
+}: {
+  attached: Tag[];
+  all: Tag[];
+  onAdd: (tag: Tag) => void;
+  onRemove: (tag: Tag) => void;
+}) {
+  const attachedIds = new Set(attached.map((t) => t.id));
+  const addable = all.filter((t) => !attachedIds.has(t.id));
+  if (attached.length === 0 && addable.length === 0) return null;
+
+  return (
+    <div className="inforow">
+      <div className="inforow__label">Tags</div>
+      <div className="inforow__value infopanel__tags">
+        {attached.map((tag) => (
+          <span key={tag.id} className="tagchip">
+            <span className="tagdot" style={{ background: tag.color }} />
+            {tag.name}
+            <button
+              className="tagchip__remove"
+              title={`Remove “${tag.name}”`}
+              onClick={() => onRemove(tag)}
+            >
+              <Icon name="close" size={10} />
+            </button>
+          </span>
+        ))}
+        {addable.length > 0 && (
+          <select
+            className="tagchip tagchip--add"
+            value=""
+            onChange={(e) => {
+              const tag = addable.find((t) => t.id === Number(e.target.value));
+              if (tag) onAdd(tag);
+            }}
+          >
+            <option value="" disabled>
+              + Add
+            </option>
+            {addable.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { DragEvent } from 'react';
-import type { AppError, Entry } from '@shared/types';
+import type { AppError, Entry, Tag } from '@shared/types';
 
 export interface SelectMods {
   /** Cmd/Ctrl held: toggle this item in the selection. */
@@ -15,6 +15,8 @@ export interface FileViewProps {
   error: AppError | null;
   selection: Set<string>;
   renamingPath: string | null;
+  /** Tags attached to an entry, for the tag dots beside its name. */
+  getTags: (path: string) => Tag[];
   onSelect: (entry: Entry, mods: SelectMods) => void;
   onActivate: (entry: Entry) => void;
   onContextMenu: (entry: Entry, x: number, y: number) => void;

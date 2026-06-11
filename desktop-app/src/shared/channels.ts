@@ -27,6 +27,19 @@ export const Channels = {
   dragStart: 'drag:start',
   prefsGet: 'prefs:get',
   prefsSet: 'prefs:set',
+  tagsList: 'tags:list',
+  tagsCreate: 'tags:create',
+  tagsRename: 'tags:rename',
+  tagsRemove: 'tags:remove',
+  tagsAssign: 'tags:assign',
+  tagsUnassign: 'tags:unassign',
+  tagsForPaths: 'tags:forPaths',
+  tagsFiles: 'tags:files',
+  recentsList: 'recents:list',
+  recentsRemove: 'recents:remove',
+  recentsClear: 'recents:clear',
+  viewsGet: 'views:get',
+  viewsSet: 'views:set',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];

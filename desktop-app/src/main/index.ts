@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFsHandlers } from './fs/handlers';
-import { getPrefs, setPrefs } from './prefs';
+import { closeDb, initDb } from './db';
+import { getPrefs, importLegacyPrefs, setPrefs } from './prefs';
 
 async function createWindow(): Promise<void> {
   const prefs = await getPrefs();
@@ -45,7 +46,9 @@ async function createWindow(): Promise<void> {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  initDb(join(app.getPath('userData'), 'fildos.db'));
+  await importLegacyPrefs(join(app.getPath('userData'), 'prefs.json'));
   registerFsHandlers();
   createWindow();
 
@@ -57,3 +60,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('quit', () => closeDb());
