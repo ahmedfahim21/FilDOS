@@ -1,13 +1,11 @@
-import { promises as fs } from 'node:fs';
-import { count, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { Prefs } from '@shared/types';
 import { db } from './db';
 import { prefs as prefsTable } from './db/schema';
 
 /**
  * User preferences, stored one row per field in the SQLite `prefs` table
- * (values JSON-encoded). Replaces the old prefs.json; `importLegacyPrefs`
- * migrates that file into the table once, then renames it out of the way.
+ * (values JSON-encoded).
  */
 
 export async function getPrefs(): Promise<Prefs> {
@@ -33,22 +31,4 @@ export async function setPrefs(patch: Prefs): Promise<void> {
     .insert(prefsTable)
     .values(rows)
     .onConflictDoUpdate({ target: prefsTable.key, set: { value: sql`excluded.value` } });
-}
-
-/**
- * One-time import of the pre-SQLite prefs.json. Only runs when the prefs
- * table is empty; the old file is renamed to *.migrated afterwards so the
- * import never repeats (and the data survives if anything goes wrong).
- */
-export async function importLegacyPrefs(jsonFile: string): Promise<void> {
-  const [{ n }] = await db().select({ n: count() }).from(prefsTable);
-  if (n > 0) return;
-  let legacy: Prefs;
-  try {
-    legacy = JSON.parse(await fs.readFile(jsonFile, 'utf8')) as Prefs;
-  } catch {
-    return; // no legacy file (fresh install) or unreadable — nothing to import
-  }
-  await setPrefs(legacy);
-  await fs.rename(jsonFile, `${jsonFile}.migrated`).catch(() => {});
 }

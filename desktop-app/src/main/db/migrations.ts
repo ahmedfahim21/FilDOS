@@ -5,6 +5,10 @@ import type { DatabaseSync } from 'node:sqlite';
  * have run, so adding a statement to the END of this list upgrades existing
  * databases in place (keep ./schema.ts in sync). Never edit or reorder
  * shipped entries. Plain SQL — no migration files to locate inside an asar.
+ *
+ * To scaffold the SQL for a schema change: edit ./schema.ts, run
+ * `npm run db:generate` (drizzle-kit diffs against the snapshots in
+ * /drizzle), review the emitted SQL and paste it here as a new entry.
  */
 const MIGRATIONS: string[] = [
   `

@@ -90,8 +90,7 @@ rather than hand-rolling.
 - `fs/thumbnails.ts` — `nativeImage` thumbnails as data URLs, in-memory LRU-ish cache.
 - `fs/trashTracker.ts` — hybrid trash (see below).
 - `db/` — SQLite metadata layer (see below): tags, recents, per-folder views.
-- `prefs.ts` — prefs in the SQLite `prefs` table (JSON values); one-time import
-  of the legacy `prefs.json` on first run.
+- `prefs.ts` — prefs in the SQLite `prefs` table (JSON values).
 
 ### The database layer (`src/main/db/`)
 
@@ -108,6 +107,10 @@ Electron ≥ 35 (Node 22) — CI runs Node 22 for the same reason.
   at startup; features call `db()`. Tests use `initDb(':memory:')`.
 - `migrations.ts` — plain-SQL migrations versioned via `PRAGMA user_version`;
   append-only. `schema.ts` mirrors the DDL as Drizzle tables for query typing.
+  For a schema change, `npm run db:generate` (drizzle-kit, config in
+  `drizzle.config.ts`) scaffolds the diff SQL into `/drizzle` — review it
+  (e.g. the COLLATE NOCASE on `tags.name` is hand-written) and paste it as a
+  new MIGRATIONS entry; the runtime never reads `/drizzle`.
 - `tags.ts` / `recents.ts` / `views.ts` — feature queries. Every mutation is a
   single statement (no multi-await transactions, so concurrent IPC handlers
   can't interleave).

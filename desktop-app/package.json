@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "electron-vite build && playwright test",
-    "prepare": "node scripts/install-hooks.mjs"
+    "prepare": "node scripts/install-hooks.mjs",
+    "db:generate": "drizzle-kit generate"
   },
   "lint-staged": {
     "*.{ts,tsx,mjs}": "eslint --fix"
@@ -29,6 +30,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "drizzle-kit": "^0.31.10",
     "electron": "^37.10.3",
     "electron-vite": "^2.3.0",
     "eslint": "^9.39.4",

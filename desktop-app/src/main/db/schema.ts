@@ -34,12 +34,16 @@ export const fileTags = sqliteTable(
 );
 
 /** Recently opened files, one row per path. */
-export const recents = sqliteTable('recents', {
-  path: text('path').primaryKey(),
-  name: text('name').notNull(),
-  openedAt: integer('opened_at').notNull(),
-  openCount: integer('open_count').notNull().default(1),
-});
+export const recents = sqliteTable(
+  'recents',
+  {
+    path: text('path').primaryKey(),
+    name: text('name').notNull(),
+    openedAt: integer('opened_at').notNull(),
+    openCount: integer('open_count').notNull().default(1),
+  },
+  (t) => [index('idx_recents_opened').on(t.openedAt)],
+);
 
 /** Per-folder view settings; NULL columns fall back to global prefs. */
 export const folderViews = sqliteTable('folder_views', {
