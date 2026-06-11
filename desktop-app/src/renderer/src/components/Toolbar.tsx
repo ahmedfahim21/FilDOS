@@ -1,6 +1,13 @@
+import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { Icon } from './Icon';
 import { AddressBar } from './AddressBar';
+
+const ICON_SIZES: { size: IconSize; label: string; title: string }[] = [
+  { size: 'small', label: 'S', title: 'Small icons' },
+  { size: 'medium', label: 'M', title: 'Medium icons' },
+  { size: 'large', label: 'L', title: 'Large icons' },
+];
 
 export function Toolbar({
   onNewFolder,
@@ -20,6 +27,8 @@ export function Toolbar({
     toggleHidden,
     viewMode,
     setViewMode,
+    iconSize,
+    setIconSize,
     query,
     setQuery,
     searchRecursive,
@@ -80,6 +89,20 @@ export function Toolbar({
         >
           <Icon name="grid" />
         </button>
+        {viewMode === 'grid' && (
+          <div className="segmented" role="group" aria-label="Icon size">
+            {ICON_SIZES.map((opt) => (
+              <button
+                key={opt.size}
+                className={`segmented__btn${iconSize === opt.size ? ' is-active' : ''}`}
+                onClick={() => setIconSize(opt.size)}
+                title={opt.title}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           className="iconbtn"
           onClick={toggleHidden}

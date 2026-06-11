@@ -4,6 +4,7 @@ import { useNavigation, type ColumnWidths, type SortKey } from '@/state/navigati
 import { formatDate, formatSize, typeLabel } from '@/lib/format';
 import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
+import { TagDots } from './TagDots';
 import type { FileViewProps } from './viewTypes';
 
 const ROW_HEIGHT = 30;
@@ -21,6 +22,7 @@ export function FileList({
   error,
   selection,
   renamingPath,
+  getTags,
   onSelect,
   onActivate,
   onContextMenu,
@@ -154,7 +156,10 @@ export function FileList({
                       onCancel={onRenameCancel}
                     />
                   ) : (
-                    <span className="row__name">{entry.name}</span>
+                    <>
+                      <span className="row__name">{entry.name}</span>
+                      <TagDots tags={getTags(entry.path)} />
+                    </>
                   )}
                 </div>
                 <div className="cell col-size">

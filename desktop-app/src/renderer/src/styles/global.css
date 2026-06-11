@@ -803,7 +803,8 @@ button {
 }
 
 /* ---------- Trash view ---------- */
-.trashview {
+.trashview,
+.panelview {
   width: 640px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 80px);
@@ -815,7 +816,8 @@ button {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
-.trashview__head {
+.trashview__head,
+.panelview__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -823,18 +825,21 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.trashview__head h2 {
+.trashview__head h2,
+.panelview__head h2 {
   margin: 0;
   font-size: 16px;
 }
 
-.trashview__actions {
+.trashview__actions,
+.panelview__actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.trashview__note {
+.trashview__note,
+.panelview__note {
   margin: 0;
   padding: 10px 18px;
   color: var(--text-dim);
@@ -842,13 +847,15 @@ button {
   line-height: 1.4;
 }
 
-.trashview__list {
+.trashview__list,
+.panelview__list {
   flex: 1;
   overflow-y: auto;
   padding: 0 8px 8px;
 }
 
-.trashrow {
+.trashrow,
+.panelrow {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -856,27 +863,32 @@ button {
   border-radius: 6px;
 }
 
-.trashrow:hover {
+.trashrow:hover,
+.panelrow:hover {
   background: var(--bg-hover);
 }
 
-.trashrow svg {
+.trashrow svg,
+.panelrow > svg {
   color: var(--accent);
   flex-shrink: 0;
 }
 
-.trashrow__info {
+.trashrow__info,
+.panelrow__info {
   flex: 1;
   min-width: 0;
 }
 
-.trashrow__name {
+.trashrow__name,
+.panelrow__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.trashrow__meta {
+.trashrow__meta,
+.panelrow__meta {
   font-size: 11px;
   color: var(--text-dim);
   overflow: hidden;
@@ -884,14 +896,191 @@ button {
   white-space: nowrap;
 }
 
-.trashrow__date {
+.trashrow__date,
+.panelrow__date {
   font-size: 11px;
   color: var(--text-dim);
   flex-shrink: 0;
 }
 
-.trashview .btn svg {
+.trashview .btn svg,
+.panelview .btn svg {
   color: inherit;
+}
+
+.panelview__head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- Tags ---------- */
+.tagdot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.tagdot--lg {
+  width: 13px;
+  height: 13px;
+}
+
+.tagdots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.row__name + .tagdots {
+  margin-left: 8px;
+}
+
+.tile__name .tagdots {
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+
+.tile__name .tagdot {
+  width: 7px;
+  height: 7px;
+}
+
+.tagdots__more {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.tagchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 11px;
+}
+
+.tagchip__remove {
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0;
+}
+
+.tagchip__remove:hover {
+  color: var(--danger);
+}
+
+.tagchip--add {
+  color: var(--text-dim);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.tagchip--add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.infopanel__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---------- Sidebar extras ---------- */
+.sidebar__grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.sidebar__count {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.sidebar__item .tagdot {
+  margin: 0 3px;
+}
+
+/* ---------- Context-menu submenus ---------- */
+.ctxmenu__subwrap {
+  position: relative;
+}
+
+.ctxmenu__grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.ctxmenu__hint {
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.ctxmenu--sub {
+  position: absolute;
+  top: -6px;
+  min-width: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.ctxmenu--right {
+  left: calc(100% + 1px);
+}
+
+.ctxmenu--left {
+  right: calc(100% + 1px);
+}
+
+/* ---------- Segmented control (icon sizes) ---------- */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented__btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.segmented__btn + .segmented__btn {
+  border-left: 1px solid var(--border);
+}
+
+.segmented__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.segmented__btn.is-active {
+  background: var(--accent);
+  color: #fff;
 }
 
 /* ---------- Error boundary ---------- */

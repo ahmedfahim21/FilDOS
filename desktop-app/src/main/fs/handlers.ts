@@ -1,6 +1,7 @@
 import { app, ipcMain, nativeImage, shell } from 'electron';
+import { basename, sep } from 'node:path';
 import { Channels } from '@shared/channels';
-import type { AppError, Result } from '@shared/types';
+import type { AppError, Entry, FolderView, Result } from '@shared/types';
 import * as service from './service';
 import { quickAccess } from './quickAccess';
 import { setWatch } from './watch';
@@ -14,6 +15,10 @@ import {
 } from './trashTracker';
 import { getPrefs, setPrefs } from '../prefs';
 import type { Prefs } from '@shared/types';
+import { remapPaths } from '../db';
+import * as tags from '../db/tags';
+import * as recents from '../db/recents';
+import { getFolderView, setFolderView } from '../db/views';
 
 /** Map a thrown error into a friendly, display-ready AppError. */
 function toAppError(err: unknown): AppError {
@@ -64,7 +69,12 @@ export function registerFsHandlers(): void {
   );
 
   ipcMain.handle(Channels.rename, (_e, path: string, newName: string) =>
-    wrap(() => service.rename(assertValidPath(path), newName)),
+    wrap(async () => {
+      const from = assertValidPath(path);
+      const entry = await service.rename(from, newName);
+      remapPaths(from, entry.path, sep); // keep tags/recents/views attached
+      return entry;
+    }),
   );
 
   ipcMain.handle(Channels.copy, (_e, paths: string[], destDir: string) =>
@@ -72,7 +82,13 @@ export function registerFsHandlers(): void {
   );
 
   ipcMain.handle(Channels.move, (_e, paths: string[], destDir: string) =>
-    wrap(() => service.move(paths.map(assertValidPath), assertValidPath(destDir))),
+    wrap(async () => {
+      const sources = paths.map(assertValidPath);
+      const moved = await service.move(sources, assertValidPath(destDir));
+      // service.move returns entries in source order; remap each old → new.
+      moved.forEach((entry, i) => remapPaths(sources[i], entry.path, sep));
+      return moved;
+    }),
   );
 
   ipcMain.handle(Channels.duplicate, (_e, path: string) =>
@@ -95,12 +111,14 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle(Channels.open, (_e, path: string) =>
     wrap(async () => {
-      const errMsg = await shell.openPath(assertValidPath(path));
+      const target = assertValidPath(path);
+      const errMsg = await shell.openPath(target);
       if (errMsg) {
         const err = new Error(errMsg) as NodeJS.ErrnoException;
         err.code = 'EUNKNOWN';
         throw err;
       }
+      await recents.recordOpen(target, basename(target));
     }),
   );
 
@@ -133,6 +151,73 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle(Channels.prefsGet, () => getPrefs());
   ipcMain.handle(Channels.prefsSet, (_e, patch: Prefs) => setPrefs(patch));
+
+  // --- Tags ---
+  ipcMain.handle(Channels.tagsList, () => wrap(async () => tags.listTags()));
+
+  ipcMain.handle(Channels.tagsCreate, (_e, name: string, color?: string) =>
+    wrap(async () => tags.createTag(name, color)),
+  );
+
+  ipcMain.handle(Channels.tagsRename, (_e, id: number, name: string) =>
+    wrap(async () => tags.renameTag(id, name)),
+  );
+
+  ipcMain.handle(Channels.tagsRemove, (_e, id: number) =>
+    wrap(async () => tags.deleteTag(id)),
+  );
+
+  ipcMain.handle(Channels.tagsAssign, (_e, paths: string[], tagId: number) =>
+    wrap(async () => tags.assignTag(paths.map(assertValidPath), tagId)),
+  );
+
+  ipcMain.handle(Channels.tagsUnassign, (_e, paths: string[], tagId: number) =>
+    wrap(async () => tags.unassignTag(paths.map(assertValidPath), tagId)),
+  );
+
+  ipcMain.handle(Channels.tagsForPaths, (_e, paths: string[]) =>
+    wrap(async () => tags.tagsForPaths(paths.map(assertValidPath))),
+  );
+
+  // Entries carrying a tag: stat each stored path, prune the ones that are gone.
+  ipcMain.handle(Channels.tagsFiles, (_e, tagId: number) =>
+    wrap(async () => {
+      const paths = await tags.pathsForTag(tagId);
+      // Stat in parallel but keep pathsForTag's most-recently-tagged order.
+      const infos = await Promise.all(
+        paths.map((p): Promise<Entry | null> => service.getInfo(p).catch(() => null)),
+      );
+      const dead = paths.filter((_, i) => infos[i] === null);
+      if (dead.length) await tags.pruneTaggedPaths(dead);
+      return infos.filter((e): e is Entry => e !== null);
+    }),
+  );
+
+  // --- Recents ---
+  ipcMain.handle(Channels.recentsList, (_e, limit?: number) =>
+    wrap(async () => {
+      const items = await recents.listRecents(limit);
+      const exists = await Promise.all(items.map((item) => service.pathExists(item.path)));
+      const dead = items.filter((_, i) => !exists[i]).map((item) => item.path);
+      if (dead.length) await recents.removeRecents(dead);
+      return items.filter((_, i) => exists[i]);
+    }),
+  );
+
+  ipcMain.handle(Channels.recentsRemove, (_e, path: string) =>
+    wrap(async () => recents.removeRecents([assertValidPath(path)])),
+  );
+
+  ipcMain.handle(Channels.recentsClear, () => wrap(async () => recents.clearRecents()));
+
+  // --- Per-folder view settings ---
+  ipcMain.handle(Channels.viewsGet, (_e, path: string) =>
+    wrap(async () => getFolderView(assertValidPath(path))),
+  );
+
+  ipcMain.handle(Channels.viewsSet, (_e, path: string, view: FolderView) =>
+    wrap(async () => setFolderView(assertValidPath(path), view)),
+  );
 
   // Begin an OS drag of the given files (drag-out to Finder/Explorer/other apps).
   ipcMain.handle(Channels.dragStart, async (e, paths: string[]) => {

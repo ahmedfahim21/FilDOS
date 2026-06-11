@@ -55,8 +55,8 @@ src/renderer/    React app (alias @ = src/renderer/src)
 **Security model (do not weaken):** `contextIsolation: true`, `sandbox: true`,
 `nodeIntegration: false`. The renderer never imports Node/Electron or touches the
 disk directly — it calls `window.fsapi` / `window.watcher` / `window.dnd` /
-`window.prefs`, all defined in `src/preload/index.ts` and typed in
-`src/preload/index.d.ts`.
+`window.prefs` / `window.tags` / `window.recents` / `window.views`, all defined
+in `src/preload/index.ts` and typed in `src/preload/index.d.ts`.
 
 ### The IPC contract (the spine of the app)
 
@@ -89,7 +89,43 @@ rather than hand-rolling.
   emits `Events.dirChanged` to the renderer.
 - `fs/thumbnails.ts` — `nativeImage` thumbnails as data URLs, in-memory LRU-ish cache.
 - `fs/trashTracker.ts` — hybrid trash (see below).
-- `prefs.ts` — JSON prefs in `userData` (no electron-store dep).
+- `db/` — SQLite metadata layer (see below): tags, recents, per-folder views.
+- `prefs.ts` — prefs in the SQLite `prefs` table (JSON values).
+
+### The database layer (`src/main/db/`)
+
+Everything that isn't the filesystem itself lives in SQLite at
+`userData/fildos.db`. The engine is Node's **built-in `node:sqlite`** (zero
+native deps — nothing to rebuild for Electron's ABI, and vitest can hit the
+real engine), with **Drizzle ORM** on top via its `sqlite-proxy` driver (a
+~15-line adapter in `connection.ts`). Because `node:sqlite` is still
+experimental, bundlers don't know it as a builtin; it's loaded with
+`process.getBuiltinModule('node:sqlite')` (never a static import). Requires
+Electron ≥ 35 (Node 22) — CI runs Node 22 for the same reason.
+
+- `connection.ts` — open/close, the Drizzle proxy adapter. `initDb(file)` once
+  at startup; features call `db()`. Tests use `initDb(':memory:')`.
+- `migrations.ts` — plain-SQL migrations versioned via `PRAGMA user_version`;
+  append-only. `schema.ts` mirrors the DDL as Drizzle tables for query typing.
+  For a schema change, `npm run db:generate` (drizzle-kit, config in
+  `drizzle.config.ts`) scaffolds the diff SQL into `/drizzle` — review it
+  (e.g. the COLLATE NOCASE on `tags.name` is hand-written) and paste it as a
+  new MIGRATIONS entry; the runtime never reads `/drizzle`.
+- `tags.ts` / `recents.ts` / `views.ts` — feature queries. Every mutation is a
+  single statement (no multi-await transactions, so concurrent IPC handlers
+  can't interleave).
+- `remap.ts` — after rename/move, handlers call `remapPaths(old, new, sep)` to
+  carry tags/recents/folder-views along (raw `UPDATE OR REPLACE`, prefix-safe).
+
+Stale rows (files deleted outside FilDOS) are pruned lazily when a tag's files
+or the recents list are fetched, by stat'ing each path in the handler.
+
+Per-folder views: a deliberate sort/view-mode/icon-size change becomes the new
+global default (prefs) *and* the current folder's remembered view
+(`folder_views`); navigation applies the remembered view or falls back to the
+global default. The split lives in `state/navigation.tsx` (`viewEdit` counter:
+user edits bump it, `applyView` doesn't) and the two effects at the top of
+`App.tsx#Browser`.
 
 ### Renderer
 
@@ -103,11 +139,17 @@ State via React context (no Redux):
 - `hooks/useFileActions.ts` — **all mutations funnel through here**; each runs the
   IPC call, toasts, refreshes, and pushes an inverse onto the undo stack. Add new
   mutations here so undo stays consistent.
+- `hooks/useTags.ts` — tag list + path→tags map for the visible entries; **all
+  tag mutations funnel through here** so the sidebar, dots, menus and info
+  panel stay in sync.
 - `components/` — `FileList` (virtualized, resizable cols, inline rename, DnD) and
-  `GridView` (thumbnails) share `viewTypes.ts#FileViewProps`. `App.tsx` owns
-  selection, the global keymap, context-menu/dialog/trash state, and DnD glue.
+  `GridView` (thumbnails, icon-size variants) share `viewTypes.ts#FileViewProps`.
+  `RecentsView` / `TagFilesView` are overlay panels modeled on `TrashView`
+  (shared `.panelview` CSS). `App.tsx` owns selection, the global keymap,
+  context-menu/dialog/overlay state, and DnD glue (incl. drop-on-tag).
 
-Virtualization uses `@tanstack/react-virtual` (the only non-built-in dependency).
+Runtime deps are `@tanstack/react-virtual` (virtualization) and `drizzle-orm`
+(pure-TS, no binaries).
 
 ### Trash model = Hybrid (decided with the user)
 

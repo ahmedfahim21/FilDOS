@@ -201,7 +201,7 @@ export async function rename(targetPath: string, newName: string): Promise<Entry
   return getInfo(destination);
 }
 
-async function pathExists(p: string): Promise<boolean> {
+export async function pathExists(p: string): Promise<boolean> {
   return fs.access(p).then(
     () => true,
     () => false,
