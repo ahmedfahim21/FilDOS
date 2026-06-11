@@ -182,20 +182,14 @@ export function registerFsHandlers(): void {
   // Entries carrying a tag: stat each stored path, prune the ones that are gone.
   ipcMain.handle(Channels.tagsFiles, (_e, tagId: number) =>
     wrap(async () => {
-      const alive: Entry[] = [];
-      const dead: string[] = [];
       const paths = await tags.pathsForTag(tagId);
-      await Promise.all(
-        paths.map(async (p) => {
-          try {
-            alive.push(await service.getInfo(p));
-          } catch {
-            dead.push(p);
-          }
-        }),
+      // Stat in parallel but keep pathsForTag's most-recently-tagged order.
+      const infos = await Promise.all(
+        paths.map((p): Promise<Entry | null> => service.getInfo(p).catch(() => null)),
       );
+      const dead = paths.filter((_, i) => infos[i] === null);
       if (dead.length) await tags.pruneTaggedPaths(dead);
-      return alive;
+      return infos.filter((e): e is Entry => e !== null);
     }),
   );
 

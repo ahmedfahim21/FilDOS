@@ -63,13 +63,14 @@ function Browser({ initialView }: { initialView: ViewState }) {
   // Updated on every deliberate view change (alongside the prefs row).
   const globalView = useRef<ViewState>(initialView);
 
-  // Persist the non-view-state prefs as they change.
+  // Persist the non-view-state prefs as they change (best-effort — a failed
+  // write must never surface as an unhandled rejection).
   useEffect(() => {
-    window.prefs.set({ showHidden: nav.showHidden, columnWidths: nav.columnWidths });
+    window.prefs.set({ showHidden: nav.showHidden, columnWidths: nav.columnWidths }).catch(() => {});
   }, [nav.showHidden, nav.columnWidths]);
 
   useEffect(() => {
-    window.prefs.set({ lastPath: nav.currentPath });
+    window.prefs.set({ lastPath: nav.currentPath }).catch(() => {});
   }, [nav.currentPath]);
 
   // A deliberate view change (sort / view mode / icon size) becomes both the
@@ -79,13 +80,17 @@ function Browser({ initialView }: { initialView: ViewState }) {
     if (nav.viewEdit === 0) return;
     const view: ViewState = { sort: nav.sort, viewMode: nav.viewMode, iconSize: nav.iconSize };
     globalView.current = view;
-    window.prefs.set({ sort: view.sort, viewMode: view.viewMode, iconSize: view.iconSize });
-    window.views.set(nav.currentPath, {
-      sortKey: view.sort.key,
-      sortDir: view.sort.dir,
-      viewMode: view.viewMode,
-      iconSize: view.iconSize,
-    });
+    window.prefs
+      .set({ sort: view.sort, viewMode: view.viewMode, iconSize: view.iconSize })
+      .catch(() => {});
+    window.views
+      .set(nav.currentPath, {
+        sortKey: view.sort.key,
+        sortDir: view.sort.dir,
+        viewMode: view.viewMode,
+        iconSize: view.iconSize,
+      })
+      .catch(() => {});
     // Depends only on viewEdit: the other nav fields are read at edit time,
     // and re-running on their navigation-driven changes would wrongly pin a
     // remembered view onto every visited folder.

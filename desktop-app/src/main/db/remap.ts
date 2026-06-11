@@ -19,6 +19,9 @@ export function remapPaths(oldPath: string, newPath: string, sep: string): void 
          WHERE path = :old OR substr(path, 1, length(:old) + 1) = :old || :sep`,
       ).run({ new: newPath, old: oldPath, sep });
     }
+    // The renamed entry's display name must follow its new basename too.
+    const base = newPath.slice(newPath.lastIndexOf(sep) + 1);
+    if (base) d.prepare('UPDATE recents SET name = ? WHERE path = ?').run(base, newPath);
     d.exec('COMMIT');
   } catch (err) {
     d.exec('ROLLBACK');

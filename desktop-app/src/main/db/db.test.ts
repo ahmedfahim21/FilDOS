@@ -40,7 +40,10 @@ describe('remapPaths', () => {
     remapPaths('/a/file.txt', '/b/renamed.txt', '/');
 
     expect(await tagsForPaths(['/b/renamed.txt'])).toEqual({ '/b/renamed.txt': [tag.id] });
-    expect((await db().select().from(recents))[0].path).toBe('/b/renamed.txt');
+    expect((await db().select().from(recents))[0]).toMatchObject({
+      path: '/b/renamed.txt',
+      name: 'renamed.txt', // display name follows the rename
+    });
     expect((await db().select().from(folderViews))[0].path).toBe('/b/renamed.txt');
   });
 
