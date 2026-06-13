@@ -401,12 +401,12 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const openTag = openTagId !== null ? tagState.tags.find((t) => t.id === openTagId) : undefined;
 
   return (
-    <div className="app">
+    <div className="flex h-full flex-col">
       <Toolbar
         onNewFolder={() => setDialog({ kind: 'new-folder' })}
         onNewFile={() => setDialog({ kind: 'new-file' })}
       />
-      <div className="app__body">
+      <div className="flex min-h-0 flex-1">
         <Sidebar
           tags={tagState.tags}
           onDropPath={(path, e) => handleDrop(path, e)}
@@ -415,7 +415,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onOpenTrash={() => setShowTrash(true)}
           onDropOnTag={handleDropOnTag}
         />
-        <main className="pane">
+        <main className="bg-background flex min-w-0 flex-1 flex-col">
           {nav.viewMode === 'grid' ? <GridView {...viewProps} /> : <FileList {...viewProps} />}
         </main>
         {infoPath && (
