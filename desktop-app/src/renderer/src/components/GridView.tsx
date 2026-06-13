@@ -11,10 +11,15 @@ import { TagDots } from './TagDots';
 import type { FileViewProps, SelectMods } from './viewTypes';
 
 /** Tile geometry per icon-size preference. */
-const TILE: Record<IconSize, { width: number; height: number; thumb: number }> = {
-  small: { width: 96, height: 92, thumb: 60 },
-  medium: { width: 128, height: 116, thumb: 96 },
-  large: { width: 176, height: 158, thumb: 136 },
+// thumb = resolution to fetch previews at; preview/logo = max rendered size of a
+// real thumbnail vs. a type-logo fallback (logos render smaller, with padding).
+const TILE: Record<
+  IconSize,
+  { width: number; height: number; thumb: number; preview: number; logo: number }
+> = {
+  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 34 },
+  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 44 },
+  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 64 },
 };
 
 export function GridView({
@@ -215,7 +220,11 @@ function GridTile({
           src={thumb ?? fileLogo(entry)}
           alt=""
           draggable={false}
-          className="max-h-full max-w-full rounded-sm object-contain"
+          className={cn('max-h-full max-w-full object-contain', thumb && 'rounded-sm')}
+          style={{
+            maxWidth: thumb ? tile.preview : tile.logo,
+            maxHeight: thumb ? tile.preview : tile.logo,
+          }}
         />
       </div>
       {editing ? (
