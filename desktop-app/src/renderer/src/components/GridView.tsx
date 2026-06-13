@@ -4,6 +4,7 @@ import type { Entry, IconSize, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { isImage } from '@/lib/format';
 import { fileLogo } from '@/lib/fileLogo';
+import { cn } from '@/lib/utils';
 import { useThumbnail } from '@/hooks/useThumbnail';
 import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
@@ -81,7 +82,7 @@ export function GridView({
 
   return (
     <div
-      className="gridview"
+      className="flex-1 overflow-y-auto p-2"
       ref={scrollRef}
       onClick={onBackgroundClick}
       onContextMenu={(e) => {
@@ -98,7 +99,7 @@ export function GridView({
           return (
             <div
               key={vi.index}
-              className="gridview__row"
+              className="flex"
               style={{
                 position: 'absolute',
                 top: 0,
@@ -166,9 +167,12 @@ function GridTile({
   return (
     <div
       draggable
-      className={`tile${selected ? ' is-selected' : ''}${entry.isHidden ? ' is-hidden' : ''}${
-        over ? ' is-droptarget' : ''
-      }`}
+      className={cn(
+        'flex cursor-default flex-col items-center gap-1.5 rounded-lg p-1.5 hover:bg-accent',
+        selected && 'bg-primary text-white hover:bg-primary',
+        entry.isHidden && 'opacity-55',
+        over && 'bg-accent ring-2 ring-inset ring-primary',
+      )}
       style={{ width: tile.width, height: tile.height }}
       onDragStart={(e) => onItemDragStart(entry, e)}
       onDragOver={
@@ -206,19 +210,27 @@ function GridTile({
         onContextMenu(entry, e.clientX, e.clientY);
       }}
     >
-      <div className="tile__thumb" style={{ height: tile.thumb }}>
-        <img src={thumb ?? fileLogo(entry)} alt="" draggable={false} />
+      <div className="grid min-h-0 w-full flex-1 place-items-center">
+        <img
+          src={thumb ?? fileLogo(entry)}
+          alt=""
+          draggable={false}
+          className="max-h-full max-w-full rounded-sm object-contain"
+        />
       </div>
       {editing ? (
         <RenameInput
-          className="tile__rename"
+          className="w-full select-text rounded-sm border border-primary bg-background px-1 py-px text-center text-xs text-foreground outline-none"
           initial={entry.name}
           onCommit={(name) => onRenameCommit(entry, name)}
           onCancel={onRenameCancel}
         />
       ) : (
-        <div className="tile__name" title={entry.name}>
-          <TagDots tags={tags} max={3} />
+        <div
+          className="line-clamp-2 w-full text-center text-xs leading-tight wrap-break-word"
+          title={entry.name}
+        >
+          <TagDots tags={tags} max={3} dotSize={7} className="mr-1" />
           {entry.name}
         </div>
       )}

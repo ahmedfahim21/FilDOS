@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon } from './Icon';
+import { TagDot } from './TagDots';
 
 export interface ContextMenuState {
   x: number;
@@ -128,10 +129,7 @@ export function ContextMenu(props: ContextMenuProps) {
                       key={tag.id}
                       onSelect={() => props.onToggleTag(tag, !applied)}
                     >
-                      <span
-                        className="tagdot"
-                        style={{ background: tag.color }}
-                      />
+                      <TagDot color={tag.color} />
                       <span className="flex-1">{tag.name}</span>
                       {applied && <Icon name="check" size={13} />}
                     </DropdownMenuItem>

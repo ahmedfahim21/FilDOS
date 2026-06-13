@@ -4,6 +4,7 @@ import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { TagDot } from './TagDots';
 
 const itemClass = (active = false, drop = false) =>
   cn(
@@ -91,10 +92,7 @@ export function Sidebar({
                   onDropOnTag(tag, e);
                 }}
               >
-                <span
-                  className="tagdot mx-0.75"
-                  style={{ background: tag.color }}
-                />
+                <TagDot color={tag.color} className="mx-0.75" />
                 <span className="min-w-0 flex-1 overflow-hidden text-left text-ellipsis">
                   {tag.name}
                 </span>
