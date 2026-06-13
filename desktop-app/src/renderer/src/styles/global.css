@@ -721,61 +721,6 @@ button {
   z-index: 200;
 }
 
-.dialog {
-  width: 380px;
-  max-width: calc(100vw - 40px);
-  padding: 20px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-}
-
-.dialog__title {
-  margin: 0 0 14px;
-  font-size: 15px;
-}
-
-.dialog__message {
-  margin: 0 0 18px;
-  color: var(--muted-foreground);
-  line-height: 1.5;
-}
-
-.field {
-  display: block;
-  margin-bottom: 18px;
-}
-
-.field__label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-
-.field__input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  color: var(--foreground);
-  font: inherit;
-  user-select: text;
-}
-
-.field__input:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-.dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .btn {
   display: inline-flex;
   align-items: center;
