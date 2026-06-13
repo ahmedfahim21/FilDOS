@@ -3,18 +3,27 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Entry, IconSize, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { isImage } from '@/lib/format';
+import { fileLogo } from '@/lib/fileLogo';
+import { cn } from '@/lib/utils';
 import { useThumbnail } from '@/hooks/useThumbnail';
-import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
 import type { FileViewProps, SelectMods } from './viewTypes';
 
 /** Tile geometry per icon-size preference. */
-const TILE: Record<IconSize, { width: number; height: number; thumb: number; icon: number }> = {
-  small: { width: 96, height: 92, thumb: 60, icon: 30 },
-  medium: { width: 128, height: 116, thumb: 96, icon: 44 },
-  large: { width: 176, height: 158, thumb: 136, icon: 62 },
+// thumb = resolution to fetch previews at; preview/logo = max rendered size of a
+// real thumbnail vs. a type-logo fallback (logos render smaller, with padding).
+const TILE: Record<
+  IconSize,
+  { width: number; height: number; thumb: number; preview: number; logo: number }
+> = {
+  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 34 },
+  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 44 },
+  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 64 },
 };
+
+const STATE =
+  'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
 
 export function GridView({
   entries,
@@ -68,20 +77,21 @@ export function GridView({
     virtualizer.measure();
   }, [virtualizer, iconSize]);
 
-  if (loading) return <div className="pane__state">Loading…</div>;
+  if (loading) return <div className={STATE}>Loading…</div>;
   if (error) {
     return (
-      <div className="pane__state pane__state--error">
-        <strong>Can’t open this folder</strong>
+      <div className={STATE}>
+        <strong className="text-foreground">Can’t open this folder</strong>
         <span>{error.message}</span>
       </div>
     );
   }
-  if (entries.length === 0) return <div className="pane__state">This folder is empty</div>;
+  if (entries.length === 0)
+    return <div className={STATE}>This folder is empty</div>;
 
   return (
     <div
-      className="gridview"
+      className="flex-1 overflow-y-auto p-2"
       ref={scrollRef}
       onClick={onBackgroundClick}
       onContextMenu={(e) => {
@@ -98,7 +108,7 @@ export function GridView({
           return (
             <div
               key={vi.index}
-              className="gridview__row"
+              className="flex"
               style={{
                 position: 'absolute',
                 top: 0,
@@ -166,9 +176,12 @@ function GridTile({
   return (
     <div
       draggable
-      className={`tile${selected ? ' is-selected' : ''}${entry.isHidden ? ' is-hidden' : ''}${
-        over ? ' is-droptarget' : ''
-      }`}
+      className={cn(
+        'flex cursor-default flex-col items-center gap-1.5 rounded-lg p-1.5 hover:bg-accent',
+        selected && 'bg-primary text-white hover:bg-primary',
+        entry.isHidden && 'opacity-55',
+        over && 'bg-accent ring-2 ring-inset ring-primary',
+      )}
       style={{ width: tile.width, height: tile.height }}
       onDragStart={(e) => onItemDragStart(entry, e)}
       onDragOver={
@@ -206,23 +219,31 @@ function GridTile({
         onContextMenu(entry, e.clientX, e.clientY);
       }}
     >
-      <div className="tile__thumb" style={{ height: tile.thumb }}>
-        {thumb ? (
-          <img src={thumb} alt="" draggable={false} />
-        ) : (
-          <Icon name={entry.isDirectory ? 'folder' : 'file'} size={tile.icon} />
-        )}
+      <div className="grid min-h-0 w-full flex-1 place-items-center">
+        <img
+          src={thumb ?? fileLogo(entry)}
+          alt=""
+          draggable={false}
+          className={cn('max-h-full max-w-full object-contain', thumb && 'rounded-sm')}
+          style={{
+            maxWidth: thumb ? tile.preview : tile.logo,
+            maxHeight: thumb ? tile.preview : tile.logo,
+          }}
+        />
       </div>
       {editing ? (
         <RenameInput
-          className="tile__rename"
+          className="w-full select-text rounded-sm border border-primary bg-background px-1 py-px text-center text-xs text-foreground outline-none"
           initial={entry.name}
           onCommit={(name) => onRenameCommit(entry, name)}
           onCancel={onRenameCancel}
         />
       ) : (
-        <div className="tile__name" title={entry.name}>
-          <TagDots tags={tags} max={3} />
+        <div
+          className="line-clamp-2 w-full text-center text-xs leading-tight wrap-break-word"
+          title={entry.name}
+        >
+          <TagDots tags={tags} max={3} dotSize={7} className="mr-1" />
           {entry.name}
         </div>
       )}

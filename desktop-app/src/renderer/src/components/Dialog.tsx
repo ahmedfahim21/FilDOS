@@ -1,32 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
-/** Generic modal shell: backdrop, escape-to-close, focus trap-ish autofocus. */
-export function Dialog({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return (
-    <div className="backdrop" onMouseDown={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
-        <h2 className="dialog__title">{title}</h2>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/** A dialog that collects a single text value (new folder / rename). */
+/** A dialog that collects a single text value (new folder / new file / rename). */
 export function PromptDialog({
   title,
   label,
@@ -61,27 +46,40 @@ export function PromptDialog({
   };
 
   return (
-    <Dialog title={title} onClose={onCancel}>
-      <label className="field">
-        <span className="field__label">{label}</span>
-        <input
-          ref={inputRef}
-          className="field__input"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
-          }}
-        />
-      </label>
-      <div className="dialog__actions">
-        <button className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn--primary" onClick={submit} disabled={!value.trim()}>
-          {confirmLabel}
-        </button>
-      </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <Label htmlFor="prompt-input">{label}</Label>
+          <Input
+            id="prompt-input"
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit();
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!value.trim()}>
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
@@ -102,21 +100,39 @@ export function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
   return (
-    <Dialog title={title} onClose={onCancel}>
-      <p className="dialog__message">{message}</p>
-      <div className="dialog__actions">
-        <button className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          className={`btn ${danger ? 'btn--danger' : 'btn--primary'}`}
-          onClick={onConfirm}
-          autoFocus
-        >
-          {confirmLabel}
-        </button>
-      </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          confirmRef.current?.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{message}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            ref={confirmRef}
+            variant={danger ? 'destructive' : 'default'}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

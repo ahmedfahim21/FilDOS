@@ -2,7 +2,16 @@ import { useEffect, useState, type DragEvent } from 'react';
 import type { QuickAccessItem, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
+import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { TagDot } from './TagDots';
+
+const itemClass = (active = false, drop = false) =>
+  cn(
+    'flex w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-foreground [&_svg]:text-muted-foreground hover:bg-accent',
+    active && 'bg-primary text-white hover:bg-primary [&_svg]:text-white',
+    drop && 'bg-accent ring-2 ring-inset ring-primary',
+  );
 
 export function Sidebar({
   tags,
@@ -32,16 +41,19 @@ export function Sidebar({
     });
   }, [notifyError]);
 
+  const title = 'text-muted-foreground px-2 pb-2 text-[11px] tracking-[0.06em] uppercase';
+
   return (
-    <aside className="sidebar">
-      <div className="sidebar__title">Quick Access</div>
+    <aside className="border-border bg-card flex w-50 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
+      <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (
           <button
             key={item.path}
-            className={`sidebar__item${currentPath === item.path ? ' is-active' : ''}${
-              dropTarget === item.path ? ' is-droptarget' : ''
-            }`}
+            className={itemClass(
+              currentPath === item.path,
+              dropTarget === item.path,
+            )}
             onClick={() => navigate(item.path)}
             title={item.path}
             onDragOver={(e) => {
@@ -62,14 +74,12 @@ export function Sidebar({
 
       {tags.length > 0 && (
         <>
-          <div className="sidebar__title">Tags</div>
+          <div className={title}>Tags</div>
           <nav>
             {tags.map((tag) => (
               <button
                 key={tag.id}
-                className={`sidebar__item${
-                  dropTarget === `tag:${tag.id}` ? ' is-droptarget' : ''
-                }`}
+                className={itemClass(false, dropTarget === `tag:${tag.id}`)}
                 onClick={() => onOpenTag(tag)}
                 title={`Files tagged “${tag.name}”`}
                 onDragOver={(e) => {
@@ -82,21 +92,31 @@ export function Sidebar({
                   onDropOnTag(tag, e);
                 }}
               >
-                <span className="tagdot" style={{ background: tag.color }} />
-                <span className="sidebar__grow">{tag.name}</span>
-                {tag.count > 0 && <span className="sidebar__count">{tag.count}</span>}
+                <TagDot color={tag.color} className="mx-0.75" />
+                <span className="min-w-0 flex-1 overflow-hidden text-left text-ellipsis">
+                  {tag.name}
+                </span>
+                {tag.count > 0 && (
+                  <span className="text-muted-foreground shrink-0 text-[11px]">
+                    {tag.count}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
         </>
       )}
 
-      <div className="sidebar__spacer" />
-      <button className="sidebar__item" onClick={onOpenRecents} title="Recently opened files">
+      <div className="min-h-3 flex-1" />
+      <button
+        className={itemClass()}
+        onClick={onOpenRecents}
+        title="Recently opened files"
+      >
         <Icon name="clock" size={16} />
         <span>Recents</span>
       </button>
-      <button className="sidebar__item" onClick={onOpenTrash} title="Trash">
+      <button className={itemClass()} onClick={onOpenTrash} title="Trash">
         <Icon name="trash" size={16} />
         <span>Trash</span>
       </button>

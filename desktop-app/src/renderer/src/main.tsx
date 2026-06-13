@@ -28,7 +28,12 @@ function Root() {
     })();
   }, []);
 
-  if (!boot) return <div className="splash">FilDOS</div>;
+  if (!boot)
+    return (
+      <div className="text-muted-foreground grid h-full place-items-center text-[2rem] tracking-widest">
+        FilDOS
+      </div>
+    );
   return <App initialPath={boot.path} initialPrefs={boot.prefs} />;
 }
 

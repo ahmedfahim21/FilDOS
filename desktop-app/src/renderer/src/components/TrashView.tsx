@@ -2,7 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import type { TrashedItem } from '@shared/types';
 import { useToast } from '@/state/toast';
 import { formatDate } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { Icon } from './Icon';
+import {
+  Panel,
+  PanelActions,
+  PanelHeader,
+  PanelList,
+  PanelNote,
+  PanelRow,
+  PanelRowDate,
+  PanelRowIcon,
+  PanelRowInfo,
+  PanelState,
+  PanelTitle,
+} from './Panel';
 
 /**
  * Overlay listing items FilDOS has trashed, with best-effort restore. Restore
@@ -57,52 +71,66 @@ export function TrashView({
   };
 
   return (
-    <div className="backdrop" onMouseDown={onClose}>
-      <div className="trashview" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="trashview__head">
-          <h2>Trash</h2>
-          <div className="trashview__actions">
-            <button className="btn" onClick={() => window.fsapi.openOsTrash()}>
-              Open OS Trash
-            </button>
-            <button className="btn btn--danger" onClick={empty} disabled={items.length === 0}>
-              Empty
-            </button>
-            <button className="iconbtn" onClick={onClose} aria-label="Close">
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        </div>
+    <Panel onClose={onClose}>
+      <PanelHeader>
+        <PanelTitle>Trash</PanelTitle>
+        <PanelActions>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.fsapi.openOsTrash()}
+          >
+            Open OS Trash
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={empty}
+            disabled={items.length === 0}
+          >
+            Empty
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <Icon name="close" size={14} />
+          </Button>
+        </PanelActions>
+      </PanelHeader>
 
-        <p className="trashview__note">
-          Items deleted in FilDOS. Restore is best-effort — it can fail if the
-          original location is occupied or the OS renamed the item.
-        </p>
+      <PanelNote>
+        Items deleted in FilDOS. Restore is best-effort — it can fail if the
+        original location is occupied or the OS renamed the item.
+      </PanelNote>
 
-        <div className="trashview__list">
-          {loading ? (
-            <div className="pane__state">Loading…</div>
-          ) : items.length === 0 ? (
-            <div className="pane__state">Nothing tracked in Trash</div>
-          ) : (
-            items.map((item) => (
-              <div key={item.id} className="trashrow">
+      <PanelList>
+        {loading ? (
+          <PanelState>Loading…</PanelState>
+        ) : items.length === 0 ? (
+          <PanelState>Nothing tracked in Trash</PanelState>
+        ) : (
+          items.map((item) => (
+            <PanelRow key={item.id}>
+              <PanelRowIcon>
                 <Icon name="file" size={16} />
-                <div className="trashrow__info">
-                  <div className="trashrow__name" title={item.originalPath}>
-                    {item.name}
-                  </div>
-                  <div className="trashrow__meta">{item.originalPath}</div>
-                </div>
-                <div className="trashrow__date">{formatDate(item.deletedAt)}</div>
-                <button className="btn" onClick={() => restore(item.id)}>
-                  <Icon name="restore" size={14} /> Restore
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+              </PanelRowIcon>
+              <PanelRowInfo
+                name={item.name}
+                meta={item.originalPath}
+                title={item.originalPath}
+              />
+              <PanelRowDate>{formatDate(item.deletedAt)}</PanelRowDate>
+              <Button variant="outline" size="sm" onClick={() => restore(item.id)}>
+                <Icon name="restore" size={14} /> Restore
+              </Button>
+            </PanelRow>
+          ))
+        )}
+      </PanelList>
+    </Panel>
   );
 }

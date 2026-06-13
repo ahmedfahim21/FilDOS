@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SortDir, SortKey, Tag } from '@shared/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Icon } from './Icon';
+import { TagDot } from './TagDots';
 
 export interface ContextMenuState {
   x: number;
@@ -54,163 +64,140 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 export function ContextMenu(props: ContextMenuProps) {
   const { state, onClose, count, canPaste, showHidden } = props;
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-
   const single = count === 1;
-  const run = (fn: () => void) => () => {
-    onClose();
-    fn();
-  };
-
-  // Keep the menu on-screen; open submenus away from the nearest edge.
-  const style: React.CSSProperties = {
-    left: Math.min(state.x, window.innerWidth - 220),
-    top: Math.min(state.y, window.innerHeight - 320),
-  };
-  const submenuSide: 'left' | 'right' = state.x > window.innerWidth - 420 ? 'left' : 'right';
-
   const revealLabel = `Reveal in ${window.platform?.os === 'darwin' ? 'Finder' : 'Explorer'}`;
 
   return (
-    <div ref={ref} className="ctxmenu" style={style} role="menu">
-      {state.mode === 'selection' ? (
-        <>
-          <button className="ctxmenu__item" onClick={run(props.onOpen)} disabled={!single}>
-            <Icon name="open" size={15} /> Open
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onReveal)} disabled={!single}>
-            <Icon name="reveal" size={15} /> {revealLabel}
-          </button>
-          <div className="ctxmenu__sep" />
-          <button className="ctxmenu__item" onClick={run(props.onCopy)}>
-            <Icon name="copy" size={15} /> Copy{count > 1 ? ` (${count})` : ''}
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onCut)}>
-            <Icon name="cut" size={15} /> Cut{count > 1 ? ` (${count})` : ''}
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onPaste)} disabled={!canPaste}>
-            <Icon name="paste" size={15} /> Paste
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onDuplicate)} disabled={!single}>
-            <Icon name="copy" size={15} /> Duplicate
-          </button>
-          <div className="ctxmenu__sep" />
-          <Submenu side={submenuSide} label="Tags" icon="tag">
-            {props.tags.map((tag) => {
-              const applied = props.isTagOnSelection(tag.id);
-              return (
-                <button
-                  key={tag.id}
-                  className="ctxmenu__item"
-                  onClick={run(() => props.onToggleTag(tag, !applied))}
-                >
-                  <span className="tagdot" style={{ background: tag.color }} />
-                  <span className="ctxmenu__grow">{tag.name}</span>
-                  {applied && <Icon name="check" size={13} />}
-                </button>
-              );
-            })}
-            {props.tags.length > 0 && <div className="ctxmenu__sep" />}
-            <button className="ctxmenu__item" onClick={run(props.onNewTag)}>
-              <Icon name="plus" size={13} /> New Tag…
-            </button>
-          </Submenu>
-          <div className="ctxmenu__sep" />
-          <button className="ctxmenu__item" onClick={run(props.onRename)} disabled={!single}>
-            <Icon name="rename" size={15} /> Rename
-          </button>
-          <button className="ctxmenu__item ctxmenu__item--danger" onClick={run(props.onTrash)}>
-            <Icon name="trash" size={15} /> Move to Trash{count > 1 ? ` (${count})` : ''}
-          </button>
-          <div className="ctxmenu__sep" />
-          <button className="ctxmenu__item" onClick={run(props.onInfo)} disabled={!single}>
-            <Icon name="info" size={15} /> Get Info
-          </button>
-        </>
-      ) : (
-        <>
-          <button className="ctxmenu__item" onClick={run(props.onNewFolder)}>
-            <Icon name="new-folder" size={15} /> New Folder
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onNewFile)}>
-            <Icon name="file-plus" size={15} /> New File
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onPaste)} disabled={!canPaste}>
-            <Icon name="paste" size={15} /> Paste
-          </button>
-          <div className="ctxmenu__sep" />
-          <Submenu side={submenuSide} label="Sort By" icon="list">
-            {SORT_OPTIONS.map((opt) => (
-              <button
-                key={opt.key}
-                className="ctxmenu__item"
-                onClick={run(() => props.onSort(opt.key))}
-              >
-                <span className="ctxmenu__grow">{opt.label}</span>
-                {props.sortKey === opt.key && (
-                  <span className="ctxmenu__hint">{props.sortDir === 'asc' ? '▲' : '▼'}</span>
-                )}
-              </button>
-            ))}
-          </Submenu>
-          <button className="ctxmenu__item" onClick={run(props.onSelectAll)}>
-            <Icon name="list" size={15} /> Select All
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onToggleHidden)}>
-            <Icon name={showHidden ? 'eye-off' : 'eye'} size={15} />{' '}
-            {showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'}
-          </button>
-          <button className="ctxmenu__item" onClick={run(props.onRefresh)}>
-            <Icon name="refresh" size={15} /> Refresh
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** A menu item that reveals a nested panel on hover (or click, for keyboards). */
-function Submenu({
-  label,
-  icon,
-  side,
-  children,
-}: {
-  label: string;
-  icon: 'tag' | 'list';
-  side: 'left' | 'right';
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div
-      className="ctxmenu__subwrap"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+    // Keyed on the cursor position so each right-click remounts the menu at the
+    // new spot; Radix then handles collision-flipping and submenu placement.
+    <DropdownMenu
+      key={`${state.x},${state.y}`}
+      open
+      modal={false}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <button className="ctxmenu__item" onClick={() => setOpen((o) => !o)}>
-        <Icon name={icon} size={15} />
-        <span className="ctxmenu__grow">{label}</span>
-        <Icon name="chevron" size={13} />
-      </button>
-      {open && (
-        <div className={`ctxmenu ctxmenu--sub ctxmenu--${side}`} role="menu">
-          {children}
-        </div>
-      )}
-    </div>
+      <DropdownMenuTrigger asChild>
+        <span
+          aria-hidden
+          style={{
+            position: 'fixed',
+            left: state.x,
+            top: state.y,
+            width: 0,
+            height: 0,
+          }}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="min-w-52"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        {state.mode === 'selection' ? (
+          <>
+            <DropdownMenuItem onSelect={props.onOpen} disabled={!single}>
+              <Icon name="open" /> Open
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onReveal} disabled={!single}>
+              <Icon name="reveal" /> {revealLabel}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onCopy}>
+              <Icon name="copy" /> Copy{count > 1 ? ` (${count})` : ''}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onCut}>
+              <Icon name="cut" /> Cut{count > 1 ? ` (${count})` : ''}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onPaste} disabled={!canPaste}>
+              <Icon name="paste" /> Paste
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onDuplicate} disabled={!single}>
+              <Icon name="copy" /> Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Icon name="tag" /> <span className="ml-2">Tags</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+                {props.tags.map((tag) => {
+                  const applied = props.isTagOnSelection(tag.id);
+                  return (
+                    <DropdownMenuItem
+                      key={tag.id}
+                      onSelect={() => props.onToggleTag(tag, !applied)}
+                    >
+                      <TagDot color={tag.color} />
+                      <span className="flex-1">{tag.name}</span>
+                      {applied && <Icon name="check" size={13} />}
+                    </DropdownMenuItem>
+                  );
+                })}
+                {props.tags.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onSelect={props.onNewTag}>
+                  <Icon name="plus" size={13} /> New Tag…
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onRename} disabled={!single}>
+              <Icon name="rename" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onSelect={props.onTrash}>
+              <Icon name="trash" /> Move to Trash{count > 1 ? ` (${count})` : ''}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onInfo} disabled={!single}>
+              <Icon name="info" /> Get Info
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <>
+            <DropdownMenuItem onSelect={props.onNewFolder}>
+              <Icon name="new-folder" /> New Folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onNewFile}>
+              <Icon name="file-plus" /> New File
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onPaste} disabled={!canPaste}>
+              <Icon name="paste" /> Paste
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Icon name="list" /> <span className="ml-2">Sort By</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {SORT_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.key}
+                    onSelect={() => props.onSort(opt.key)}
+                  >
+                    <span className="flex-1">{opt.label}</span>
+                    {props.sortKey === opt.key && (
+                      <span className="text-muted-foreground ml-auto text-xs">
+                        {props.sortDir === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem onSelect={props.onSelectAll}>
+              <Icon name="list" /> Select All
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onToggleHidden}>
+              <Icon name={showHidden ? 'eye-off' : 'eye'} />{' '}
+              {showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={props.onRefresh}>
+              <Icon name="refresh" /> Refresh
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

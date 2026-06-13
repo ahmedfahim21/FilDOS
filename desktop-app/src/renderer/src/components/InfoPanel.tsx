@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { AppError, FileInfo, Tag } from '@shared/types';
 import { formatDate, formatSize, typeLabel } from '@/lib/format';
+import { fileLogo } from '@/lib/fileLogo';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { TagDot } from './TagDots';
+
+const ROW = 'mb-2.5';
+const ROW_LABEL =
+  'text-muted-foreground mb-0.5 text-[11px] tracking-[0.05em] uppercase';
+const ROW_VALUE = 'wrap-break-word select-text';
 
 export function InfoPanel({
   path,
@@ -51,21 +60,30 @@ export function InfoPanel({
   }, [path, info?.isDirectory]);
 
   return (
-    <aside className="infopanel">
-      <div className="infopanel__head">
+    <aside className="border-border bg-card flex w-70 shrink-0 flex-col overflow-y-auto border-l">
+      <div className="border-border flex items-center justify-between border-b px-3 py-2.5 font-semibold">
         <span>Info</span>
-        <button className="iconbtn" onClick={onClose} aria-label="Close info">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={onClose}
+          aria-label="Close info"
+        >
           <Icon name="close" size={14} />
-        </button>
+        </Button>
       </div>
 
-      {error && <div className="infopanel__error">{error.message}</div>}
+      {error && <div className="text-destructive p-4">{error.message}</div>}
 
       {info && (
-        <div className="infopanel__body">
-          <div className="infopanel__hero">
-            <Icon name={info.isDirectory ? 'folder' : 'file'} size={40} />
-            <div className="infopanel__name" title={info.name}>
+        <div className="p-4">
+          <div className="flex flex-col items-center gap-2.5 pt-2 pb-4.5">
+            <img src={fileLogo(info)} alt="" width={48} height={48} />
+            <div
+              className="text-center font-semibold select-text wrap-break-word"
+              title={info.name}
+            >
               {info.name}
             </div>
           </div>
@@ -90,12 +108,16 @@ export function InfoPanel({
           />
           <Row label="Where" value={info.path} mono />
           {info.realPath && <Row label="Links to" value={info.realPath} mono />}
-          <div className="infopanel__divider" />
+          <div className="bg-border my-3 h-px" />
           <Row label="Created" value={formatDate(info.created)} />
           <Row label="Modified" value={formatDate(info.modified)} />
           <Row label="Accessed" value={formatDate(info.accessed)} />
-          <div className="infopanel__divider" />
-          <Row label="Permissions" value={`${info.permissions} (${info.mode.toString(8)})`} mono />
+          <div className="bg-border my-3 h-px" />
+          <Row
+            label="Permissions"
+            value={`${info.permissions} (${info.mode.toString(8)})`}
+            mono
+          />
         </div>
       )}
     </aside>
@@ -118,16 +140,19 @@ function TagsRow({
   const addable = all.filter((t) => !attachedIds.has(t.id));
   if (attached.length === 0 && addable.length === 0) return null;
 
+  const chip =
+    'inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-[11px]';
+
   return (
-    <div className="inforow">
-      <div className="inforow__label">Tags</div>
-      <div className="inforow__value infopanel__tags">
+    <div className={ROW}>
+      <div className={ROW_LABEL}>Tags</div>
+      <div className={cn(ROW_VALUE, 'flex flex-wrap gap-1')}>
         {attached.map((tag) => (
-          <span key={tag.id} className="tagchip">
-            <span className="tagdot" style={{ background: tag.color }} />
+          <span key={tag.id} className={chip}>
+            <TagDot color={tag.color} />
             {tag.name}
             <button
-              className="tagchip__remove"
+              className="text-muted-foreground hover:text-destructive grid place-items-center border-0 bg-transparent p-0"
               title={`Remove “${tag.name}”`}
               onClick={() => onRemove(tag)}
             >
@@ -137,7 +162,10 @@ function TagsRow({
         ))}
         {addable.length > 0 && (
           <select
-            className="tagchip tagchip--add"
+            className={cn(
+              chip,
+              'text-muted-foreground hover:border-primary hover:text-foreground cursor-pointer appearance-none',
+            )}
             value=""
             onChange={(e) => {
               const tag = addable.find((t) => t.id === Number(e.target.value));
@@ -159,11 +187,19 @@ function TagsRow({
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
-    <div className="inforow">
-      <div className="inforow__label">{label}</div>
-      <div className={`inforow__value${mono ? ' mono' : ''}`}>{value}</div>
+    <div className={ROW}>
+      <div className={ROW_LABEL}>{label}</div>
+      <div className={cn(ROW_VALUE, mono && 'font-mono text-xs')}>{value}</div>
     </div>
   );
 }

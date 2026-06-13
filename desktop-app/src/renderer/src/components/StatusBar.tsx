@@ -10,7 +10,7 @@ interface StatusBarProps {
 
 export function StatusBar({ shown, hidden, selectedCount, selectedSize }: StatusBarProps) {
   return (
-    <footer className="statusbar">
+    <footer className="border-border bg-card text-muted-foreground flex shrink-0 items-center justify-between gap-4 border-t px-3 py-1 text-xs">
       <span>
         {shown} item{shown !== 1 ? 's' : ''}
         {hidden > 0 ? ` (${hidden} hidden)` : ''}
