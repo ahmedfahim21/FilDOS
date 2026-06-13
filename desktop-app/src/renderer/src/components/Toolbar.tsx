@@ -1,5 +1,7 @@
 import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { AddressBar } from './AddressBar';
 
@@ -36,28 +38,28 @@ export function Toolbar({
   } = useNavigation();
 
   return (
-    <div className="toolbar">
-      <div className="toolbar__nav">
-        <button className="iconbtn" onClick={back} disabled={!canGoBack} title="Back">
+    <div className="border-border bg-card flex items-center gap-3 border-b px-3 py-2 [-webkit-app-region:drag]">
+      <div className="flex gap-1 [-webkit-app-region:no-drag]">
+        <Button variant="ghost" size="icon" className="size-8" onClick={back} disabled={!canGoBack} title="Back">
           <Icon name="back" />
-        </button>
-        <button className="iconbtn" onClick={forward} disabled={!canGoForward} title="Forward">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={forward} disabled={!canGoForward} title="Forward">
           <Icon name="forward" />
-        </button>
-        <button className="iconbtn" onClick={up} title="Up">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={up} title="Up">
           <Icon name="up" />
-        </button>
-        <button className="iconbtn" onClick={refresh} title="Refresh">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={refresh} title="Refresh">
           <Icon name="refresh" />
-        </button>
+        </Button>
       </div>
 
       <AddressBar />
 
-      <div className="searchbox">
+      <div className="border-border bg-background text-muted-foreground flex h-7.5 w-55 shrink-0 items-center gap-1.5 rounded-md border px-2 [-webkit-app-region:no-drag]">
         <Icon name="search" size={14} />
         <input
-          className="searchbox__input"
+          className="text-foreground min-w-0 flex-1 select-text border-0 bg-transparent outline-none"
           placeholder={searchRecursive ? 'Search subfolders…' : 'Filter…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -66,7 +68,12 @@ export function Toolbar({
           }}
         />
         <button
-          className={`searchbox__toggle${searchRecursive ? ' is-active' : ''}`}
+          className={cn(
+            'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
+            searchRecursive
+              ? 'bg-primary text-white'
+              : 'bg-accent text-muted-foreground',
+          )}
           onClick={() => setSearchRecursive(!searchRecursive)}
           title={searchRecursive ? 'Searching subfolders' : 'Filter current folder only'}
         >
@@ -74,27 +81,41 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="toolbar__actions">
-        <button
-          className={`iconbtn${viewMode === 'list' ? ' is-active' : ''}`}
+      <div className="flex gap-1 [-webkit-app-region:no-drag]">
+        <Button
+          variant={viewMode === 'list' ? 'default' : 'ghost'}
+          size="icon"
+          className="size-8"
           onClick={() => setViewMode('list')}
           title="List view"
         >
           <Icon name="list" />
-        </button>
-        <button
-          className={`iconbtn${viewMode === 'grid' ? ' is-active' : ''}`}
+        </Button>
+        <Button
+          variant={viewMode === 'grid' ? 'default' : 'ghost'}
+          size="icon"
+          className="size-8"
           onClick={() => setViewMode('grid')}
           title="Grid view"
         >
           <Icon name="grid" />
-        </button>
+        </Button>
         {viewMode === 'grid' && (
-          <div className="segmented" role="group" aria-label="Icon size">
-            {ICON_SIZES.map((opt) => (
+          <div
+            className="border-border inline-flex overflow-hidden rounded-md border"
+            role="group"
+            aria-label="Icon size"
+          >
+            {ICON_SIZES.map((opt, i) => (
               <button
                 key={opt.size}
-                className={`segmented__btn${iconSize === opt.size ? ' is-active' : ''}`}
+                className={cn(
+                  'px-2 py-0.75 text-[11px]',
+                  i > 0 && 'border-border border-l',
+                  iconSize === opt.size
+                    ? 'bg-primary text-white'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
                 onClick={() => setIconSize(opt.size)}
                 title={opt.title}
               >
@@ -103,19 +124,21 @@ export function Toolbar({
             ))}
           </div>
         )}
-        <button
-          className="iconbtn"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
           onClick={toggleHidden}
           title={showHidden ? 'Hide hidden files' : 'Show hidden files'}
         >
           <Icon name={showHidden ? 'eye' : 'eye-off'} />
-        </button>
-        <button className="iconbtn" onClick={onNewFile} title="New file">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={onNewFile} title="New file">
           <Icon name="file-plus" />
-        </button>
-        <button className="iconbtn" onClick={onNewFolder} title="New folder">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={onNewFolder} title="New folder">
           <Icon name="new-folder" />
-        </button>
+        </Button>
       </div>
     </div>
   );
