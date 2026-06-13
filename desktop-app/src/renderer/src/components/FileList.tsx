@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useNavigation, type ColumnWidths, type SortKey } from '@/state/navigation';
 import { formatDate, formatSize, typeLabel } from '@/lib/format';
-import { Icon } from './Icon';
+import { fileLogo } from '@/lib/fileLogo';
 import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
 import type { FileViewProps } from './viewTypes';
@@ -147,7 +147,13 @@ export function FileList({
               >
                 <div className="cell col-name">
                   <span className="row__icon">
-                    <Icon name={entry.isDirectory ? 'folder' : 'file'} />
+                    <img
+                      src={fileLogo(entry)}
+                      alt=""
+                      width={16}
+                      height={16}
+                      draggable={false}
+                    />
                   </span>
                   {editing ? (
                     <RenameInput

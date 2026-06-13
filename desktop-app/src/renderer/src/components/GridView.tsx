@@ -3,17 +3,17 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Entry, IconSize, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { isImage } from '@/lib/format';
+import { fileLogo } from '@/lib/fileLogo';
 import { useThumbnail } from '@/hooks/useThumbnail';
-import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
 import type { FileViewProps, SelectMods } from './viewTypes';
 
 /** Tile geometry per icon-size preference. */
-const TILE: Record<IconSize, { width: number; height: number; thumb: number; icon: number }> = {
-  small: { width: 96, height: 92, thumb: 60, icon: 30 },
-  medium: { width: 128, height: 116, thumb: 96, icon: 44 },
-  large: { width: 176, height: 158, thumb: 136, icon: 62 },
+const TILE: Record<IconSize, { width: number; height: number; thumb: number }> = {
+  small: { width: 96, height: 92, thumb: 60 },
+  medium: { width: 128, height: 116, thumb: 96 },
+  large: { width: 176, height: 158, thumb: 136 },
 };
 
 export function GridView({
@@ -207,11 +207,7 @@ function GridTile({
       }}
     >
       <div className="tile__thumb" style={{ height: tile.thumb }}>
-        {thumb ? (
-          <img src={thumb} alt="" draggable={false} />
-        ) : (
-          <Icon name={entry.isDirectory ? 'folder' : 'file'} size={tile.icon} />
-        )}
+        <img src={thumb ?? fileLogo(entry)} alt="" draggable={false} />
       </div>
       {editing ? (
         <RenameInput

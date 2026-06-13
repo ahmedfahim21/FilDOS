@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppError, FileInfo, Tag } from '@shared/types';
 import { formatDate, formatSize, typeLabel } from '@/lib/format';
+import { fileLogo } from '@/lib/fileLogo';
 import { Icon } from './Icon';
 
 export function InfoPanel({
@@ -64,7 +65,7 @@ export function InfoPanel({
       {info && (
         <div className="infopanel__body">
           <div className="infopanel__hero">
-            <Icon name={info.isDirectory ? 'folder' : 'file'} size={40} />
+            <img src={fileLogo(info)} alt="" width={48} height={48} />
             <div className="infopanel__name" title={info.name}>
               {info.name}
             </div>
