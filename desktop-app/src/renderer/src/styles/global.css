@@ -178,62 +178,6 @@ button {
   cursor: default;
 }
 
-/* ---------- Sidebar ---------- */
-.sidebar {
-  width: 200px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 8px;
-  border-right: 1px solid var(--border);
-  background: var(--card);
-  overflow-y: auto;
-}
-
-.sidebar__spacer {
-  flex: 1;
-  min-height: 12px;
-}
-
-.sidebar__title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted-foreground);
-  padding: 0 8px 8px;
-}
-
-.sidebar__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--foreground);
-  text-align: left;
-}
-
-.sidebar__item:hover {
-  background: var(--accent);
-}
-
-.sidebar__item.is-active {
-  background: var(--primary);
-  color: #fff;
-}
-
-.sidebar__item svg {
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.sidebar__item.is-active svg {
-  color: #fff;
-}
-
 /* ---------- File list ---------- */
 .filelist {
   flex: 1;
@@ -328,8 +272,7 @@ button {
 }
 
 .row.is-droptarget,
-.tile.is-droptarget,
-.sidebar__item.is-droptarget {
+.tile.is-droptarget {
   outline: 2px solid var(--primary);
   outline-offset: -2px;
   background: var(--accent);
@@ -799,24 +742,6 @@ button {
   gap: 4px;
 }
 
-/* ---------- Sidebar extras ---------- */
-.sidebar__grow {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-}
-
-.sidebar__count {
-  font-size: 11px;
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.sidebar__item .tagdot {
-  margin: 0 3px;
-}
 
 
 
