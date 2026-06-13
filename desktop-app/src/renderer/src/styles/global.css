@@ -661,56 +661,6 @@ button {
   flex-shrink: 0;
 }
 
-/* ---------- Context menu ---------- */
-.ctxmenu {
-  position: fixed;
-  z-index: 100;
-  min-width: 200px;
-  padding: 5px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
-}
-
-.ctxmenu__item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--foreground);
-  text-align: left;
-}
-
-.ctxmenu__item:hover:not(:disabled) {
-  background: var(--primary);
-  color: #fff;
-}
-
-.ctxmenu__item:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.ctxmenu__item--danger {
-  color: var(--destructive);
-}
-
-.ctxmenu__item--danger:hover:not(:disabled) {
-  background: var(--destructive);
-  color: #fff;
-}
-
-.ctxmenu__sep {
-  height: 1px;
-  margin: 5px 4px;
-  background: var(--border);
-}
-
 /* ---------- Dialogs ---------- */
 .backdrop {
   position: fixed;
@@ -1050,41 +1000,6 @@ button {
 
 .sidebar__item .tagdot {
   margin: 0 3px;
-}
-
-/* ---------- Context-menu submenus ---------- */
-.ctxmenu__subwrap {
-  position: relative;
-}
-
-.ctxmenu__grow {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-}
-
-.ctxmenu__hint {
-  font-size: 10px;
-  color: inherit;
-  opacity: 0.8;
-}
-
-.ctxmenu--sub {
-  position: absolute;
-  top: -6px;
-  min-width: 180px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.ctxmenu--right {
-  left: calc(100% + 1px);
-}
-
-.ctxmenu--left {
-  right: calc(100% + 1px);
 }
 
 /* ---------- Segmented control (icon sizes) ---------- */
