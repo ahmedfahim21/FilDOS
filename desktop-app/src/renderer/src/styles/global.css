@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /*
  * Design tokens shared with the web app: the shadcn/ui token vocabulary plus
