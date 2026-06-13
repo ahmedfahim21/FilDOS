@@ -22,6 +22,9 @@ const TILE: Record<
   large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 64 },
 };
 
+const STATE =
+  'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
+
 export function GridView({
   entries,
   loading,
@@ -74,16 +77,17 @@ export function GridView({
     virtualizer.measure();
   }, [virtualizer, iconSize]);
 
-  if (loading) return <div className="pane__state">Loading…</div>;
+  if (loading) return <div className={STATE}>Loading…</div>;
   if (error) {
     return (
-      <div className="pane__state pane__state--error">
-        <strong>Can’t open this folder</strong>
+      <div className={STATE}>
+        <strong className="text-foreground">Can’t open this folder</strong>
         <span>{error.message}</span>
       </div>
     );
   }
-  if (entries.length === 0) return <div className="pane__state">This folder is empty</div>;
+  if (entries.length === 0)
+    return <div className={STATE}>This folder is empty</div>;
 
   return (
     <div

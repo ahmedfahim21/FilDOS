@@ -25,6 +25,9 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 const cellClass =
   'overflow-hidden px-2.5 text-ellipsis whitespace-nowrap text-muted-foreground group-data-selected:text-white/85';
 
+const STATE =
+  'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
+
 export function FileList({
   entries,
   loading,
@@ -85,16 +88,16 @@ export function FileList({
 
   let body: React.ReactNode;
   if (loading) {
-    body = <div className="pane__state">Loading…</div>;
+    body = <div className={STATE}>Loading…</div>;
   } else if (error) {
     body = (
-      <div className="pane__state pane__state--error">
-        <strong>Can’t open this folder</strong>
+      <div className={STATE}>
+        <strong className="text-foreground">Can’t open this folder</strong>
         <span>{error.message}</span>
       </div>
     );
   } else if (entries.length === 0) {
-    body = <div className="pane__state">This folder is empty</div>;
+    body = <div className={STATE}>This folder is empty</div>;
   } else {
     body = (
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>

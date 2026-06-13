@@ -3,8 +3,23 @@ import type { Entry, Tag } from '@shared/types';
 import { useToast } from '@/state/toast';
 import { formatDate } from '@/lib/format';
 import { parentOf } from '@/lib/path';
+import { Button } from '@/components/ui/button';
 import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
+import { TagDot } from './TagDots';
+import {
+  Panel,
+  PanelActions,
+  PanelHeader,
+  PanelList,
+  PanelNote,
+  PanelRow,
+  PanelRowDate,
+  PanelRowIcon,
+  PanelRowInfo,
+  PanelState,
+  PanelTitle,
+} from './Panel';
 
 /**
  * Overlay listing every file carrying a tag, with open / locate / untag
@@ -70,84 +85,112 @@ export function TagFilesView({
   };
 
   return (
-    <div className="backdrop" onMouseDown={onClose}>
-      <div className="panelview" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="panelview__head">
-          <h2>
-            <span className="tagdot tagdot--lg" style={{ background: tag.color }} />
-            {renaming ? (
-              <RenameInput
-                initial={tag.name}
-                onCommit={(name) => {
-                  setRenaming(false);
-                  if (name !== tag.name) onRenameTag(tag.id, name);
-                }}
-                onCancel={() => setRenaming(false)}
-              />
-            ) : (
-              tag.name
-            )}
-          </h2>
-          <div className="panelview__actions">
-            <button className="btn" onClick={() => setRenaming(true)} disabled={renaming}>
-              <Icon name="rename" size={14} /> Rename
-            </button>
-            {confirmingDelete ? (
-              <button className="btn btn--danger" onClick={() => onDeleteTag(tag.id)}>
-                Delete tag and {entries.length ? `${entries.length} assignment(s)` : 'close'}?
-              </button>
-            ) : (
-              <button className="btn" onClick={() => setConfirmingDelete(true)}>
-                <Icon name="trash" size={14} /> Delete
-              </button>
-            )}
-            <button className="iconbtn" onClick={onClose} aria-label="Close">
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        </div>
-
-        <p className="panelview__note">
-          Files don't move when tagged — a tag is just a saved collection you can return to.
-        </p>
-
-        <div className="panelview__list">
-          {loading ? (
-            <div className="pane__state">Loading…</div>
-          ) : entries.length === 0 ? (
-            <div className="pane__state">No files carry this tag yet</div>
+    <Panel onClose={onClose}>
+      <PanelHeader>
+        <PanelTitle>
+          <TagDot color={tag.color} size={13} />
+          {renaming ? (
+            <RenameInput
+              initial={tag.name}
+              onCommit={(name) => {
+                setRenaming(false);
+                if (name !== tag.name) onRenameTag(tag.id, name);
+              }}
+              onCancel={() => setRenaming(false)}
+            />
           ) : (
-            entries.map((entry) => (
-              <div key={entry.path} className="panelrow" onDoubleClick={() => open(entry)}>
-                <Icon name={entry.isDirectory ? 'folder' : 'file'} size={16} />
-                <div className="panelrow__info">
-                  <div className="panelrow__name" title={entry.path}>
-                    {entry.name}
-                  </div>
-                  <div className="panelrow__meta">{entry.path}</div>
-                </div>
-                <div className="panelrow__date">{formatDate(entry.modified)}</div>
-                <button className="btn" onClick={() => open(entry)}>
-                  <Icon name="open" size={14} /> Open
-                </button>
-                <button
-                  className="iconbtn"
-                  title="Show in Folder"
-                  onClick={() => {
-                    onNavigate(entry.isDirectory ? entry.path : parentOf(entry.path));
-                    onClose();
-                  }}
-                >
-                  <Icon name="folder" size={14} />
-                </button>
-                <button className="iconbtn" title="Remove tag" onClick={() => untag(entry)}>
-                  <Icon name="close" size={12} />
-                </button>
-              </div>
-            ))
+            tag.name
           )}
-        </div>
-      </div>
-    </div>
+        </PanelTitle>
+        <PanelActions>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRenaming(true)}
+            disabled={renaming}
+          >
+            <Icon name="rename" size={14} /> Rename
+          </Button>
+          {confirmingDelete ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDeleteTag(tag.id)}
+            >
+              Delete tag and{' '}
+              {entries.length ? `${entries.length} assignment(s)` : 'close'}?
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Icon name="trash" size={14} /> Delete
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <Icon name="close" size={14} />
+          </Button>
+        </PanelActions>
+      </PanelHeader>
+
+      <PanelNote>
+        Files don&apos;t move when tagged — a tag is just a saved collection you
+        can return to.
+      </PanelNote>
+
+      <PanelList>
+        {loading ? (
+          <PanelState>Loading…</PanelState>
+        ) : entries.length === 0 ? (
+          <PanelState>No files carry this tag yet</PanelState>
+        ) : (
+          entries.map((entry) => (
+            <PanelRow key={entry.path} onDoubleClick={() => open(entry)}>
+              <PanelRowIcon>
+                <Icon name={entry.isDirectory ? 'folder' : 'file'} size={16} />
+              </PanelRowIcon>
+              <PanelRowInfo
+                name={entry.name}
+                meta={entry.path}
+                title={entry.path}
+              />
+              <PanelRowDate>{formatDate(entry.modified)}</PanelRowDate>
+              <Button variant="outline" size="sm" onClick={() => open(entry)}>
+                <Icon name="open" size={14} /> Open
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                title="Show in Folder"
+                onClick={() => {
+                  onNavigate(entry.isDirectory ? entry.path : parentOf(entry.path));
+                  onClose();
+                }}
+              >
+                <Icon name="folder" size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                title="Remove tag"
+                onClick={() => untag(entry)}
+              >
+                <Icon name="close" size={12} />
+              </Button>
+            </PanelRow>
+          ))
+        )}
+      </PanelList>
+    </Panel>
   );
 }
