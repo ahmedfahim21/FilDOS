@@ -1,14 +1,22 @@
+import { Grid2x2, Grid3x3, LayoutGrid, type LucideIcon } from 'lucide-react';
 import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { AddressBar } from './AddressBar';
 
-const ICON_SIZES: { size: IconSize; label: string; title: string }[] = [
-  { size: 'small', label: 'S', title: 'Small icons' },
-  { size: 'medium', label: 'M', title: 'Medium icons' },
-  { size: 'large', label: 'L', title: 'Large icons' },
+const ICON_SIZES: { size: IconSize; label: string; Glyph: LucideIcon }[] = [
+  { size: 'small', label: 'Small', Glyph: Grid3x3 },
+  { size: 'medium', label: 'Medium', Glyph: LayoutGrid },
+  { size: 'large', label: 'Large', Glyph: Grid2x2 },
 ];
 
 export function Toolbar({
@@ -101,28 +109,36 @@ export function Toolbar({
           <Icon name="grid" />
         </Button>
         {viewMode === 'grid' && (
-          <div
-            className="border-border inline-flex overflow-hidden rounded-md border"
-            role="group"
-            aria-label="Icon size"
-          >
-            {ICON_SIZES.map((opt, i) => (
-              <button
-                key={opt.size}
-                className={cn(
-                  'px-2 py-0.75 text-[11px]',
-                  i > 0 && 'border-border border-l',
-                  iconSize === opt.size
-                    ? 'bg-primary text-white'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                )}
-                onClick={() => setIconSize(opt.size)}
-                title={opt.title}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Icon size"
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+                {(() => {
+                  const Current =
+                    ICON_SIZES.find((o) => o.size === iconSize)?.Glyph ??
+                    LayoutGrid;
+                  return <Current />;
+                })()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={iconSize}
+                onValueChange={(v) => setIconSize(v as IconSize)}
+              >
+                {ICON_SIZES.map((opt) => (
+                  <DropdownMenuRadioItem key={opt.size} value={opt.size}>
+                    <opt.Glyph className="size-4" />
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         <Button
           variant="ghost"
