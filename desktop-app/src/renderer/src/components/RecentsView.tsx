@@ -3,7 +3,20 @@ import type { RecentItem } from '@shared/types';
 import { useToast } from '@/state/toast';
 import { formatDate } from '@/lib/format';
 import { parentOf } from '@/lib/path';
+import { Button } from '@/components/ui/button';
 import { Icon } from './Icon';
+import {
+  Panel,
+  PanelActions,
+  PanelHeader,
+  PanelList,
+  PanelRow,
+  PanelRowDate,
+  PanelRowIcon,
+  PanelRowInfo,
+  PanelState,
+  PanelTitle,
+} from './Panel';
 
 /**
  * Overlay listing files recently opened through FilDOS, newest first.
@@ -54,63 +67,73 @@ export function RecentsView({
   };
 
   return (
-    <div className="backdrop" onMouseDown={onClose}>
-      <div className="panelview" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="panelview__head">
-          <h2>
-            <Icon name="clock" size={16} /> Recents
-          </h2>
-          <div className="panelview__actions">
-            <button className="btn" onClick={clear} disabled={items.length === 0}>
-              Clear
-            </button>
-            <button className="iconbtn" onClick={onClose} aria-label="Close">
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        </div>
+    <Panel onClose={onClose}>
+      <PanelHeader>
+        <PanelTitle>
+          <Icon name="clock" size={16} /> Recents
+        </PanelTitle>
+        <PanelActions>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clear}
+            disabled={items.length === 0}
+          >
+            Clear
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <Icon name="close" size={14} />
+          </Button>
+        </PanelActions>
+      </PanelHeader>
 
-        <div className="panelview__list">
-          {loading ? (
-            <div className="pane__state">Loading…</div>
-          ) : items.length === 0 ? (
-            <div className="pane__state">Nothing opened recently</div>
-          ) : (
-            items.map((item) => (
-              <div key={item.path} className="panelrow" onDoubleClick={() => open(item)}>
+      <PanelList>
+        {loading ? (
+          <PanelState>Loading…</PanelState>
+        ) : items.length === 0 ? (
+          <PanelState>Nothing opened recently</PanelState>
+        ) : (
+          items.map((item) => (
+            <PanelRow key={item.path} onDoubleClick={() => open(item)}>
+              <PanelRowIcon>
                 <Icon name="file" size={16} />
-                <div className="panelrow__info">
-                  <div className="panelrow__name" title={item.path}>
-                    {item.name}
-                  </div>
-                  <div className="panelrow__meta">{item.path}</div>
-                </div>
-                <div className="panelrow__date">{formatDate(item.openedAt)}</div>
-                <button className="btn" onClick={() => open(item)}>
-                  <Icon name="open" size={14} /> Open
-                </button>
-                <button
-                  className="iconbtn"
-                  title="Show in Folder"
-                  onClick={() => {
-                    onNavigate(parentOf(item.path));
-                    onClose();
-                  }}
-                >
-                  <Icon name="folder" size={14} />
-                </button>
-                <button
-                  className="iconbtn"
-                  title="Remove from Recents"
-                  onClick={() => remove(item)}
-                >
-                  <Icon name="close" size={12} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+              </PanelRowIcon>
+              <PanelRowInfo name={item.name} meta={item.path} title={item.path} />
+              <PanelRowDate>{formatDate(item.openedAt)}</PanelRowDate>
+              <Button variant="outline" size="sm" onClick={() => open(item)}>
+                <Icon name="open" size={14} /> Open
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                title="Show in Folder"
+                onClick={() => {
+                  onNavigate(parentOf(item.path));
+                  onClose();
+                }}
+              >
+                <Icon name="folder" size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                title="Remove from Recents"
+                onClick={() => remove(item)}
+              >
+                <Icon name="close" size={12} />
+              </Button>
+            </PanelRow>
+          ))
+        )}
+      </PanelList>
+    </Panel>
   );
 }

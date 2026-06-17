@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { segments } from '@/lib/path';
+import { cn } from '@/lib/utils';
 
 /**
  * Breadcrumb trail that flips into an editable path field on double-click or
@@ -53,7 +54,7 @@ export function AddressBar() {
     return (
       <input
         ref={inputRef}
-        className="addressbar__input"
+        className="border-primary bg-background text-foreground flex-1 select-text rounded-md border px-2 py-1.25 outline-none [-webkit-app-region:no-drag]"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => setEditing(false)}
@@ -67,14 +68,23 @@ export function AddressBar() {
 
   const crumbs = segments(currentPath);
   return (
-    <div className="breadcrumbs" title={currentPath} onDoubleClick={startEdit}>
+    <div
+      className="group flex flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap [-webkit-app-region:no-drag]"
+      title={currentPath}
+      onDoubleClick={startEdit}
+    >
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;
         return (
           <Fragment key={crumb.path}>
-            {i > 0 && <span className="breadcrumbs__sep">›</span>}
+            {i > 0 && <span className="text-muted-foreground opacity-60">›</span>}
             <button
-              className={`breadcrumbs__item${isLast ? ' is-current' : ''}`}
+              className={cn(
+                'max-w-50 overflow-hidden rounded-[5px] border-0 bg-transparent px-1.5 py-1 text-ellipsis',
+                isLast
+                  ? 'text-foreground cursor-default font-semibold'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
               onClick={() => !isLast && navigate(crumb.path)}
               disabled={isLast}
             >
@@ -83,7 +93,11 @@ export function AddressBar() {
           </Fragment>
         );
       })}
-      <button className="breadcrumbs__edit" onClick={startEdit} title="Edit path (⌘L)">
+      <button
+        className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-[5px] border-0 bg-transparent px-1.5 py-0.5 opacity-0 group-hover:opacity-100"
+        onClick={startEdit}
+        title="Edit path (⌘L)"
+      >
         ⌖
       </button>
     </div>

@@ -1,12 +1,22 @@
+import { Grid2x2, Grid3x3, LayoutGrid, type LucideIcon } from 'lucide-react';
 import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { AddressBar } from './AddressBar';
 
-const ICON_SIZES: { size: IconSize; label: string; title: string }[] = [
-  { size: 'small', label: 'S', title: 'Small icons' },
-  { size: 'medium', label: 'M', title: 'Medium icons' },
-  { size: 'large', label: 'L', title: 'Large icons' },
+const ICON_SIZES: { size: IconSize; label: string; Glyph: LucideIcon }[] = [
+  { size: 'small', label: 'Small', Glyph: Grid3x3 },
+  { size: 'medium', label: 'Medium', Glyph: LayoutGrid },
+  { size: 'large', label: 'Large', Glyph: Grid2x2 },
 ];
 
 export function Toolbar({
@@ -36,28 +46,28 @@ export function Toolbar({
   } = useNavigation();
 
   return (
-    <div className="toolbar">
-      <div className="toolbar__nav">
-        <button className="iconbtn" onClick={back} disabled={!canGoBack} title="Back">
+    <div className="border-border bg-card flex items-center gap-3 border-b px-3 py-2 [-webkit-app-region:drag]">
+      <div className="flex gap-1 [-webkit-app-region:no-drag]">
+        <Button variant="ghost" size="icon" className="size-8" onClick={back} disabled={!canGoBack} title="Back">
           <Icon name="back" />
-        </button>
-        <button className="iconbtn" onClick={forward} disabled={!canGoForward} title="Forward">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={forward} disabled={!canGoForward} title="Forward">
           <Icon name="forward" />
-        </button>
-        <button className="iconbtn" onClick={up} title="Up">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={up} title="Up">
           <Icon name="up" />
-        </button>
-        <button className="iconbtn" onClick={refresh} title="Refresh">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={refresh} title="Refresh">
           <Icon name="refresh" />
-        </button>
+        </Button>
       </div>
 
       <AddressBar />
 
-      <div className="searchbox">
+      <div className="border-border bg-background text-muted-foreground flex h-7.5 w-55 shrink-0 items-center gap-1.5 rounded-md border px-2 [-webkit-app-region:no-drag]">
         <Icon name="search" size={14} />
         <input
-          className="searchbox__input"
+          className="text-foreground min-w-0 flex-1 select-text border-0 bg-transparent outline-none"
           placeholder={searchRecursive ? 'Search subfolders…' : 'Filter…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -66,7 +76,12 @@ export function Toolbar({
           }}
         />
         <button
-          className={`searchbox__toggle${searchRecursive ? ' is-active' : ''}`}
+          className={cn(
+            'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
+            searchRecursive
+              ? 'bg-primary text-white'
+              : 'bg-accent text-muted-foreground',
+          )}
           onClick={() => setSearchRecursive(!searchRecursive)}
           title={searchRecursive ? 'Searching subfolders' : 'Filter current folder only'}
         >
@@ -74,48 +89,72 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="toolbar__actions">
-        <button
-          className={`iconbtn${viewMode === 'list' ? ' is-active' : ''}`}
+      <div className="flex gap-1 [-webkit-app-region:no-drag]">
+        <Button
+          variant={viewMode === 'list' ? 'default' : 'ghost'}
+          size="icon"
+          className="size-8"
           onClick={() => setViewMode('list')}
           title="List view"
         >
           <Icon name="list" />
-        </button>
-        <button
-          className={`iconbtn${viewMode === 'grid' ? ' is-active' : ''}`}
+        </Button>
+        <Button
+          variant={viewMode === 'grid' ? 'default' : 'ghost'}
+          size="icon"
+          className="size-8"
           onClick={() => setViewMode('grid')}
           title="Grid view"
         >
           <Icon name="grid" />
-        </button>
+        </Button>
         {viewMode === 'grid' && (
-          <div className="segmented" role="group" aria-label="Icon size">
-            {ICON_SIZES.map((opt) => (
-              <button
-                key={opt.size}
-                className={`segmented__btn${iconSize === opt.size ? ' is-active' : ''}`}
-                onClick={() => setIconSize(opt.size)}
-                title={opt.title}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Icon size"
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+                {(() => {
+                  const Current =
+                    ICON_SIZES.find((o) => o.size === iconSize)?.Glyph ??
+                    LayoutGrid;
+                  return <Current />;
+                })()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={iconSize}
+                onValueChange={(v) => setIconSize(v as IconSize)}
+              >
+                {ICON_SIZES.map((opt) => (
+                  <DropdownMenuRadioItem key={opt.size} value={opt.size}>
+                    <opt.Glyph className="size-4" />
+                    {opt.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-        <button
-          className="iconbtn"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
           onClick={toggleHidden}
           title={showHidden ? 'Hide hidden files' : 'Show hidden files'}
         >
           <Icon name={showHidden ? 'eye' : 'eye-off'} />
-        </button>
-        <button className="iconbtn" onClick={onNewFile} title="New file">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={onNewFile} title="New file">
           <Icon name="file-plus" />
-        </button>
-        <button className="iconbtn" onClick={onNewFolder} title="New folder">
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" onClick={onNewFolder} title="New folder">
           <Icon name="new-folder" />
-        </button>
+        </Button>
       </div>
     </div>
   );
