@@ -35,24 +35,24 @@ test('boots into the file browser shell', async () => {
   expect(await page.title()).toBe('FilDOS');
 
   // App root mounts.
-  await expect(page.locator('.app')).toBeVisible();
+  await expect(page.getByTestId('app')).toBeVisible();
 
   // Sidebar renders its static header and at least one Quick Access entry
   // (home/desktop/etc.), proving the preload→main IPC round-trip works.
-  await expect(page.locator('.sidebar__title')).toHaveText('Quick Access');
-  await expect(page.locator('.sidebar__item').first()).toBeVisible();
+  await expect(page.getByText('Quick Access')).toBeVisible();
+  await expect(page.getByTestId('quick-access-item').first()).toBeVisible();
 });
 
 test('lists the contents of the starting directory', async () => {
   // The status bar reports item counts once a directory has loaded.
-  await expect(page.locator('.statusbar')).toBeVisible();
+  await expect(page.getByTestId('statusbar')).toBeVisible();
 });
 
 test('opens the Recents view (SQLite round-trip)', async () => {
   // Recents is served from the SQLite metadata DB, so this proves the
   // database opened and the tags/recents IPC surface is wired up.
   await page.getByTitle('Recently opened files').click();
-  await expect(page.locator('.panelview')).toBeVisible();
+  await expect(page.getByTestId('panel')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.panelview')).toBeHidden();
+  await expect(page.getByTestId('panel')).toBeHidden();
 });

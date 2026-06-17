@@ -11,6 +11,7 @@ export function Panel({
 }) {
   return (
     <div
+      data-testid="panel"
       className="fixed inset-0 z-200 grid place-items-center bg-black/45"
       onMouseDown={onClose}
     >

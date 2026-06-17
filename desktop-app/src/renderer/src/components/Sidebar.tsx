@@ -50,6 +50,7 @@ export function Sidebar({
         {items.map((item) => (
           <button
             key={item.path}
+            data-testid="quick-access-item"
             className={itemClass(
               currentPath === item.path,
               dropTarget === item.path,

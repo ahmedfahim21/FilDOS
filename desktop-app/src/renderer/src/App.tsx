@@ -401,7 +401,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const openTag = openTagId !== null ? tagState.tags.find((t) => t.id === openTagId) : undefined;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="app">
       <Toolbar
         onNewFolder={() => setDialog({ kind: 'new-folder' })}
         onNewFile={() => setDialog({ kind: 'new-file' })}
