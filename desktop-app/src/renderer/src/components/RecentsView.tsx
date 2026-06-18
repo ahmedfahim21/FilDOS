@@ -6,27 +6,24 @@ import { parentOf } from '@/lib/path';
 import { Button } from '@/components/ui/button';
 import { Icon } from './Icon';
 import {
-  Panel,
-  PanelActions,
-  PanelHeader,
-  PanelList,
-  PanelRow,
-  PanelRowDate,
-  PanelRowIcon,
-  PanelRowInfo,
-  PanelState,
-  PanelTitle,
-} from './Panel';
+  Page,
+  PageList,
+  PageRow,
+  PageRowDate,
+  PageRowIcon,
+  PageRowInfo,
+  PageState,
+} from './Page';
 
 /**
- * Overlay listing files recently opened through FilDOS, newest first.
+ * Page listing files recently opened through FilDOS, newest first.
  * Vanished files are pruned server-side when the list loads.
  */
 export function RecentsView({
-  onClose,
+  onBack,
   onNavigate,
 }: {
-  onClose: () => void;
+  onBack: () => void;
   /** Jump the browser to a folder (used by "Show in Folder"). */
   onNavigate: (path: string) => void;
 }) {
@@ -44,10 +41,10 @@ export function RecentsView({
 
   useEffect(() => {
     load();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [load, onClose]);
+  }, [load, onBack]);
 
   const open = async (item: RecentItem) => {
     const r = await window.fsapi.open(item.path);
@@ -67,45 +64,31 @@ export function RecentsView({
   };
 
   return (
-    <Panel onClose={onClose}>
-      <PanelHeader>
-        <PanelTitle>
-          <Icon name="clock" size={16} /> Recents
-        </PanelTitle>
-        <PanelActions>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clear}
-            disabled={items.length === 0}
-          >
-            Clear
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <Icon name="close" size={14} />
-          </Button>
-        </PanelActions>
-      </PanelHeader>
-
-      <PanelList>
+    <Page
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={clear}
+          disabled={items.length === 0}
+        >
+          Clear
+        </Button>
+      }
+    >
+      <PageList>
         {loading ? (
-          <PanelState>Loading…</PanelState>
+          <PageState>Loading…</PageState>
         ) : items.length === 0 ? (
-          <PanelState>Nothing opened recently</PanelState>
+          <PageState>Nothing opened recently</PageState>
         ) : (
           items.map((item) => (
-            <PanelRow key={item.path} onDoubleClick={() => open(item)}>
-              <PanelRowIcon>
+            <PageRow key={item.path} onDoubleClick={() => open(item)}>
+              <PageRowIcon>
                 <Icon name="file" size={16} />
-              </PanelRowIcon>
-              <PanelRowInfo name={item.name} meta={item.path} title={item.path} />
-              <PanelRowDate>{formatDate(item.openedAt)}</PanelRowDate>
+              </PageRowIcon>
+              <PageRowInfo name={item.name} meta={item.path} title={item.path} />
+              <PageRowDate>{formatDate(item.openedAt)}</PageRowDate>
               <Button variant="outline" size="sm" onClick={() => open(item)}>
                 <Icon name="open" size={14} /> Open
               </Button>
@@ -114,10 +97,7 @@ export function RecentsView({
                 size="icon"
                 className="size-7"
                 title="Show in Folder"
-                onClick={() => {
-                  onNavigate(parentOf(item.path));
-                  onClose();
-                }}
+                onClick={() => onNavigate(parentOf(item.path))}
               >
                 <Icon name="folder" size={14} />
               </Button>
@@ -130,10 +110,10 @@ export function RecentsView({
               >
                 <Icon name="close" size={12} />
               </Button>
-            </PanelRow>
+            </PageRow>
           ))
         )}
-      </PanelList>
-    </Panel>
+      </PageList>
+    </Page>
   );
 }

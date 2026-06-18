@@ -8,34 +8,30 @@ import { Icon } from './Icon';
 import { RenameInput } from './RenameInput';
 import { TagDot } from './TagDots';
 import {
-  Panel,
-  PanelActions,
-  PanelHeader,
-  PanelList,
-  PanelNote,
-  PanelRow,
-  PanelRowDate,
-  PanelRowIcon,
-  PanelRowInfo,
-  PanelState,
-  PanelTitle,
-} from './Panel';
+  Page,
+  PageList,
+  PageRow,
+  PageRowDate,
+  PageRowIcon,
+  PageRowInfo,
+  PageState,
+} from './Page';
 
 /**
- * Overlay listing every file carrying a tag, with open / locate / untag
+ * Page listing every file carrying a tag, with open / locate / untag
  * actions, plus rename and delete for the tag itself. Files deleted outside
  * FilDOS are pruned server-side when the list loads.
  */
 export function TagFilesView({
   tag,
-  onClose,
+  onBack,
   onNavigate,
   onRenameTag,
   onDeleteTag,
   onChanged,
 }: {
   tag: Tag;
-  onClose: () => void;
+  onBack: () => void;
   /** Jump the browser to a folder (used by "Show in Folder"). */
   onNavigate: (path: string) => void;
   onRenameTag: (id: number, name: string) => void;
@@ -59,15 +55,14 @@ export function TagFilesView({
 
   useEffect(() => {
     load();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [load, onClose]);
+  }, [load, onBack]);
 
   const open = async (entry: Entry) => {
     if (entry.isDirectory) {
       onNavigate(entry.path);
-      onClose();
       return;
     }
     const r = await window.fsapi.open(entry.path);
@@ -85,11 +80,11 @@ export function TagFilesView({
   };
 
   return (
-    <Panel onClose={onClose}>
-      <PanelHeader>
-        <PanelTitle>
-          <TagDot color={tag.color} size={13} />
-          {renaming ? (
+    <Page
+      lead={
+        renaming && (
+          <>
+            <TagDot color={tag.color} size={13} />
             <RenameInput
               initial={tag.name}
               onCommit={(name) => {
@@ -98,11 +93,12 @@ export function TagFilesView({
               }}
               onCancel={() => setRenaming(false)}
             />
-          ) : (
-            tag.name
-          )}
-        </PanelTitle>
-        <PanelActions>
+          </>
+        )
+      }
+      note="Files don't move when tagged — a tag is just a saved collection you can return to."
+      actions={
+        <>
           <Button
             variant="outline"
             size="sm"
@@ -129,40 +125,26 @@ export function TagFilesView({
               <Icon name="trash" size={14} /> Delete
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <Icon name="close" size={14} />
-          </Button>
-        </PanelActions>
-      </PanelHeader>
-
-      <PanelNote>
-        Files don&apos;t move when tagged — a tag is just a saved collection you
-        can return to.
-      </PanelNote>
-
-      <PanelList>
+        </>
+      }
+    >
+      <PageList>
         {loading ? (
-          <PanelState>Loading…</PanelState>
+          <PageState>Loading…</PageState>
         ) : entries.length === 0 ? (
-          <PanelState>No files carry this tag yet</PanelState>
+          <PageState>No files carry this tag yet</PageState>
         ) : (
           entries.map((entry) => (
-            <PanelRow key={entry.path} onDoubleClick={() => open(entry)}>
-              <PanelRowIcon>
+            <PageRow key={entry.path} onDoubleClick={() => open(entry)}>
+              <PageRowIcon>
                 <Icon name={entry.isDirectory ? 'folder' : 'file'} size={16} />
-              </PanelRowIcon>
-              <PanelRowInfo
+              </PageRowIcon>
+              <PageRowInfo
                 name={entry.name}
                 meta={entry.path}
                 title={entry.path}
               />
-              <PanelRowDate>{formatDate(entry.modified)}</PanelRowDate>
+              <PageRowDate>{formatDate(entry.modified)}</PageRowDate>
               <Button variant="outline" size="sm" onClick={() => open(entry)}>
                 <Icon name="open" size={14} /> Open
               </Button>
@@ -171,10 +153,9 @@ export function TagFilesView({
                 size="icon"
                 className="size-7"
                 title="Show in Folder"
-                onClick={() => {
-                  onNavigate(entry.isDirectory ? entry.path : parentOf(entry.path));
-                  onClose();
-                }}
+                onClick={() =>
+                  onNavigate(entry.isDirectory ? entry.path : parentOf(entry.path))
+                }
               >
                 <Icon name="folder" size={14} />
               </Button>
@@ -187,10 +168,10 @@ export function TagFilesView({
               >
                 <Icon name="close" size={12} />
               </Button>
-            </PanelRow>
+            </PageRow>
           ))
         )}
-      </PanelList>
-    </Panel>
+      </PageList>
+    </Page>
   );
 }

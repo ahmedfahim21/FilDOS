@@ -48,11 +48,17 @@ test('lists the contents of the starting directory', async () => {
   await expect(page.getByTestId('statusbar')).toBeVisible();
 });
 
-test('opens the Recents view (SQLite round-trip)', async () => {
+test('opens the Recents page (SQLite round-trip)', async () => {
   // Recents is served from the SQLite metadata DB, so this proves the
-  // database opened and the tags/recents IPC surface is wired up.
+  // database opened and the tags/recents IPC surface is wired up. It now
+  // renders as an in-flow page in the content area (not a modal), with the
+  // page name shown in the toolbar breadcrumb.
   await page.getByTitle('Recently opened files').click();
-  await expect(page.getByTestId('panel')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('panel')).toBeHidden();
+  await expect(page.getByTestId('page-view')).toBeVisible();
+
+  // The toolbar Back arrow returns to the file browser — pages are history
+  // entries, so the same nav chrome that traverses folders leaves the page.
+  await page.getByRole('button', { name: 'Back' }).click();
+  await expect(page.getByTestId('page-view')).toBeHidden();
+  await expect(page.getByTestId('statusbar')).toBeVisible();
 });

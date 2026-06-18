@@ -1,6 +1,6 @@
 import { useEffect, useState, type DragEvent } from 'react';
 import type { QuickAccessItem, Tag } from '@shared/types';
-import { useNavigation } from '@/state/navigation';
+import { useNavigation, type NavPage } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
@@ -15,6 +15,7 @@ const itemClass = (active = false, drop = false) =>
 
 export function Sidebar({
   tags,
+  activePage,
   onDropPath,
   onOpenTag,
   onOpenRecents,
@@ -22,6 +23,8 @@ export function Sidebar({
   onDropOnTag,
 }: {
   tags: Tag[];
+  /** The metadata page currently in view, so its entry is highlighted. */
+  activePage: NavPage | null;
   onDropPath: (path: string, e: DragEvent) => void;
   onOpenTag: (tag: Tag) => void;
   onOpenRecents: () => void;
@@ -52,7 +55,7 @@ export function Sidebar({
             key={item.path}
             data-testid="quick-access-item"
             className={itemClass(
-              currentPath === item.path,
+              !activePage && currentPath === item.path,
               dropTarget === item.path,
             )}
             onClick={() => navigate(item.path)}
@@ -80,7 +83,10 @@ export function Sidebar({
             {tags.map((tag) => (
               <button
                 key={tag.id}
-                className={itemClass(false, dropTarget === `tag:${tag.id}`)}
+                className={itemClass(
+                  activePage?.kind === 'tag' && activePage.tagId === tag.id,
+                  dropTarget === `tag:${tag.id}`,
+                )}
                 onClick={() => onOpenTag(tag)}
                 title={`Files tagged “${tag.name}”`}
                 onDragOver={(e) => {
@@ -110,14 +116,18 @@ export function Sidebar({
 
       <div className="min-h-3 flex-1" />
       <button
-        className={itemClass()}
+        className={itemClass(activePage?.kind === 'recents')}
         onClick={onOpenRecents}
         title="Recently opened files"
       >
         <Icon name="clock" size={16} />
         <span>Recents</span>
       </button>
-      <button className={itemClass()} onClick={onOpenTrash} title="Trash">
+      <button
+        className={itemClass(activePage?.kind === 'trash')}
+        onClick={onOpenTrash}
+        title="Trash"
+      >
         <Icon name="trash" size={16} />
         <span>Trash</span>
       </button>

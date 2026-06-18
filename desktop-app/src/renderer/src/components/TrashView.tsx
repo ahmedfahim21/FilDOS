@@ -5,29 +5,25 @@ import { formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Icon } from './Icon';
 import {
-  Panel,
-  PanelActions,
-  PanelHeader,
-  PanelList,
-  PanelNote,
-  PanelRow,
-  PanelRowDate,
-  PanelRowIcon,
-  PanelRowInfo,
-  PanelState,
-  PanelTitle,
-} from './Panel';
+  Page,
+  PageList,
+  PageRow,
+  PageRowDate,
+  PageRowIcon,
+  PageRowInfo,
+  PageState,
+} from './Page';
 
 /**
- * Overlay listing items FilDOS has trashed, with best-effort restore. Restore
+ * Page listing items FilDOS has trashed, with best-effort restore. Restore
  * can fail (the OS may have renamed on collision, or the original parent is
  * gone) — failures surface as toasts and the item stays listed for retry.
  */
 export function TrashView({
-  onClose,
+  onBack,
   onChanged,
 }: {
-  onClose: () => void;
+  onBack: () => void;
   onChanged: () => void;
 }) {
   const { notify, notifyError } = useToast();
@@ -44,10 +40,10 @@ export function TrashView({
 
   useEffect(() => {
     load();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [load, onClose]);
+  }, [load, onBack]);
 
   const restore = async (id: string) => {
     const r = await window.fsapi.restoreTrashed([id]);
@@ -71,10 +67,10 @@ export function TrashView({
   };
 
   return (
-    <Panel onClose={onClose}>
-      <PanelHeader>
-        <PanelTitle>Trash</PanelTitle>
-        <PanelActions>
+    <Page
+      note="Items deleted in FilDOS. Restore is best-effort — it can fail if the original location is occupied or the OS renamed the item."
+      actions={
+        <>
           <Button
             variant="outline"
             size="sm"
@@ -90,47 +86,33 @@ export function TrashView({
           >
             Empty
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <Icon name="close" size={14} />
-          </Button>
-        </PanelActions>
-      </PanelHeader>
-
-      <PanelNote>
-        Items deleted in FilDOS. Restore is best-effort — it can fail if the
-        original location is occupied or the OS renamed the item.
-      </PanelNote>
-
-      <PanelList>
+        </>
+      }
+    >
+      <PageList>
         {loading ? (
-          <PanelState>Loading…</PanelState>
+          <PageState>Loading…</PageState>
         ) : items.length === 0 ? (
-          <PanelState>Nothing tracked in Trash</PanelState>
+          <PageState>Nothing tracked in Trash</PageState>
         ) : (
           items.map((item) => (
-            <PanelRow key={item.id}>
-              <PanelRowIcon>
+            <PageRow key={item.id}>
+              <PageRowIcon>
                 <Icon name="file" size={16} />
-              </PanelRowIcon>
-              <PanelRowInfo
+              </PageRowIcon>
+              <PageRowInfo
                 name={item.name}
                 meta={item.originalPath}
                 title={item.originalPath}
               />
-              <PanelRowDate>{formatDate(item.deletedAt)}</PanelRowDate>
+              <PageRowDate>{formatDate(item.deletedAt)}</PageRowDate>
               <Button variant="outline" size="sm" onClick={() => restore(item.id)}>
                 <Icon name="restore" size={14} /> Restore
               </Button>
-            </PanelRow>
+            </PageRow>
           ))
         )}
-      </PanelList>
-    </Panel>
+      </PageList>
+    </Page>
   );
 }

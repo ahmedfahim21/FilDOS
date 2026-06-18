@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import type { Entry, Prefs, Tag } from '@shared/types';
 import {
   NavigationProvider,
@@ -25,6 +32,8 @@ import { StatusBar } from '@/components/StatusBar';
 import { TrashView } from '@/components/TrashView';
 import { RecentsView } from '@/components/RecentsView';
 import { TagFilesView } from '@/components/TagFilesView';
+import { Icon } from '@/components/Icon';
+import { TagDot } from '@/components/TagDots';
 import { Toasts } from '@/components/Toasts';
 
 type DialogState =
@@ -55,9 +64,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [infoPath, setInfoPath] = useState<string | null>(null);
-  const [showTrash, setShowTrash] = useState(false);
-  const [showRecents, setShowRecents] = useState(false);
-  const [openTagId, setOpenTagId] = useState<number | null>(null);
 
   // The global view defaults: what a folder without remembered settings shows.
   // Updated on every deliberate view change (alongside the prefs row).
@@ -291,7 +297,9 @@ function Browser({ initialView }: { initialView: ViewState }) {
   // Global keyboard map.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isEditingTarget(e.target) || dialog) return;
+      // While a metadata page (Recents/Trash/tag) is shown the file browser is
+      // hidden, so its selection-driven shortcuts must stay inert.
+      if (isEditingTarget(e.target) || dialog || nav.page) return;
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key;
 
@@ -398,27 +406,84 @@ function Browser({ initialView }: { initialView: ViewState }) {
     onDropOnPane: (e) => handleDrop(nav.currentPath, e),
   };
 
-  const openTag = openTagId !== null ? tagState.tags.find((t) => t.id === openTagId) : undefined;
+  // The tag a tag-page points at. Falls away if the tag is deleted while open,
+  // in which case the effect below leaves the now-defunct page.
+  const page = nav.page;
+  const pageTag =
+    page?.kind === 'tag' ? tagState.tags.find((t) => t.id === page.tagId) : undefined;
+  useEffect(() => {
+    if (page?.kind === 'tag' && !pageTag) nav.back();
+  }, [page, pageTag, nav]);
+
+  // The page's name for the breadcrumb (pageTitle) and status bar (pageLabel).
+  let pageTitle: ReactNode = null;
+  let pageLabel: string | undefined;
+  if (page?.kind === 'recents') {
+    pageTitle = (
+      <>
+        <Icon name="clock" size={15} /> Recents
+      </>
+    );
+    pageLabel = 'Recents';
+  } else if (page?.kind === 'trash') {
+    pageTitle = (
+      <>
+        <Icon name="trash" size={15} /> Trash
+      </>
+    );
+    pageLabel = 'Trash';
+  } else if (page?.kind === 'tag' && pageTag) {
+    pageTitle = (
+      <>
+        <TagDot color={pageTag.color} size={12} /> {pageTag.name}
+      </>
+    );
+    pageLabel = pageTag.name;
+  }
 
   return (
     <div className="flex h-full flex-col" data-testid="app">
       <Toolbar
         onNewFolder={() => setDialog({ kind: 'new-folder' })}
         onNewFile={() => setDialog({ kind: 'new-file' })}
+        pageTitle={pageTitle ?? undefined}
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar
           tags={tagState.tags}
+          activePage={nav.page}
           onDropPath={(path, e) => handleDrop(path, e)}
-          onOpenTag={(tag) => setOpenTagId(tag.id)}
-          onOpenRecents={() => setShowRecents(true)}
-          onOpenTrash={() => setShowTrash(true)}
+          onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
+          onOpenRecents={() => nav.openPage({ kind: 'recents' })}
+          onOpenTrash={() => nav.openPage({ kind: 'trash' })}
           onDropOnTag={handleDropOnTag}
         />
         <main className="bg-background flex min-w-0 flex-1 flex-col">
-          {nav.viewMode === 'grid' ? <GridView {...viewProps} /> : <FileList {...viewProps} />}
+          {nav.page?.kind === 'recents' ? (
+            <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
+          ) : nav.page?.kind === 'trash' ? (
+            <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
+          ) : nav.page?.kind === 'tag' ? (
+            pageTag && (
+              <TagFilesView
+                tag={pageTag}
+                onBack={nav.back}
+                onNavigate={nav.navigate}
+                onRenameTag={(id, name) => tagState.rename(id, name)}
+                onDeleteTag={(id) => {
+                  nav.back();
+                  tagState.remove(id);
+                }}
+                onChanged={tagState.refresh}
+              />
+            )
+          ) : nav.viewMode === 'grid' ? (
+            <GridView {...viewProps} />
+          ) : (
+            <FileList {...viewProps} />
+          )}
         </main>
-        {infoPath && (
+        {!nav.page && infoPath && (
           <InfoPanel
             path={infoPath}
             tags={tagState.tags}
@@ -434,6 +499,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
         hidden={entries.length - visible.length}
         selectedCount={selectedEntries.length}
         selectedSize={selectedSize}
+        label={pageLabel}
       />
 
       {menu && (menu.mode === 'background' || selectedEntries.length > 0) && (
@@ -528,28 +594,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
           danger
           onCancel={() => setDialog(null)}
           onConfirm={() => trash(dialog.entries)}
-        />
-      )}
-
-      {showTrash && (
-        <TrashView onClose={() => setShowTrash(false)} onChanged={() => nav.refresh()} />
-      )}
-
-      {showRecents && (
-        <RecentsView onClose={() => setShowRecents(false)} onNavigate={nav.navigate} />
-      )}
-
-      {openTag && (
-        <TagFilesView
-          tag={openTag}
-          onClose={() => setOpenTagId(null)}
-          onNavigate={nav.navigate}
-          onRenameTag={(id, name) => tagState.rename(id, name)}
-          onDeleteTag={(id) => {
-            setOpenTagId(null);
-            tagState.remove(id);
-          }}
-          onChanged={tagState.refresh}
         />
       )}
 

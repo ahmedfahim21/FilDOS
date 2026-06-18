@@ -22,9 +22,12 @@ const ICON_SIZES: { size: IconSize; label: string; Glyph: LucideIcon }[] = [
 export function Toolbar({
   onNewFolder,
   onNewFile,
+  pageTitle,
 }: {
   onNewFolder: () => void;
   onNewFile: () => void;
+  /** When set, a metadata page is shown — folder-only controls are hidden. */
+  pageTitle?: React.ReactNode;
 }) {
   const {
     back,
@@ -62,33 +65,37 @@ export function Toolbar({
         </Button>
       </div>
 
-      <AddressBar />
+      <AddressBar pageTitle={pageTitle} />
 
-      <div className="border-border bg-background text-muted-foreground flex h-7.5 w-55 shrink-0 items-center gap-1.5 rounded-md border px-2 [-webkit-app-region:no-drag]">
-        <Icon name="search" size={14} />
-        <input
-          className="text-foreground min-w-0 flex-1 select-text border-0 bg-transparent outline-none"
-          placeholder={searchRecursive ? 'Search subfolders…' : 'Filter…'}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setQuery('');
-          }}
-        />
-        <button
-          className={cn(
-            'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
-            searchRecursive
-              ? 'bg-primary text-white'
-              : 'bg-accent text-muted-foreground',
-          )}
-          onClick={() => setSearchRecursive(!searchRecursive)}
-          title={searchRecursive ? 'Searching subfolders' : 'Filter current folder only'}
-        >
-          Subfolders
-        </button>
-      </div>
+      {/* Filter + view controls act on a folder; hidden on a metadata page. */}
+      {!pageTitle && (
+        <div className="border-border bg-background text-muted-foreground flex h-7.5 w-55 shrink-0 items-center gap-1.5 rounded-md border px-2 [-webkit-app-region:no-drag]">
+          <Icon name="search" size={14} />
+          <input
+            className="text-foreground min-w-0 flex-1 select-text border-0 bg-transparent outline-none"
+            placeholder={searchRecursive ? 'Search subfolders…' : 'Filter…'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setQuery('');
+            }}
+          />
+          <button
+            className={cn(
+              'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
+              searchRecursive
+                ? 'bg-primary text-white'
+                : 'bg-accent text-muted-foreground',
+            )}
+            onClick={() => setSearchRecursive(!searchRecursive)}
+            title={searchRecursive ? 'Searching subfolders' : 'Filter current folder only'}
+          >
+            Subfolders
+          </button>
+        </div>
+      )}
 
+      {!pageTitle && (
       <div className="flex gap-1 [-webkit-app-region:no-drag]">
         <Button
           variant={viewMode === 'list' ? 'default' : 'ghost'}
@@ -156,6 +163,7 @@ export function Toolbar({
           <Icon name="new-folder" />
         </Button>
       </div>
+      )}
     </div>
   );
 }

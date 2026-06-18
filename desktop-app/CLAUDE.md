@@ -144,9 +144,12 @@ State via React context (no Redux):
   panel stay in sync.
 - `components/` — `FileList` (virtualized, resizable cols, inline rename, DnD) and
   `GridView` (thumbnails, icon-size variants) share `viewTypes.ts#FileViewProps`.
-  `RecentsView` / `TagFilesView` are overlay panels modeled on `TrashView`
-  (shared `.panelview` CSS). `App.tsx` owns selection, the global keymap,
-  context-menu/dialog/overlay state, and DnD glue (incl. drop-on-tag).
+  `RecentsView` / `TrashView` / `TagFilesView` are in-flow **page views** (shared
+  `Page` shell in `Page.tsx`) that replace the file browser in `<main>`: they are
+  history entries (`NavLocation` in `state/navigation.tsx`), so the toolbar
+  Back/Forward arrows traverse them alongside folders, and `nav.page` selects
+  which renders. `App.tsx` owns selection, the global keymap (inert while a page
+  is shown), context-menu/dialog state, and DnD glue (incl. drop-on-tag).
 
 Runtime deps are `@tanstack/react-virtual` (virtualization) and `drizzle-orm`
 (pure-TS, no binaries).
