@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { segments } from '@/lib/path';
@@ -6,9 +6,11 @@ import { cn } from '@/lib/utils';
 
 /**
  * Breadcrumb trail that flips into an editable path field on double-click or
- * Cmd/Ctrl+L. Entering a valid directory navigates; anything else toasts.
+ * Cmd/Ctrl+L. Entering a valid directory navigates; anything else toasts. On a
+ * metadata page it instead shows the page's name as the current location
+ * (`pageTitle`), with editing disabled.
  */
-export function AddressBar() {
+export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
   const { currentPath, navigate } = useNavigation();
   const { notify } = useToast();
   const [editing, setEditing] = useState(false);
@@ -20,8 +22,9 @@ export function AddressBar() {
     setEditing(true);
   };
 
-  // Cmd/Ctrl+L focuses the address field.
+  // Cmd/Ctrl+L focuses the address field — but not while a page is shown.
   useEffect(() => {
+    if (pageTitle) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'l') {
         e.preventDefault();
@@ -31,7 +34,7 @@ export function AddressBar() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPath]);
+  }, [currentPath, pageTitle]);
 
   useEffect(() => {
     if (editing) {
@@ -39,6 +42,14 @@ export function AddressBar() {
       inputRef.current?.select();
     }
   }, [editing]);
+
+  if (pageTitle) {
+    return (
+      <div className="text-foreground flex flex-1 items-center gap-1.5 overflow-hidden px-1.5 font-semibold whitespace-nowrap [-webkit-app-region:no-drag]">
+        {pageTitle}
+      </div>
+    );
+  }
 
   const submit = async () => {
     const p = value.trim();
