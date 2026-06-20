@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react';
+import { ConfirmDialog } from './Dialog';
 import type { AccountRecord, DriveItem, QuickAccessItem, Tag } from '@shared/types';
 import { formatRemote } from '@shared/remote';
 import { useNavigation, type NavPage } from '@/state/navigation';
@@ -7,6 +8,13 @@ import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { TagDot } from './TagDots';
+
+const PROVIDER_NAMES: Record<string, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+  mega: 'Mega',
+};
 
 const itemClass = (active = false, drop = false) =>
   cn(
@@ -51,6 +59,7 @@ export function Sidebar({
   const [cloudAccounts, setCloudAccounts] = useState<AccountRecord[]>([]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [ejectingPath, setEjectingPath] = useState<string | null>(null);
+  const [pendingDisconnect, setPendingDisconnect] = useState<AccountRecord | null>(null);
 
   useEffect(() => {
     window.fsapi.quickAccess().then((result) => {
@@ -209,16 +218,17 @@ export function Sidebar({
                 title={`${account.label} (${account.provider})`}
               >
                 <Icon name="cloud" size={16} />
-                <span className="min-w-0 flex-1 truncate text-sm">{account.label}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{account.label}</div>
+                  <div className="text-muted-foreground truncate text-[10px]">
+                    {PROVIDER_NAMES[account.provider] ?? account.provider}
+                  </div>
+                </div>
               </button>
               <button
                 className="text-muted-foreground absolute right-1 rounded p-0.5 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                 title={`Disconnect ${account.label}`}
-                onClick={async () => {
-                  const res = await window.cloud.disconnect(account.id);
-                  if (!res.ok) notifyError(res.error);
-                  else refreshCloudAccounts();
-                }}
+                onClick={() => setPendingDisconnect(account)}
               >
                 <Icon name="close" size={13} />
               </button>
@@ -290,6 +300,23 @@ export function Sidebar({
         <Icon name="trash" size={16} />
         <span>Trash</span>
       </button>
+
+      {pendingDisconnect && (
+        <ConfirmDialog
+          title="Disconnect account?"
+          message={`"${pendingDisconnect.label}" (${PROVIDER_NAMES[pendingDisconnect.provider] ?? pendingDisconnect.provider}) will be removed. You can reconnect at any time.`}
+          confirmLabel="Disconnect"
+          danger
+          onCancel={() => setPendingDisconnect(null)}
+          onConfirm={async () => {
+            const account = pendingDisconnect;
+            setPendingDisconnect(null);
+            const res = await window.cloud.disconnect(account.id);
+            if (!res.ok) notifyError(res.error);
+            else refreshCloudAccounts();
+          }}
+        />
+      )}
     </aside>
   );
 }

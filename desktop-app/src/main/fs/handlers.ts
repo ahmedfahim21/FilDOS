@@ -6,7 +6,7 @@ import { isRemote, parseRemote } from '@shared/remote';
 import { getProvider } from '../cloud/registry';
 import * as service from './service';
 import { quickAccess } from './quickAccess';
-import { setWatch } from './watch';
+import { closeWatch, setWatch } from './watch';
 import { thumbnail } from './thumbnails';
 import {
   emptyTracked,
@@ -168,6 +168,7 @@ export function registerFsHandlers(): void {
 
   // Fire-and-forget: point the live watcher at the given directory.
   ipcMain.handle(Channels.watchSet, (e, path: string) => {
+    if (isRemote(path)) { closeWatch(); return; }
     setWatch(assertValidPath(path), e.sender);
   });
 

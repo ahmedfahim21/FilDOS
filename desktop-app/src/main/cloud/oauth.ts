@@ -2,6 +2,7 @@ import { shell } from 'electron';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { callbackPage } from './callbackPage';
 
 export interface OAuthToken {
   accessToken: string;
@@ -19,6 +20,13 @@ export interface OAuthConfig {
   scopes: string[];
   /** Additional static params to include in the authorization URL. */
   extraParams?: Record<string, string>;
+  /**
+   * Fixed loopback port for providers that require an exact redirect URI match
+   * (e.g. Dropbox). Leave undefined to let the OS pick an ephemeral port.
+   * Register the matching URI in the provider console:
+   *   http://localhost:<callbackPort>/callback
+   */
+  callbackPort?: number;
 }
 
 /**
@@ -35,8 +43,8 @@ export async function runOAuthFlow(config: OAuthConfig): Promise<OAuthToken> {
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const state = randomBytes(16).toString('hex');
 
-  const { server, port, codePromise } = await startCallbackServer(state);
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const { server, port, codePromise } = await startCallbackServer(state, config.callbackPort);
+  const redirectUri = `http://localhost:${port}/callback`;
 
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -94,6 +102,7 @@ export async function runOAuthFlow(config: OAuthConfig): Promise<OAuthToken> {
 
 function startCallbackServer(
   expectedState: string,
+  fixedPort?: number,
 ): Promise<{ server: ReturnType<typeof createServer>; port: number; codePromise: Promise<string> }> {
   return new Promise((resolve, reject) => {
     let resolveCode!: (code: string) => void;
@@ -110,32 +119,29 @@ function startCallbackServer(
         const code = url.searchParams.get('code');
         const returnedState = url.searchParams.get('state');
 
-        const html = (msg: string) =>
-          `<html><body style="font-family:sans-serif;padding:2rem"><p>${msg}</p></body></html>`;
-
         if (error) {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end(html('Authentication failed. You may close this tab.'));
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(callbackPage(false, 'Authentication failed', error.replace(/_/g, ' ')));
           rejectCode(new Error(`OAuth denied: ${error}`));
           return;
         }
 
         if (!code || returnedState !== expectedState) {
-          res.writeHead(400, { 'Content-Type': 'text/html' });
-          res.end(html('Invalid callback. You may close this tab.'));
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(callbackPage(false, 'Something went wrong', 'Invalid callback. You may close this tab.'));
           rejectCode(new Error('OAuth callback missing code or state mismatch.'));
           return;
         }
 
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(html('Authentication complete. You may close this tab.'));
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(callbackPage(true, "You're all set", 'Authentication complete. You may close this tab.'));
         resolveCode(code);
       } catch (err) {
         rejectCode(err instanceof Error ? err : new Error(String(err)));
       }
     });
 
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(fixedPort ?? 0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       resolve({ server, port, codePromise });
     });

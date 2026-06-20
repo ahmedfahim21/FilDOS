@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import type { AccountRecord } from '@shared/types';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from './Dialog';
 import { Icon } from './Icon';
-import gdriveLogo from '@/assets/GDrive.png';
-import dropboxLogo from '@/assets/Dropbox.png';
+import gdriveLogo from '@/assets/cloud/GDrive.png';
+import dropboxLogo from '@/assets/cloud/Dropbox.png';
+import onedriveLogo from '@/assets/cloud/OneDrive.png';
+import megaLogo from '@/assets/cloud/mega.webp';
 
 interface ProviderDef {
   id: string;
@@ -33,12 +36,14 @@ const PROVIDERS: ProviderDef[] = [
     id: 'onedrive',
     name: 'OneDrive',
     tagline: 'Microsoft · 5 GB free',
+    logo: onedriveLogo,
     available: false,
   },
   {
-    id: 'icloud',
-    name: 'iCloud Drive',
-    tagline: 'Apple · 5 GB free',
+    id: 'mega',
+    name: 'Mega',
+    tagline: '20 GB free, end-to-end encrypted',
+    logo: megaLogo,
     available: false,
   },
 ];
@@ -169,6 +174,7 @@ export function CloudConnectView({ onAccountsChanged }: { onAccountsChanged: () 
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pendingDisconnect, setPendingDisconnect] = useState<AccountRecord | null>(null);
 
   useEffect(() => {
     window.cloud.listAccounts().then((res) => {
@@ -206,6 +212,13 @@ export function CloudConnectView({ onAccountsChanged }: { onAccountsChanged: () 
     }
   }
 
+  async function confirmDisconnect() {
+    if (!pendingDisconnect) return;
+    const account = pendingDisconnect;
+    setPendingDisconnect(null);
+    await handleDisconnect(account.id);
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-2xl px-8 py-10">
@@ -225,11 +238,25 @@ export function CloudConnectView({ onAccountsChanged }: { onAccountsChanged: () 
               connecting={connecting === provider.id}
               error={errors[provider.id]}
               onConnect={() => handleConnect(provider.id)}
-              onDisconnect={handleDisconnect}
+              onDisconnect={(id) => {
+                const account = accounts.find((a) => a.id === id);
+                if (account) setPendingDisconnect(account);
+              }}
             />
           ))}
         </div>
       </div>
+
+      {pendingDisconnect && (
+        <ConfirmDialog
+          title="Disconnect account?"
+          message={`"${pendingDisconnect.label}" (${PROVIDERS.find((p) => p.id === pendingDisconnect.provider)?.name ?? pendingDisconnect.provider}) will be removed. You can reconnect at any time.`}
+          confirmLabel="Disconnect"
+          danger
+          onCancel={() => setPendingDisconnect(null)}
+          onConfirm={confirmDisconnect}
+        />
+      )}
     </div>
   );
 }

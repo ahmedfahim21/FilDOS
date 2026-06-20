@@ -4,6 +4,7 @@ out/
 *.log
 *.tsbuildinfo
 .DS_Store
+.env
 
 # Playwright
 test-results/

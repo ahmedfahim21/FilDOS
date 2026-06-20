@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFsHandlers } from './fs/handlers';

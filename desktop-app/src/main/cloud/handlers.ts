@@ -25,6 +25,9 @@ const PROVIDER_OAUTH: Record<
     scopes: [],
     extraParams: { token_access_type: 'offline' },
     profileUrl: 'https://api.dropboxapi.com/2/users/get_current_account',
+    // Dropbox requires an exact redirect URI match (no port wildcard).
+    // Register http://localhost:47823/callback in the Dropbox app console.
+    callbackPort: 47823,
   },
 };
 
