@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  ArrowUpFromLine,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  HardDrive,
   Info,
   LayoutGrid,
   List,
@@ -57,7 +59,9 @@ type IconName =
   | 'tag'
   | 'clock'
   | 'check'
-  | 'plus';
+  | 'plus'
+  | 'drive'
+  | 'eject';
 
 /** Maps the app's semantic icon names onto lucide-react glyphs. */
 const ICONS: Record<IconName, LucideIcon> = {
@@ -89,6 +93,8 @@ const ICONS: Record<IconName, LucideIcon> = {
   clock: Clock,
   check: Check,
   plus: Plus,
+  drive: HardDrive,
+  eject: ArrowUpFromLine,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

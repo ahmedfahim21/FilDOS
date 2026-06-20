@@ -121,6 +121,19 @@ export interface FolderView {
   iconSize?: IconSize;
 }
 
+/** A mounted volume (internal, USB, or network drive). */
+export interface DriveItem {
+  name: string;
+  /** Absolute mount path, e.g. "/Volumes/MyDrive" or "D:\". */
+  path: string;
+  /** Total capacity in bytes (0 if statfs failed). */
+  total: number;
+  /** Available free bytes (0 if statfs failed). */
+  free: number;
+  /** True for removable/external drives; false for the boot volume. */
+  removable: boolean;
+}
+
 /** Persisted user preferences (window + global view defaults). */
 export interface Prefs {
   windowBounds?: { x: number; y: number; width: number; height: number };
@@ -165,6 +178,10 @@ export interface FsApi {
   search(rootPath: string, query: string): Promise<Result<SearchHit[]>>;
   /** Thumbnail data URL for an image file, or null if unavailable. */
   thumbnail(path: string, size: number): Promise<Result<string | null>>;
+  /** List mounted volumes (internal + removable + network). */
+  drives(): Promise<Result<DriveItem[]>>;
+  /** Eject a removable drive by its mount path. */
+  ejectDrive(path: string): Promise<Result<void>>;
 }
 
 /** The API surface exposed on `window.tags`. */

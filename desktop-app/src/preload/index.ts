@@ -29,6 +29,8 @@ const fsapi: FsApi = {
   folderSize: (path) => ipcRenderer.invoke(Channels.folderSize, path),
   search: (rootPath, query) => ipcRenderer.invoke(Channels.search, rootPath, query),
   thumbnail: (path, size) => ipcRenderer.invoke(Channels.thumbnail, path, size),
+  drives: () => ipcRenderer.invoke(Channels.drives),
+  ejectDrive: (path) => ipcRenderer.invoke(Channels.ejectDrive, path),
 };
 
 contextBridge.exposeInMainWorld('fsapi', fsapi);

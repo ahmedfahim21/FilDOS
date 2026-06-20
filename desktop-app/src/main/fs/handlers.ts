@@ -19,6 +19,7 @@ import { remapPaths } from '../db';
 import * as tags from '../db/tags';
 import * as recents from '../db/recents';
 import { getFolderView, setFolderView } from '../db/views';
+import { listDrives, ejectDrive } from './drives';
 
 /** Map a thrown error into a friendly, display-ready AppError. */
 function toAppError(err: unknown): AppError {
@@ -217,6 +218,13 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle(Channels.viewsSet, (_e, path: string, view: FolderView) =>
     wrap(async () => setFolderView(assertValidPath(path), view)),
+  );
+
+  // --- Drives ---
+  ipcMain.handle(Channels.drives, () => wrap(async () => listDrives()));
+
+  ipcMain.handle(Channels.ejectDrive, (_e, path: string) =>
+    wrap(async () => ejectDrive(assertValidPath(path))),
   );
 
   // Begin an OS drag of the given files (drag-out to Finder/Explorer/other apps).
