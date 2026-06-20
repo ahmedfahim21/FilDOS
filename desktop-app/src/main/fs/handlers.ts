@@ -2,6 +2,8 @@ import { app, ipcMain, nativeImage, shell } from 'electron';
 import { basename, sep } from 'node:path';
 import { Channels } from '@shared/channels';
 import type { AppError, Entry, FolderView, Result } from '@shared/types';
+import { isRemote, parseRemote } from '@shared/remote';
+import { getProvider } from '../cloud/registry';
 import * as service from './service';
 import { quickAccess } from './quickAccess';
 import { setWatch } from './watch';
@@ -53,9 +55,28 @@ const { assertValidPath } = service;
 
 /** Register every FS IPC handler. Call once after app is ready. */
 export function registerFsHandlers(): void {
-  ipcMain.handle(Channels.listDir, (_e, path: string) =>
-    wrap(() => service.listDir(assertValidPath(path))),
-  );
+  ipcMain.handle(Channels.listDir, (_e, path: string) => {
+    if (isRemote(path)) {
+      return wrap(async (): Promise<Entry[]> => {
+        const ref = parseRemote(path);
+        if (!ref) {
+          const err = new Error('Invalid remote URI.') as NodeJS.ErrnoException;
+          err.code = 'EINVAL';
+          throw err;
+        }
+        const provider = getProvider(ref.provider);
+        if (!provider) {
+          const err = new Error(
+            `No provider registered for '${ref.provider}'. Connect an account first.`,
+          ) as NodeJS.ErrnoException;
+          err.code = 'ENOENT';
+          throw err;
+        }
+        return provider.listDir(ref.accountId, ref.path);
+      });
+    }
+    return wrap(() => service.listDir(assertValidPath(path)));
+  });
 
   ipcMain.handle(Channels.getInfo, (_e, path: string) =>
     wrap(() => service.getInfo(assertValidPath(path))),

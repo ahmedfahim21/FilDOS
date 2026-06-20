@@ -49,6 +49,15 @@ const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  `
+  CREATE TABLE accounts (
+    id         TEXT PRIMARY KEY,
+    provider   TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    token      TEXT NOT NULL,  -- base64-encoded safeStorage-encrypted JSON
+    created_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

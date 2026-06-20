@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { Channels, Events } from '@shared/channels';
-import type { FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
+import type { CloudApi, FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
 
 /**
  * The single, explicit API exposed to the renderer. We never hand the renderer
@@ -84,6 +84,14 @@ contextBridge.exposeInMainWorld('dnd', {
   startDrag: (paths: string[]) => ipcRenderer.invoke(Channels.dragStart, paths),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
 });
+
+// Cloud account management.
+const cloudApi: CloudApi = {
+  connect: (providerId) => ipcRenderer.invoke(Channels.cloudConnect, providerId),
+  listAccounts: () => ipcRenderer.invoke(Channels.cloudListAccounts),
+  disconnect: (accountId) => ipcRenderer.invoke(Channels.cloudDisconnect, accountId),
+};
+contextBridge.exposeInMainWorld('cloud', cloudApi);
 
 // Expose the platform path separator so the renderer can split breadcrumbs
 // without bundling Node's `path`.

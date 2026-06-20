@@ -1,4 +1,4 @@
-import type { FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
+import type { CloudApi, FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
 
 export interface PlatformInfo {
   /** Platform path separator: "\\" on Windows, "/" elsewhere. */
@@ -36,5 +36,6 @@ declare global {
     tags: TagsApi;
     recents: RecentsApi;
     views: ViewsApi;
+    cloud: CloudApi;
   }
 }

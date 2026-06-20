@@ -1,11 +1,24 @@
 /** Renderer-side path helpers that respect the OS separator from preload. */
 
+import { formatRemote, isRemote, parseRemote } from '@shared/remote';
+
 export function sep(): string {
   return window.platform?.sep ?? '/';
 }
 
 /** Parent directory of a path, or the path itself if already at a root. */
 export function parentOf(p: string): string {
+  if (isRemote(p)) {
+    const ref = parseRemote(p);
+    if (!ref) return p;
+    const { provider, accountId, path } = ref;
+    if (!path) return formatRemote(provider, accountId, '');
+    const idx = path.lastIndexOf('/');
+    return idx === -1
+      ? formatRemote(provider, accountId, '')
+      : formatRemote(provider, accountId, path.slice(0, idx));
+  }
+
   const s = sep();
 
   if (s === '/') {
@@ -29,14 +42,40 @@ export function parentOf(p: string): string {
 
 /** Last path component. */
 export function baseName(p: string): string {
+  if (isRemote(p)) {
+    const ref = parseRemote(p);
+    if (!ref) return p;
+    const { accountId, path } = ref;
+    if (!path) return accountId;
+    const idx = path.lastIndexOf('/');
+    return idx === -1 ? path : path.slice(idx + 1);
+  }
+
   const s = sep();
   const cleaned = p.length > 1 && p.endsWith(s) ? p.slice(0, -1) : p;
   const idx = cleaned.lastIndexOf(s);
   return idx === -1 ? cleaned : cleaned.slice(idx + 1);
 }
 
-/** Breadcrumb segments: [{ label, path }] from root to the given path. */
+/**
+ * Breadcrumb segments: [{ label, path }] from root to the given path.
+ * Remote paths use a shallow two-segment representation (account root +
+ * current folder) to avoid requiring parent-chain resolution from file IDs.
+ */
 export function segments(p: string): { label: string; path: string }[] {
+  if (isRemote(p)) {
+    const ref = parseRemote(p);
+    if (!ref) return [{ label: p, path: p }];
+    const { provider, accountId, path } = ref;
+    const root = formatRemote(provider, accountId, '');
+    const segs: { label: string; path: string }[] = [{ label: accountId, path: root }];
+    if (path) {
+      const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+      segs.push({ label: name, path: p });
+    }
+    return segs;
+  }
+
   const s = sep();
   const out: { label: string; path: string }[] = [];
 

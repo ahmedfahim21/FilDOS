@@ -54,3 +54,12 @@ export const folderViews = sqliteTable('folder_views', {
   iconSize: text('icon_size'),
   updatedAt: integer('updated_at').notNull(),
 });
+
+/** Connected cloud accounts with encrypted OAuth tokens. */
+export const accounts = sqliteTable('accounts', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),
+  label: text('label').notNull(),
+  token: text('token').notNull(),
+  createdAt: integer('created_at').notNull(),
+});

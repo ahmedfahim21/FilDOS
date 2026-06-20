@@ -102,3 +102,49 @@ describe('segments (Windows)', () => {
     ]);
   });
 });
+
+describe('remote URIs', () => {
+  it('parentOf strips the last path component', () => {
+    withSep('/');
+    expect(parentOf('gdrive://acc123/folderA/folderB')).toBe('gdrive://acc123/folderA');
+  });
+
+  it('parentOf reaches the account root for a single component', () => {
+    withSep('/');
+    expect(parentOf('gdrive://acc123/folderA')).toBe('gdrive://acc123/');
+  });
+
+  it('parentOf stays at the account root', () => {
+    withSep('/');
+    expect(parentOf('gdrive://acc123/')).toBe('gdrive://acc123/');
+    expect(parentOf('gdrive://acc123')).toBe('gdrive://acc123/');
+  });
+
+  it('baseName returns the last path component', () => {
+    withSep('/');
+    expect(baseName('gdrive://acc123/folderA/folderB')).toBe('folderB');
+    expect(baseName('gdrive://acc123/folderA')).toBe('folderA');
+  });
+
+  it('baseName returns the accountId at the root', () => {
+    withSep('/');
+    expect(baseName('gdrive://acc123/')).toBe('acc123');
+  });
+
+  it('segments returns shallow breadcrumbs', () => {
+    withSep('/');
+    expect(segments('gdrive://acc123/')).toEqual([{ label: 'acc123', path: 'gdrive://acc123/' }]);
+    expect(segments('gdrive://acc123/folderA')).toEqual([
+      { label: 'acc123', path: 'gdrive://acc123/' },
+      { label: 'folderA', path: 'gdrive://acc123/folderA' },
+    ]);
+  });
+
+  it('segments always shows only 2 levels for deeply nested remote paths', () => {
+    withSep('/');
+    expect(segments('dropbox://acc456/a/b/c')).toEqual([
+      { label: 'acc456', path: 'dropbox://acc456/' },
+      { label: 'c', path: 'dropbox://acc456/a/b/c' },
+    ]);
+  });
+});

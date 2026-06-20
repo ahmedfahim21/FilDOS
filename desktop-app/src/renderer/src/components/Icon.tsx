@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clipboard,
   Clock,
+  Cloud,
   Copy,
   ExternalLink,
   Eye,
@@ -61,7 +62,8 @@ type IconName =
   | 'check'
   | 'plus'
   | 'drive'
-  | 'eject';
+  | 'eject'
+  | 'cloud';
 
 /** Maps the app's semantic icon names onto lucide-react glyphs. */
 const ICONS: Record<IconName, LucideIcon> = {
@@ -95,6 +97,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   plus: Plus,
   drive: HardDrive,
   eject: ArrowUpFromLine,
+  cloud: Cloud,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
