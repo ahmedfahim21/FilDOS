@@ -32,6 +32,7 @@ import { StatusBar } from '@/components/StatusBar';
 import { TrashView } from '@/components/TrashView';
 import { RecentsView } from '@/components/RecentsView';
 import { TagFilesView } from '@/components/TagFilesView';
+import { CloudConnectView } from '@/components/CloudConnectView';
 import { Icon } from '@/components/Icon';
 import { TagDot } from '@/components/TagDots';
 import { Toasts } from '@/components/Toasts';
@@ -64,6 +65,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [infoPath, setInfoPath] = useState<string | null>(null);
+  const [sidebarCloudKey, setSidebarCloudKey] = useState(0);
 
   // The global view defaults: what a folder without remembered settings shows.
   // Updated on every deliberate view change (alongside the prefs row).
@@ -432,6 +434,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Trash';
+  } else if (page?.kind === 'cloud-connect') {
+    pageTitle = (
+      <>
+        <Icon name="cloud" size={15} /> Cloud Storage
+      </>
+    );
+    pageLabel = 'Cloud Storage';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -452,10 +461,12 @@ function Browser({ initialView }: { initialView: ViewState }) {
         <Sidebar
           tags={tagState.tags}
           activePage={nav.page}
+          cloudKey={sidebarCloudKey}
           onDropPath={(path, e) => handleDrop(path, e)}
           onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
           onOpenRecents={() => nav.openPage({ kind: 'recents' })}
           onOpenTrash={() => nav.openPage({ kind: 'trash' })}
+          onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
           onDropOnTag={handleDropOnTag}
         />
         <main className="bg-background flex min-w-0 flex-1 flex-col">
@@ -463,6 +474,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
             <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
           ) : nav.page?.kind === 'trash' ? (
             <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
+          ) : nav.page?.kind === 'cloud-connect' ? (
+            <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
           ) : nav.page?.kind === 'tag' ? (
             pageTag && (
               <TagFilesView

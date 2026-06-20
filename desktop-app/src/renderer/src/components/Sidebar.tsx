@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useState, type DragEvent } from 'react';
 import type { AccountRecord, DriveItem, QuickAccessItem, Tag } from '@shared/types';
 import { formatRemote } from '@shared/remote';
 import { useNavigation, type NavPage } from '@/state/navigation';
@@ -25,20 +25,23 @@ function formatBytes(bytes: number): string {
 export function Sidebar({
   tags,
   activePage,
+  cloudKey,
   onDropPath,
   onOpenTag,
   onOpenRecents,
   onOpenTrash,
+  onOpenCloudConnect,
   onDropOnTag,
 }: {
   tags: Tag[];
-  /** The metadata page currently in view, so its entry is highlighted. */
   activePage: NavPage | null;
+  /** Bump to force cloud accounts to re-fetch (after connect/disconnect). */
+  cloudKey: number;
   onDropPath: (path: string, e: DragEvent) => void;
   onOpenTag: (tag: Tag) => void;
   onOpenRecents: () => void;
   onOpenTrash: () => void;
-  /** Drop files onto a tag in the sidebar to apply it. */
+  onOpenCloudConnect: () => void;
   onDropOnTag: (tag: Tag, e: DragEvent) => void;
 }) {
   const { currentPath, navigate } = useNavigation();
@@ -46,9 +49,6 @@ export function Sidebar({
   const [items, setItems] = useState<QuickAccessItem[]>([]);
   const [drives, setDrives] = useState<DriveItem[]>([]);
   const [cloudAccounts, setCloudAccounts] = useState<AccountRecord[]>([]);
-  const [showProviderPicker, setShowProviderPicker] = useState(false);
-  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
-  const pickerRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [ejectingPath, setEjectingPath] = useState<string | null>(null);
 
@@ -65,36 +65,10 @@ export function Sidebar({
     });
   }, []);
 
+  // Re-fetch on mount and whenever the parent signals a change (connect/disconnect).
   useEffect(() => {
     refreshCloudAccounts();
-  }, [refreshCloudAccounts]);
-
-  // Close provider picker on outside click.
-  useEffect(() => {
-    if (!showProviderPicker) return;
-    function onDown(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowProviderPicker(false);
-      }
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [showProviderPicker]);
-
-  async function handleConnect(providerId: string) {
-    setShowProviderPicker(false);
-    setConnectingProvider(providerId);
-    const result = await window.cloud.connect(providerId);
-    setConnectingProvider(null);
-    if (!result.ok) notifyError(result.error);
-    else refreshCloudAccounts();
-  }
-
-  async function handleDisconnect(accountId: string) {
-    const result = await window.cloud.disconnect(accountId);
-    if (!result.ok) notifyError(result.error);
-    else refreshCloudAccounts();
-  }
+  }, [refreshCloudAccounts, cloudKey]);
 
   const refreshDrives = useCallback(() => {
     window.fsapi.drives().then((result) => {
@@ -122,6 +96,7 @@ export function Sidebar({
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
       <Logo className="px-2 pt-1 pb-4 text-lg" />
+
       <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (
@@ -220,58 +195,44 @@ export function Sidebar({
         </>
       )}
 
+      {/* Cloud accounts */}
       <div className={cn(title, 'mt-3')}>Cloud</div>
       <nav>
         {cloudAccounts.map((account) => {
           const accountRoot = formatRemote(account.provider, account.id, '');
+          const isActive = !activePage && currentPath === accountRoot;
           return (
             <div key={account.id} className="group relative flex items-center">
               <button
-                className={cn(
-                  itemClass(!activePage && currentPath === accountRoot),
-                  'flex-1 pr-6',
-                )}
+                className={cn(itemClass(isActive), 'flex-1 pr-6')}
                 onClick={() => navigate(accountRoot)}
                 title={`${account.label} (${account.provider})`}
               >
                 <Icon name="cloud" size={16} />
-                <span className="min-w-0 flex-1 truncate">{account.label}</span>
+                <span className="min-w-0 flex-1 truncate text-sm">{account.label}</span>
               </button>
               <button
                 className="text-muted-foreground absolute right-1 rounded p-0.5 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                 title={`Disconnect ${account.label}`}
-                onClick={() => handleDisconnect(account.id)}
+                onClick={async () => {
+                  const res = await window.cloud.disconnect(account.id);
+                  if (!res.ok) notifyError(res.error);
+                  else refreshCloudAccounts();
+                }}
               >
                 <Icon name="close" size={13} />
               </button>
             </div>
           );
         })}
-        <div className="relative" ref={pickerRef}>
-          <button
-            className={itemClass()}
-            onClick={() => setShowProviderPicker((v) => !v)}
-            disabled={connectingProvider !== null}
-            title="Connect a cloud account"
-          >
-            <Icon name="plus" size={16} />
-            <span>{connectingProvider ? `Connecting ${connectingProvider}…` : 'Connect…'}</span>
-          </button>
-          {showProviderPicker && (
-            <div className="bg-popover border-border absolute left-0 z-50 mt-1 w-full rounded-md border p-1 shadow-md">
-              {(['gdrive', 'dropbox'] as const).map((pid) => (
-                <button
-                  key={pid}
-                  className="hover:bg-accent flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
-                  onClick={() => handleConnect(pid)}
-                >
-                  <Icon name="cloud" size={14} />
-                  {pid === 'gdrive' ? 'Google Drive' : 'Dropbox'}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <button
+          className={itemClass(activePage?.kind === 'cloud-connect')}
+          onClick={onOpenCloudConnect}
+          title="Connect a cloud account"
+        >
+          <Icon name="plus" size={16} />
+          <span>Connect…</span>
+        </button>
       </nav>
 
       {tags.length > 0 && (
