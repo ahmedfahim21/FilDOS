@@ -79,7 +79,7 @@ export function InfoPanel({
       {info && (
         <div className="p-4">
           <div className="flex flex-col items-center gap-2.5 pt-2 pb-4.5">
-            <img src={fileLogo(info)} alt="" width={48} height={48} />
+            <img src={fileLogo(info)} alt="" width={40} height={40} />
             <div
               className="text-center font-semibold select-text wrap-break-word"
               title={info.name}

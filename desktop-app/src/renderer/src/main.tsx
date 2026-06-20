@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client';
 import type { Prefs } from '@shared/types';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Wordmark } from './components/Logo';
+import '@fontsource/space-grotesk/300.css';
+import '@fontsource/space-grotesk/400.css';
+import '@fontsource/space-grotesk/500.css';
+import '@fontsource/space-mono/400.css';
+import '@fontsource/space-mono/700.css';
 import './styles/global.css';
 
 /** Resolves the starting directory and preferences before mounting the browser. */
@@ -30,8 +36,8 @@ function Root() {
 
   if (!boot)
     return (
-      <div className="text-muted-foreground grid h-full place-items-center text-[2rem] tracking-widest">
-        FilDOS
+      <div className="grid h-full place-items-center">
+        <Wordmark className="text-[2rem] opacity-90" />
       </div>
     );
   return <App initialPath={boot.path} initialPrefs={boot.prefs} />;

@@ -23,7 +23,7 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 ];
 
 const cellClass =
-  'overflow-hidden px-2.5 text-ellipsis whitespace-nowrap text-muted-foreground group-data-selected:text-white/85';
+  'overflow-hidden px-2.5 text-ellipsis whitespace-nowrap text-muted-foreground';
 
 const STATE =
   'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
@@ -114,7 +114,7 @@ export function FileList({
                 className={cn(
                   GRID,
                   'group border-b border-transparent hover:bg-accent',
-                  selected && 'bg-primary text-white hover:bg-primary',
+                  selected && 'bg-primary/15 hover:bg-primary/15',
                   entry.isHidden && 'opacity-55',
                   dropTarget === entry.path &&
                     'bg-accent ring-2 ring-inset ring-primary',
@@ -163,7 +163,7 @@ export function FileList({
                   onContextMenu(entry, e.clientX, e.clientY);
                 }}
               >
-                <div className="text-foreground flex items-center gap-2 overflow-hidden px-2.5 group-data-selected:text-white">
+                <div className="text-foreground flex items-center gap-2 overflow-hidden px-2.5">
                   <img
                     src={fileLogo(entry)}
                     alt=""
