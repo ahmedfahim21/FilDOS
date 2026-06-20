@@ -216,3 +216,22 @@ export interface ViewsApi {
   get(path: string): Promise<Result<FolderView | null>>;
   set(path: string, view: FolderView): Promise<Result<void>>;
 }
+
+/** A connected cloud account stored in the accounts table. */
+export interface AccountRecord {
+  id: string;
+  provider: string;
+  /** Display name, e.g. the user's email address. */
+  label: string;
+  createdAt: number;
+}
+
+/** The API surface exposed on `window.cloud` by the preload bridge. */
+export interface CloudApi {
+  /** Start an OAuth flow for the given provider; returns the saved account. */
+  connect(providerId: string): Promise<Result<AccountRecord>>;
+  /** All stored cloud accounts. */
+  listAccounts(): Promise<Result<AccountRecord[]>>;
+  /** Remove an account and its stored credentials. */
+  disconnect(accountId: string): Promise<Result<void>>;
+}

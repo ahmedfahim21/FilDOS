@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFsHandlers } from './fs/handlers';
+import { registerCloudHandlers } from './cloud/handlers';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -49,6 +51,7 @@ async function createWindow(): Promise<void> {
 app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   registerFsHandlers();
+  registerCloudHandlers();
   createWindow();
 
   app.on('activate', () => {

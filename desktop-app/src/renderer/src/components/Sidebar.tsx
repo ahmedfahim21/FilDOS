@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react';
-import type { DriveItem, QuickAccessItem, Tag } from '@shared/types';
+import { ConfirmDialog } from './Dialog';
+import type { AccountRecord, DriveItem, QuickAccessItem, Tag } from '@shared/types';
+import { formatRemote } from '@shared/remote';
 import { useNavigation, type NavPage } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { TagDot } from './TagDots';
+
+const PROVIDER_NAMES: Record<string, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+  mega: 'Mega',
+};
 
 const itemClass = (active = false, drop = false) =>
   cn(
@@ -24,28 +33,33 @@ function formatBytes(bytes: number): string {
 export function Sidebar({
   tags,
   activePage,
+  cloudKey,
   onDropPath,
   onOpenTag,
   onOpenRecents,
   onOpenTrash,
+  onOpenCloudConnect,
   onDropOnTag,
 }: {
   tags: Tag[];
-  /** The metadata page currently in view, so its entry is highlighted. */
   activePage: NavPage | null;
+  /** Bump to force cloud accounts to re-fetch (after connect/disconnect). */
+  cloudKey: number;
   onDropPath: (path: string, e: DragEvent) => void;
   onOpenTag: (tag: Tag) => void;
   onOpenRecents: () => void;
   onOpenTrash: () => void;
-  /** Drop files onto a tag in the sidebar to apply it. */
+  onOpenCloudConnect: () => void;
   onDropOnTag: (tag: Tag, e: DragEvent) => void;
 }) {
   const { currentPath, navigate } = useNavigation();
   const { notifyError } = useToast();
   const [items, setItems] = useState<QuickAccessItem[]>([]);
   const [drives, setDrives] = useState<DriveItem[]>([]);
+  const [cloudAccounts, setCloudAccounts] = useState<AccountRecord[]>([]);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [ejectingPath, setEjectingPath] = useState<string | null>(null);
+  const [pendingDisconnect, setPendingDisconnect] = useState<AccountRecord | null>(null);
 
   useEffect(() => {
     window.fsapi.quickAccess().then((result) => {
@@ -53,6 +67,17 @@ export function Sidebar({
       else notifyError(result.error);
     });
   }, [notifyError]);
+
+  const refreshCloudAccounts = useCallback(() => {
+    window.cloud.listAccounts().then((result) => {
+      if (result.ok) setCloudAccounts(result.data);
+    });
+  }, []);
+
+  // Re-fetch on mount and whenever the parent signals a change (connect/disconnect).
+  useEffect(() => {
+    refreshCloudAccounts();
+  }, [refreshCloudAccounts, cloudKey]);
 
   const refreshDrives = useCallback(() => {
     window.fsapi.drives().then((result) => {
@@ -80,6 +105,7 @@ export function Sidebar({
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
       <Logo className="px-2 pt-1 pb-4 text-lg" />
+
       <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (
@@ -178,6 +204,47 @@ export function Sidebar({
         </>
       )}
 
+      {/* Cloud accounts */}
+      <div className={cn(title, 'mt-3')}>Cloud</div>
+      <nav>
+        {cloudAccounts.map((account) => {
+          const accountRoot = formatRemote(account.provider, account.id, '');
+          const isActive = !activePage && currentPath === accountRoot;
+          return (
+            <div key={account.id} className="group relative flex items-center">
+              <button
+                className={cn(itemClass(isActive), 'flex-1 pr-6')}
+                onClick={() => navigate(accountRoot)}
+                title={`${account.label} (${account.provider})`}
+              >
+                <Icon name="cloud" size={16} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{account.label}</div>
+                  <div className="text-muted-foreground truncate text-[10px]">
+                    {PROVIDER_NAMES[account.provider] ?? account.provider}
+                  </div>
+                </div>
+              </button>
+              <button
+                className="text-muted-foreground absolute right-1 rounded p-0.5 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                title={`Disconnect ${account.label}`}
+                onClick={() => setPendingDisconnect(account)}
+              >
+                <Icon name="close" size={13} />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          className={itemClass(activePage?.kind === 'cloud-connect')}
+          onClick={onOpenCloudConnect}
+          title="Connect a cloud account"
+        >
+          <Icon name="plus" size={16} />
+          <span>Connect…</span>
+        </button>
+      </nav>
+
       {tags.length > 0 && (
         <>
           <div className={cn(title, 'mt-3')}>Tags</div>
@@ -233,6 +300,23 @@ export function Sidebar({
         <Icon name="trash" size={16} />
         <span>Trash</span>
       </button>
+
+      {pendingDisconnect && (
+        <ConfirmDialog
+          title="Disconnect account?"
+          message={`"${pendingDisconnect.label}" (${PROVIDER_NAMES[pendingDisconnect.provider] ?? pendingDisconnect.provider}) will be removed. You can reconnect at any time.`}
+          confirmLabel="Disconnect"
+          danger
+          onCancel={() => setPendingDisconnect(null)}
+          onConfirm={async () => {
+            const account = pendingDisconnect;
+            setPendingDisconnect(null);
+            const res = await window.cloud.disconnect(account.id);
+            if (!res.ok) notifyError(res.error);
+            else refreshCloudAccounts();
+          }}
+        />
+      )}
     </aside>
   );
 }

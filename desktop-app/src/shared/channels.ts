@@ -42,6 +42,9 @@ export const Channels = {
   viewsSet: 'views:set',
   drives: 'fs:drives',
   ejectDrive: 'fs:eject',
+  cloudConnect: 'cloud:connect',
+  cloudListAccounts: 'cloud:listAccounts',
+  cloudDisconnect: 'cloud:disconnect',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
