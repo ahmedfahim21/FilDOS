@@ -147,4 +147,27 @@ describe('remote URIs', () => {
       { label: 'c', path: 'dropbox://acc456/a/b/c' },
     ]);
   });
+
+  // name|driveId encoding — the |id suffix is stripped for display
+  it('baseName strips the |id suffix from a name-encoded segment', () => {
+    withSep('/');
+    expect(baseName('gdrive://acc/Documents|1BxiM')).toBe('Documents');
+    expect(baseName('gdrive://acc/Documents|1BxiM/report.pdf|2CyiN')).toBe('report.pdf');
+  });
+
+  it('parentOf works correctly with name|id encoded segments', () => {
+    withSep('/');
+    expect(parentOf('gdrive://acc/Documents|1BxiM/report.pdf|2CyiN')).toBe(
+      'gdrive://acc/Documents|1BxiM',
+    );
+    expect(parentOf('gdrive://acc/Documents|1BxiM')).toBe('gdrive://acc/');
+  });
+
+  it('segments shows human names (strips |id) in breadcrumb labels', () => {
+    withSep('/');
+    expect(segments('gdrive://acc/Documents|1BxiM/report.pdf|2CyiN')).toEqual([
+      { label: 'acc', path: 'gdrive://acc/' },
+      { label: 'report.pdf', path: 'gdrive://acc/Documents|1BxiM/report.pdf|2CyiN' },
+    ]);
+  });
 });

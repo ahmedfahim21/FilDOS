@@ -39,6 +39,12 @@ export async function getToken(accountId: string): Promise<OAuthToken | null> {
   return JSON.parse(decrypted) as OAuthToken;
 }
 
+/** Overwrite the stored token for an account (called after a successful refresh). */
+export async function updateToken(accountId: string, token: OAuthToken): Promise<void> {
+  const encrypted = safeStorage.encryptString(JSON.stringify(token)).toString('base64');
+  await db().update(accounts).set({ token: encrypted }).where(eq(accounts.id, accountId));
+}
+
 /** Remove an account and its encrypted token. */
 export async function deleteAccount(accountId: string): Promise<void> {
   await db().delete(accounts).where(eq(accounts.id, accountId));

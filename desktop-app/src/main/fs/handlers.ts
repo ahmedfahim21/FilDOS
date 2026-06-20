@@ -1,5 +1,7 @@
 import { app, ipcMain, nativeImage, shell } from 'electron';
-import { basename, sep } from 'node:path';
+import { basename, join, sep } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { Channels } from '@shared/channels';
 import type { AppError, Entry, FolderView, Result } from '@shared/types';
 import { isRemote, parseRemote } from '@shared/remote';
@@ -38,8 +40,15 @@ function toAppError(err: unknown): AppError {
     EINVAL: e?.message || 'Invalid input.',
     ENAMETOOLONG: 'The name is too long.',
     EBUSY: 'The item is in use by another program.',
+    EAUTH: e?.message || 'Session expired. Please reconnect this account.',
   };
   return { code, message: messages[code] ?? e?.message ?? 'Something went wrong.' };
+}
+
+function notSupported(op: string): NodeJS.ErrnoException {
+  const err = new Error(`${op} is not supported for cloud storage.`) as NodeJS.ErrnoException;
+  err.code = 'EINVAL';
+  return err;
 }
 
 /** Run an async operation and wrap it in the Result discriminated union. */
@@ -53,73 +62,104 @@ async function wrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
 
 const { assertValidPath } = service;
 
+/** Like assertValidPath but passes remote URIs through unchanged. */
+const validatePath = (p: string) => (isRemote(p) ? p : assertValidPath(p));
+
+/** Resolve a remote URI to its provider + ref, throwing if unknown. */
+function remoteOp<T>(
+  path: string,
+  fn: (provider: NonNullable<ReturnType<typeof getProvider>>, ref: NonNullable<ReturnType<typeof parseRemote>>) => Promise<T>,
+): Promise<Result<T>> {
+  return wrap(async () => {
+    const ref = parseRemote(path);
+    if (!ref) throw Object.assign(new Error('Invalid remote URI.'), { code: 'EINVAL' });
+    const provider = getProvider(ref.provider);
+    if (!provider)
+      throw Object.assign(
+        new Error(`No provider registered for '${ref.provider}'. Connect an account first.`),
+        { code: 'ENOENT' },
+      );
+    return fn(provider, ref);
+  });
+}
+
 /** Register every FS IPC handler. Call once after app is ready. */
 export function registerFsHandlers(): void {
   ipcMain.handle(Channels.listDir, (_e, path: string) => {
-    if (isRemote(path)) {
-      return wrap(async (): Promise<Entry[]> => {
-        const ref = parseRemote(path);
-        if (!ref) {
-          const err = new Error('Invalid remote URI.') as NodeJS.ErrnoException;
-          err.code = 'EINVAL';
-          throw err;
-        }
-        const provider = getProvider(ref.provider);
-        if (!provider) {
-          const err = new Error(
-            `No provider registered for '${ref.provider}'. Connect an account first.`,
-          ) as NodeJS.ErrnoException;
-          err.code = 'ENOENT';
-          throw err;
-        }
-        return provider.listDir(ref.accountId, ref.path);
-      });
-    }
+    if (isRemote(path)) return remoteOp(path, (p, ref) => p.listDir(ref.accountId, ref.path));
     return wrap(() => service.listDir(assertValidPath(path)));
   });
 
-  ipcMain.handle(Channels.getInfo, (_e, path: string) =>
-    wrap(() => service.getInfo(assertValidPath(path))),
-  );
+  ipcMain.handle(Channels.getInfo, (_e, path: string) => {
+    if (isRemote(path)) return remoteOp(path, (p, ref) => p.getInfo(ref.accountId, ref.path));
+    return wrap(() => service.getInfo(assertValidPath(path)));
+  });
 
-  ipcMain.handle(Channels.createFolder, (_e, parentPath: string, name: string) =>
-    wrap(() => service.createFolder(assertValidPath(parentPath), name)),
-  );
+  ipcMain.handle(Channels.createFolder, (_e, parentPath: string, name: string) => {
+    if (isRemote(parentPath))
+      return remoteOp(parentPath, (p, ref) => p.createFolder(ref.accountId, ref.path, name));
+    return wrap(() => service.createFolder(assertValidPath(parentPath), name));
+  });
 
-  ipcMain.handle(Channels.createFile, (_e, parentPath: string, name: string) =>
-    wrap(() => service.createFile(assertValidPath(parentPath), name)),
-  );
+  ipcMain.handle(Channels.createFile, (_e, parentPath: string, name: string) => {
+    if (isRemote(parentPath)) return wrap(async () => { throw notSupported('Creating files'); });
+    return wrap(() => service.createFile(assertValidPath(parentPath), name));
+  });
 
-  ipcMain.handle(Channels.rename, (_e, path: string, newName: string) =>
-    wrap(async () => {
+  ipcMain.handle(Channels.rename, (_e, path: string, newName: string) => {
+    if (isRemote(path)) {
+      return remoteOp(path, async (p, ref) => {
+        const entry = await p.rename(ref.accountId, ref.path, newName);
+        remapPaths(path, entry.path, '/');
+        return entry;
+      });
+    }
+    return wrap(async () => {
       const from = assertValidPath(path);
       const entry = await service.rename(from, newName);
-      remapPaths(from, entry.path, sep); // keep tags/recents/views attached
+      remapPaths(from, entry.path, sep);
       return entry;
-    }),
-  );
+    });
+  });
 
-  ipcMain.handle(Channels.copy, (_e, paths: string[], destDir: string) =>
-    wrap(() => service.copy(paths.map(assertValidPath), assertValidPath(destDir))),
-  );
+  ipcMain.handle(Channels.copy, (_e, paths: string[], destDir: string) => {
+    if (paths.some(isRemote) || isRemote(destDir))
+      return remoteOp(paths[0] ?? destDir, (p, ref) =>
+        p.copy(ref.accountId, paths.map((x) => parseRemote(x)!.path), parseRemote(destDir)!.path),
+      );
+    return wrap(() => service.copy(paths.map(assertValidPath), assertValidPath(destDir)));
+  });
 
-  ipcMain.handle(Channels.move, (_e, paths: string[], destDir: string) =>
-    wrap(async () => {
+  ipcMain.handle(Channels.move, (_e, paths: string[], destDir: string) => {
+    if (paths.some(isRemote) || isRemote(destDir)) {
+      return remoteOp(paths[0] ?? destDir, async (p, ref) => {
+        const srcPaths = paths.map((x) => parseRemote(x)!.path);
+        const moved = await p.move(ref.accountId, srcPaths, parseRemote(destDir)!.path);
+        moved.forEach((entry, i) => remapPaths(paths[i], entry.path, '/'));
+        return moved;
+      });
+    }
+    return wrap(async () => {
       const sources = paths.map(assertValidPath);
       const moved = await service.move(sources, assertValidPath(destDir));
-      // service.move returns entries in source order; remap each old → new.
       moved.forEach((entry, i) => remapPaths(sources[i], entry.path, sep));
       return moved;
-    }),
-  );
+    });
+  });
 
-  ipcMain.handle(Channels.duplicate, (_e, path: string) =>
-    wrap(() => service.duplicate(assertValidPath(path))),
-  );
+  ipcMain.handle(Channels.duplicate, (_e, path: string) => {
+    if (isRemote(path)) return wrap(async () => { throw notSupported('Duplicate'); });
+    return wrap(() => service.duplicate(assertValidPath(path)));
+  });
 
-  ipcMain.handle(Channels.trash, (_e, paths: string[]) =>
-    wrap(() => trashItems(paths.map(assertValidPath))),
-  );
+  ipcMain.handle(Channels.trash, (_e, paths: string[]) => {
+    if (paths.some(isRemote)) {
+      return remoteOp(paths[0], (p, ref) =>
+        p.trash(ref.accountId, paths.map((x) => parseRemote(x)!.path)),
+      );
+    }
+    return wrap(() => trashItems(paths.map(assertValidPath)));
+  });
 
   ipcMain.handle(Channels.listTrashed, () => wrap(() => listTrashed()));
 
@@ -131,40 +171,49 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle(Channels.openOsTrash, () => wrap(() => openOsTrash()));
 
-  ipcMain.handle(Channels.open, (_e, path: string) =>
-    wrap(async () => {
+  ipcMain.handle(Channels.open, (_e, path: string) => {
+    if (isRemote(path)) {
+      return remoteOp(path, async (p, ref) => {
+        const info = await p.getInfo(ref.accountId, ref.path);
+        const tempDir = join(app.getPath('temp'), `fildos-${randomUUID()}`);
+        await mkdir(tempDir, { recursive: true });
+        const localPath = await p.download(ref.accountId, ref.path, join(tempDir, info.name));
+        const errMsg = await shell.openPath(localPath);
+        if (errMsg) throw Object.assign(new Error(errMsg), { code: 'EUNKNOWN' });
+        await recents.recordOpen(path, info.name);
+      });
+    }
+    return wrap(async () => {
       const target = assertValidPath(path);
       const errMsg = await shell.openPath(target);
-      if (errMsg) {
-        const err = new Error(errMsg) as NodeJS.ErrnoException;
-        err.code = 'EUNKNOWN';
-        throw err;
-      }
+      if (errMsg) throw Object.assign(new Error(errMsg), { code: 'EUNKNOWN' });
       await recents.recordOpen(target, basename(target));
-    }),
-  );
+    });
+  });
 
-  ipcMain.handle(Channels.reveal, (_e, path: string) =>
-    wrap(async () => {
-      shell.showItemInFolder(assertValidPath(path));
-    }),
-  );
+  ipcMain.handle(Channels.reveal, (_e, path: string) => {
+    if (isRemote(path)) return wrap(async () => { throw notSupported('Reveal in Finder'); });
+    return wrap(async () => { shell.showItemInFolder(assertValidPath(path)); });
+  });
 
   ipcMain.handle(Channels.quickAccess, () => wrap(() => quickAccess()));
 
   ipcMain.handle(Channels.getHome, () => wrap(async () => app.getPath('home')));
 
-  ipcMain.handle(Channels.folderSize, (_e, path: string) =>
-    wrap(() => service.folderSize(assertValidPath(path))),
-  );
+  ipcMain.handle(Channels.folderSize, (_e, path: string) => {
+    if (isRemote(path)) return wrap(async (): Promise<number> => 0);
+    return wrap(() => service.folderSize(assertValidPath(path)));
+  });
 
-  ipcMain.handle(Channels.search, (_e, rootPath: string, query: string) =>
-    wrap(() => service.search(assertValidPath(rootPath), query)),
-  );
+  ipcMain.handle(Channels.search, (_e, rootPath: string, query: string) => {
+    if (isRemote(rootPath)) return wrap(async () => { throw notSupported('Search'); });
+    return wrap(() => service.search(assertValidPath(rootPath), query));
+  });
 
-  ipcMain.handle(Channels.thumbnail, (_e, path: string, size: number) =>
-    wrap(() => thumbnail(assertValidPath(path), size)),
-  );
+  ipcMain.handle(Channels.thumbnail, (_e, path: string, size: number) => {
+    if (isRemote(path)) return remoteOp(path, (p, ref) => p.thumbnail(ref.accountId, ref.path, size));
+    return wrap(() => thumbnail(assertValidPath(path), size));
+  });
 
   // Fire-and-forget: point the live watcher at the given directory.
   ipcMain.handle(Channels.watchSet, (e, path: string) => {
@@ -175,7 +224,7 @@ export function registerFsHandlers(): void {
   ipcMain.handle(Channels.prefsGet, () => getPrefs());
   ipcMain.handle(Channels.prefsSet, (_e, patch: Prefs) => setPrefs(patch));
 
-  // --- Tags ---
+  // --- Tags (validatePath lets remote URIs pass through) ---
   ipcMain.handle(Channels.tagsList, () => wrap(async () => tags.listTags()));
 
   ipcMain.handle(Channels.tagsCreate, (_e, name: string, color?: string) =>
@@ -191,26 +240,27 @@ export function registerFsHandlers(): void {
   );
 
   ipcMain.handle(Channels.tagsAssign, (_e, paths: string[], tagId: number) =>
-    wrap(async () => tags.assignTag(paths.map(assertValidPath), tagId)),
+    wrap(async () => tags.assignTag(paths.map(validatePath), tagId)),
   );
 
   ipcMain.handle(Channels.tagsUnassign, (_e, paths: string[], tagId: number) =>
-    wrap(async () => tags.unassignTag(paths.map(assertValidPath), tagId)),
+    wrap(async () => tags.unassignTag(paths.map(validatePath), tagId)),
   );
 
   ipcMain.handle(Channels.tagsForPaths, (_e, paths: string[]) =>
-    wrap(async () => tags.tagsForPaths(paths.map(assertValidPath))),
+    wrap(async () => tags.tagsForPaths(paths.map(validatePath))),
   );
 
-  // Entries carrying a tag: stat each stored path, prune the ones that are gone.
+  // Entries carrying a tag: only stat local paths; remote URIs are assumed live.
   ipcMain.handle(Channels.tagsFiles, (_e, tagId: number) =>
     wrap(async () => {
       const paths = await tags.pathsForTag(tagId);
-      // Stat in parallel but keep pathsForTag's most-recently-tagged order.
       const infos = await Promise.all(
-        paths.map((p): Promise<Entry | null> => service.getInfo(p).catch(() => null)),
+        paths.map((p): Promise<Entry | null> =>
+          isRemote(p) ? Promise.resolve(null) : service.getInfo(p).catch(() => null),
+        ),
       );
-      const dead = paths.filter((_, i) => infos[i] === null);
+      const dead = paths.filter((p, i) => !isRemote(p) && infos[i] === null);
       if (dead.length) await tags.pruneTaggedPaths(dead);
       return infos.filter((e): e is Entry => e !== null);
     }),
@@ -220,7 +270,10 @@ export function registerFsHandlers(): void {
   ipcMain.handle(Channels.recentsList, (_e, limit?: number) =>
     wrap(async () => {
       const items = await recents.listRecents(limit);
-      const exists = await Promise.all(items.map((item) => service.pathExists(item.path)));
+      // Only prune local paths; remote URIs can't be stat-checked cheaply.
+      const exists = await Promise.all(
+        items.map((item) => isRemote(item.path) ? Promise.resolve(true) : service.pathExists(item.path)),
+      );
       const dead = items.filter((_, i) => !exists[i]).map((item) => item.path);
       if (dead.length) await recents.removeRecents(dead);
       return items.filter((_, i) => exists[i]);
@@ -228,18 +281,18 @@ export function registerFsHandlers(): void {
   );
 
   ipcMain.handle(Channels.recentsRemove, (_e, path: string) =>
-    wrap(async () => recents.removeRecents([assertValidPath(path)])),
+    wrap(async () => recents.removeRecents([validatePath(path)])),
   );
 
   ipcMain.handle(Channels.recentsClear, () => wrap(async () => recents.clearRecents()));
 
   // --- Per-folder view settings ---
   ipcMain.handle(Channels.viewsGet, (_e, path: string) =>
-    wrap(async () => getFolderView(assertValidPath(path))),
+    wrap(async () => getFolderView(validatePath(path))),
   );
 
   ipcMain.handle(Channels.viewsSet, (_e, path: string, view: FolderView) =>
-    wrap(async () => setFolderView(assertValidPath(path), view)),
+    wrap(async () => setFolderView(validatePath(path), view)),
   );
 
   // --- Drives ---

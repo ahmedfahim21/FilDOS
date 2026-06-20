@@ -16,7 +16,8 @@ export interface Provider {
   move(accountId: string, paths: string[], destPath: string): Promise<Entry[]>;
   copy(accountId: string, paths: string[], destPath: string): Promise<Entry[]>;
   trash(accountId: string, paths: string[]): Promise<void>;
-  download(accountId: string, remotePath: string, localDest: string): Promise<void>;
+  /** Download a remote file to localDest; returns the actual path written (may differ for Workspace exports). */
+  download(accountId: string, remotePath: string, localDest: string): Promise<string>;
   upload(accountId: string, localPath: string, remoteDest: string): Promise<Entry>;
   thumbnail(accountId: string, path: string, size: number): Promise<string | null>;
 }

@@ -40,6 +40,15 @@ export function parentOf(p: string): string {
   return cleaned.slice(0, idx);
 }
 
+/**
+ * Strip the opaque "|driveId" suffix from a remote path segment.
+ * Segments use "displayName|opaqueId" encoding so the human name is recoverable.
+ */
+function remoteLabel(seg: string): string {
+  const bar = seg.lastIndexOf('|');
+  return bar === -1 ? seg : seg.slice(0, bar);
+}
+
 /** Last path component. */
 export function baseName(p: string): string {
   if (isRemote(p)) {
@@ -48,7 +57,8 @@ export function baseName(p: string): string {
     const { accountId, path } = ref;
     if (!path) return accountId;
     const idx = path.lastIndexOf('/');
-    return idx === -1 ? path : path.slice(idx + 1);
+    const seg = idx === -1 ? path : path.slice(idx + 1);
+    return remoteLabel(seg);
   }
 
   const s = sep();
@@ -70,8 +80,8 @@ export function segments(p: string): { label: string; path: string }[] {
     const root = formatRemote(provider, accountId, '');
     const segs: { label: string; path: string }[] = [{ label: accountId, path: root }];
     if (path) {
-      const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
-      segs.push({ label: name, path: p });
+      const seg = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+      segs.push({ label: remoteLabel(seg), path: p });
     }
     return segs;
   }
