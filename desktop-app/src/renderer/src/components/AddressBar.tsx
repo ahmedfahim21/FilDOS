@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { isRemote } from '@shared/remote';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { segments } from '@/lib/path';
@@ -15,7 +16,18 @@ export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
   const { notify } = useToast();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(currentPath);
+  const [accountLabels, setAccountLabels] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch account labels once on mount so remote breadcrumbs show email instead of UUID.
+  useEffect(() => {
+    window.cloud.listAccounts().then((result) => {
+      if (!result.ok) return;
+      const map: Record<string, string> = {};
+      for (const acc of result.data) map[acc.id] = acc.label;
+      setAccountLabels(map);
+    });
+  }, []);
 
   const startEdit = () => {
     setValue(currentPath);
@@ -77,7 +89,11 @@ export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
     );
   }
 
-  const crumbs = segments(currentPath);
+  const rawCrumbs = segments(currentPath);
+  const crumbs =
+    isRemote(currentPath) && rawCrumbs.length > 0
+      ? [{ ...rawCrumbs[0], label: accountLabels[rawCrumbs[0].label] ?? rawCrumbs[0].label }, ...rawCrumbs.slice(1)]
+      : rawCrumbs;
   return (
     <div
       className="group flex flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap [-webkit-app-region:no-drag]"

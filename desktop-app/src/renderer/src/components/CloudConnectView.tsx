@@ -12,7 +12,7 @@ import megaLogo from '@/assets/cloud/mega.webp';
 interface ProviderDef {
   id: string;
   name: string;
-  tagline: string;
+  url: string;
   logo?: string;
   available: boolean;
 }
@@ -21,28 +21,28 @@ const PROVIDERS: ProviderDef[] = [
   {
     id: 'gdrive',
     name: 'Google Drive',
-    tagline: '15 GB free with Google account',
+    url: 'https://drive.google.com',
     logo: gdriveLogo,
     available: true,
   },
   {
     id: 'dropbox',
     name: 'Dropbox',
-    tagline: '2 GB free, expandable',
+    url: 'https://www.dropbox.com',
     logo: dropboxLogo,
     available: true,
   },
   {
     id: 'onedrive',
     name: 'OneDrive',
-    tagline: 'Microsoft · 5 GB free',
+    url: 'https://onedrive.live.com',
     logo: onedriveLogo,
     available: false,
   },
   {
     id: 'mega',
     name: 'Mega',
-    tagline: '20 GB free, end-to-end encrypted',
+    url: 'https://mega.io',
     logo: megaLogo,
     available: false,
   },
@@ -95,7 +95,15 @@ function ProviderCard({
         )}
         <div className="min-w-0">
           <div className="text-foreground truncate text-sm font-medium">{provider.name}</div>
-          <div className="text-muted-foreground truncate text-[11px]">{provider.tagline}</div>
+          <a
+            href={provider.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary truncate text-[11px] hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {provider.url.replace(/^https?:\/\//, '')}
+          </a>
         </div>
       </div>
 
