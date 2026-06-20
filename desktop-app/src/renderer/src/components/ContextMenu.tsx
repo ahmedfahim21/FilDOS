@@ -53,6 +53,8 @@ interface ContextMenuProps {
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (key: SortKey) => void;
+  /** True when the current directory (or selection) is a remote cloud path. */
+  remote?: boolean;
 }
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -63,7 +65,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 
 export function ContextMenu(props: ContextMenuProps) {
-  const { state, onClose, count, canPaste, showHidden } = props;
+  const { state, onClose, count, canPaste, showHidden, remote } = props;
   const single = count === 1;
   const revealLabel = `Reveal in ${window.platform?.os === 'darwin' ? 'Finder' : 'Explorer'}`;
 
@@ -100,9 +102,11 @@ export function ContextMenu(props: ContextMenuProps) {
             <DropdownMenuItem onSelect={props.onOpen} disabled={!single}>
               <Icon name="open" /> Open
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={props.onReveal} disabled={!single}>
-              <Icon name="reveal" /> {revealLabel}
-            </DropdownMenuItem>
+            {!remote && (
+              <DropdownMenuItem onSelect={props.onReveal} disabled={!single}>
+                <Icon name="reveal" /> {revealLabel}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onCopy}>
               <Icon name="copy" /> Copy{count > 1 ? ` (${count})` : ''}
@@ -113,9 +117,11 @@ export function ContextMenu(props: ContextMenuProps) {
             <DropdownMenuItem onSelect={props.onPaste} disabled={!canPaste}>
               <Icon name="paste" /> Paste
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={props.onDuplicate} disabled={!single}>
-              <Icon name="copy" /> Duplicate
-            </DropdownMenuItem>
+            {!remote && (
+              <DropdownMenuItem onSelect={props.onDuplicate} disabled={!single}>
+                <Icon name="copy" /> Duplicate
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -158,9 +164,11 @@ export function ContextMenu(props: ContextMenuProps) {
             <DropdownMenuItem onSelect={props.onNewFolder}>
               <Icon name="new-folder" /> New Folder
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={props.onNewFile}>
-              <Icon name="file-plus" /> New File
-            </DropdownMenuItem>
+            {!remote && (
+              <DropdownMenuItem onSelect={props.onNewFile}>
+                <Icon name="file-plus" /> New File
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={props.onPaste} disabled={!canPaste}>
               <Icon name="paste" /> Paste
             </DropdownMenuItem>

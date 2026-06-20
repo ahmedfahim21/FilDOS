@@ -123,18 +123,34 @@ export function registerFsHandlers(): void {
   });
 
   ipcMain.handle(Channels.copy, (_e, paths: string[], destDir: string) => {
-    if (paths.some(isRemote) || isRemote(destDir))
-      return remoteOp(paths[0] ?? destDir, (p, ref) =>
-        p.copy(ref.accountId, paths.map((x) => parseRemote(x)!.path), parseRemote(destDir)!.path),
+    const hasRemoteSrc = paths.some(isRemote);
+    const hasRemoteDest = isRemote(destDir);
+    if (hasRemoteSrc !== hasRemoteDest)
+      return wrap(async () => { throw notSupported('Copying between local and cloud storage'); });
+    if (hasRemoteSrc) {
+      const srcRef = parseRemote(paths[0]);
+      const dstRef = parseRemote(destDir);
+      if (!srcRef || !dstRef || srcRef.provider !== dstRef.provider || srcRef.accountId !== dstRef.accountId)
+        return wrap(async () => { throw notSupported('Copying between different cloud accounts'); });
+      return remoteOp(paths[0], (p, ref) =>
+        p.copy(ref.accountId, paths.map((x) => parseRemote(x)!.path), dstRef.path),
       );
+    }
     return wrap(() => service.copy(paths.map(assertValidPath), assertValidPath(destDir)));
   });
 
   ipcMain.handle(Channels.move, (_e, paths: string[], destDir: string) => {
-    if (paths.some(isRemote) || isRemote(destDir)) {
-      return remoteOp(paths[0] ?? destDir, async (p, ref) => {
-        const srcPaths = paths.map((x) => parseRemote(x)!.path);
-        const moved = await p.move(ref.accountId, srcPaths, parseRemote(destDir)!.path);
+    const hasRemoteSrc = paths.some(isRemote);
+    const hasRemoteDest = isRemote(destDir);
+    if (hasRemoteSrc !== hasRemoteDest)
+      return wrap(async () => { throw notSupported('Moving between local and cloud storage'); });
+    if (hasRemoteSrc) {
+      const srcRef = parseRemote(paths[0]);
+      const dstRef = parseRemote(destDir);
+      if (!srcRef || !dstRef || srcRef.provider !== dstRef.provider || srcRef.accountId !== dstRef.accountId)
+        return wrap(async () => { throw notSupported('Moving between different cloud accounts'); });
+      return remoteOp(paths[0], async (p, ref) => {
+        const moved = await p.move(ref.accountId, paths.map((x) => parseRemote(x)!.path), dstRef.path);
         moved.forEach((entry, i) => remapPaths(paths[i], entry.path, '/'));
         return moved;
       });
@@ -251,15 +267,23 @@ export function registerFsHandlers(): void {
     wrap(async () => tags.tagsForPaths(paths.map(validatePath))),
   );
 
-  // Entries carrying a tag: only stat local paths; remote URIs are assumed live.
+  // Entries carrying a tag: route remote paths through their provider; prune dead local paths.
   ipcMain.handle(Channels.tagsFiles, (_e, tagId: number) =>
     wrap(async () => {
       const paths = await tags.pathsForTag(tagId);
       const infos = await Promise.all(
-        paths.map((p): Promise<Entry | null> =>
-          isRemote(p) ? Promise.resolve(null) : service.getInfo(p).catch(() => null),
-        ),
+        paths.map((p): Promise<Entry | null> => {
+          if (isRemote(p)) {
+            const ref = parseRemote(p);
+            if (!ref) return Promise.resolve(null);
+            const provider = getProvider(ref.provider);
+            if (!provider) return Promise.resolve(null);
+            return provider.getInfo(ref.accountId, ref.path).catch(() => null);
+          }
+          return service.getInfo(p).catch(() => null);
+        }),
       );
+      // Only prune local dead paths; disconnected remote accounts shouldn't lose tags.
       const dead = paths.filter((p, i) => !isRemote(p) && infos[i] === null);
       if (dead.length) await tags.pruneTaggedPaths(dead);
       return infos.filter((e): e is Entry => e !== null);
