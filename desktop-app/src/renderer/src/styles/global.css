@@ -43,70 +43,85 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* FilDOS type system: Space Grotesk for UI/display, Space Mono for the
+   * wordmark, file paths, CIDs and other technical/code text. */
+  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Raw brand palette (FilDOS Brand Guidelines) for direct use where a token
+   * doesn't map: bg-azure, text-mist, etc. */
+  --color-azure: #0295f6;
+  --color-ink: #0c1322;
+  --color-mist: #7c87a6;
+  --color-cloud: #f0f1f5;
 }
 
 :root {
   --radius: 0.625rem;
   color-scheme: light dark;
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
+  /* Light mode: White canvas, Cloud surfaces, Ink text, Mist secondary. */
+  --background: #ffffff;
+  --foreground: #0f1117;
+  --card: #ffffff;
+  --card-foreground: #0f1117;
+  --popover: #ffffff;
+  --popover-foreground: #0f1117;
   --primary: #0295f6;
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --success: oklch(0.59 0.13 152);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.871 0.006 286.286);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --primary-foreground: #ffffff;
+  --secondary: #f0f1f5;
+  --secondary-foreground: #0f1117;
+  --muted: #f0f1f5;
+  --muted-foreground: #7c87a6;
+  --accent: #f0f1f5;
+  --accent-foreground: #0f1117;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --border: #e8eaf0;
+  --input: #e8eaf0;
+  --ring: #0295f6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f1117;
   --sidebar-primary: #0295f6;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.871 0.006 286.286);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f1f5;
+  --sidebar-accent-foreground: #0f1117;
+  --sidebar-border: #e8eaf0;
+  --sidebar-ring: #0295f6;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: oklch(0.17 0.03 265);
-    --foreground: oklch(0.985 0.01 265);
-    --card: oklch(0.2 0.03 265);
-    --card-foreground: oklch(0.985 0.01 265);
-    --popover: oklch(0.2 0.03 265);
-    --popover-foreground: oklch(0.985 0.01 265);
+    /* Dark mode: Ink app shell, lifted Ink cards, light (#eef2fb) text, Mist
+     * secondary, Azure accents — per the brand "Sidebar · dark" context. */
+    --background: #0c1322;
+    --foreground: #eef2fb;
+    --card: #131c30;
+    --card-foreground: #eef2fb;
+    --popover: #131c30;
+    --popover-foreground: #eef2fb;
     --primary: #0295f6;
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.25 0.04 265);
-    --secondary-foreground: oklch(0.985 0.01 265);
-    --muted: oklch(0.25 0.04 265);
-    --muted-foreground: oklch(0.7 0.04 265);
-    --accent: oklch(0.25 0.04 265);
-    --accent-foreground: oklch(0.985 0.01 265);
-    --destructive: oklch(0.396 0.141 25.723);
-    --success: oklch(0.7 0.15 152);
-    --border: oklch(0.25 0.04 265);
-    --input: oklch(0.25 0.04 265);
-    --ring: oklch(0.442 0.017 265);
-    --sidebar: oklch(0.17 0.03 265);
-    --sidebar-foreground: oklch(0.985 0.01 265);
+    --primary-foreground: #ffffff;
+    --secondary: #1c2740;
+    --secondary-foreground: #eef2fb;
+    --muted: #1c2740;
+    --muted-foreground: #7c87a6;
+    --accent: #1c2740;
+    --accent-foreground: #eef2fb;
+    --destructive: #f87171;
+    --success: #4ade80;
+    --border: #24304d;
+    --input: #24304d;
+    --ring: #0295f6;
+    --sidebar: #0c1322;
+    --sidebar-foreground: #eef2fb;
     --sidebar-primary: #0295f6;
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.25 0.04 265);
-    --sidebar-accent-foreground: oklch(0.985 0.01 265);
-    --sidebar-border: oklch(0.25 0.04 265);
-    --sidebar-ring: oklch(0.442 0.017 265);
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #1c2740;
+    --sidebar-accent-foreground: #eef2fb;
+    --sidebar-border: #24304d;
+    --sidebar-ring: #0295f6;
   }
 }
 
@@ -128,7 +143,7 @@ body,
 }
 
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   color: var(--foreground);
   background: var(--background);

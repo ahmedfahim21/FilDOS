@@ -17,9 +17,9 @@ const TILE: Record<
   IconSize,
   { width: number; height: number; thumb: number; preview: number; logo: number }
 > = {
-  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 34 },
-  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 44 },
-  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 64 },
+  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 26 },
+  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 34 },
+  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 48 },
 };
 
 const STATE =
@@ -178,7 +178,7 @@ function GridTile({
       draggable
       className={cn(
         'flex cursor-default flex-col items-center gap-1.5 rounded-lg p-1.5 hover:bg-accent',
-        selected && 'bg-primary text-white hover:bg-primary',
+        selected && 'bg-primary/15 ring-1 ring-inset ring-primary/40 hover:bg-primary/15',
         entry.isHidden && 'opacity-55',
         over && 'bg-accent ring-2 ring-inset ring-primary',
       )}

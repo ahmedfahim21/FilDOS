@@ -4,6 +4,7 @@ import { useNavigation, type NavPage } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { Logo } from './Logo';
 import { TagDot } from './TagDots';
 
 const itemClass = (active = false, drop = false) =>
@@ -47,7 +48,8 @@ export function Sidebar({
   const title = 'text-muted-foreground px-2 pb-2 text-[11px] tracking-[0.06em] uppercase';
 
   return (
-    <aside className="border-border bg-card flex w-50 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
+    <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
+      <Logo className="px-2 pt-1 pb-4 text-lg" />
       <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (

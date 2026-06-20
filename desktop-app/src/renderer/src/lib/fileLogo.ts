@@ -1,18 +1,18 @@
 import type { Entry } from '@shared/types';
-import audio from '@/assets/logos/audio.png';
-import document from '@/assets/logos/document.png';
-import folder from '@/assets/logos/folder.png';
-import image from '@/assets/logos/image.png';
-import other from '@/assets/logos/other.png';
-import pdf from '@/assets/logos/pdf.png';
-import presentation from '@/assets/logos/presentation.png';
-import spreadsheet from '@/assets/logos/spreadsheet.png';
-import video from '@/assets/logos/video.png';
+import audio from '@/assets/file-icons/audio.svg';
+import document from '@/assets/file-icons/document.svg';
+import folder from '@/assets/file-icons/folder.svg';
+import image from '@/assets/file-icons/image.svg';
+import other from '@/assets/file-icons/others.svg';
+import pdf from '@/assets/file-icons/pdf.svg';
+import presentation from '@/assets/file-icons/presentation.svg';
+import spreadsheet from '@/assets/file-icons/spreadsheet.svg';
+import video from '@/assets/file-icons/video.svg';
 
 /**
- * Maps a lowercase file extension to one of the shared FilDOS type logos
- * (the same artwork the web app uses). Ported from the web app's
- * fileClassification.ts, minus the Google-Drive/upload-only bits.
+ * Maps a lowercase file extension to one of the FilDOS brand type icons
+ * (line-style, Azure-tinted, matching the node-grid mark motif). Ported from
+ * the web app's fileClassification.ts, minus the Google-Drive/upload-only bits.
  */
 const BY_EXT: Record<string, string> = {
   // images & design
