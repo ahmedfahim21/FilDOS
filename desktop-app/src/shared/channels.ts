@@ -40,6 +40,8 @@ export const Channels = {
   recentsClear: 'recents:clear',
   viewsGet: 'views:get',
   viewsSet: 'views:set',
+  drives: 'fs:drives',
+  ejectDrive: 'fs:eject',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
