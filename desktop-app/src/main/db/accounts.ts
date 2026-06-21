@@ -1,19 +1,36 @@
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { safeStorage } from 'electron';
-import { db } from './index';
+import { db, rawDb } from './index';
 import { accounts } from './schema';
 import type { AccountRecord } from '@shared/types';
 import type { OAuthToken } from '../cloud/oauth';
 
-/** Store a new account; returns the saved record (without the token). */
+/**
+ * Save an account. If an account with the same provider + label already exists
+ * (e.g. the user reconnects to pick up new OAuth scopes), update its token in
+ * place rather than creating a duplicate with a new UUID.
+ *
+ * Uses rawDb() for the SELECT + UPDATE to avoid a Drizzle sqlite-proxy bug
+ * where column values returned from `.get()` are mis-encoded in a subsequent
+ * `.where(eq(...))`, producing `"id" - ?` instead of `"id" = ?`.
+ */
 export async function saveAccount(
   provider: string,
   label: string,
   token: OAuthToken,
 ): Promise<AccountRecord> {
-  const id = randomUUID();
   const encrypted = safeStorage.encryptString(JSON.stringify(token)).toString('base64');
+  const existing = rawDb()
+    .prepare('SELECT id, created_at FROM accounts WHERE provider = ? AND label = ?')
+    .get(provider, label) as { id: string; created_at: number } | undefined;
+  if (existing) {
+    rawDb()
+      .prepare('UPDATE accounts SET token = ? WHERE id = ?')
+      .run(encrypted, existing.id);
+    return { id: existing.id, provider, label, createdAt: existing.created_at };
+  }
+  const id = randomUUID();
   const createdAt = Date.now();
   await db().insert(accounts).values({ id, provider, label, token: encrypted, createdAt });
   return { id, provider, label, createdAt };
