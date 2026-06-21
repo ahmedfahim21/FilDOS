@@ -5,6 +5,7 @@ import { registerFsHandlers } from './fs/handlers';
 import { registerCloudHandlers } from './cloud/handlers';
 import { registerProvider } from './cloud/registry';
 import { GDriveProvider } from './cloud/providers/gdrive';
+import { DropboxProvider } from './cloud/providers/dropbox';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -53,6 +54,7 @@ async function createWindow(): Promise<void> {
 app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   registerProvider('gdrive', new GDriveProvider());
+  registerProvider('dropbox', new DropboxProvider());
   registerFsHandlers();
   registerCloudHandlers();
   createWindow();
