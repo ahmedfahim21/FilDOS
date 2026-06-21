@@ -20,6 +20,7 @@ import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
 import { baseName, parentOf } from '@/lib/path';
+import { isRemote } from '@shared/remote';
 import { Sidebar } from '@/components/Sidebar';
 import { Toolbar } from '@/components/Toolbar';
 import { FileList } from '@/components/FileList';
@@ -456,6 +457,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
         onNewFolder={() => setDialog({ kind: 'new-folder' })}
         onNewFile={() => setDialog({ kind: 'new-file' })}
         pageTitle={pageTitle ?? undefined}
+        remote={isRemote(nav.currentPath)}
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar
@@ -543,6 +545,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           sortKey={nav.sort.key}
           sortDir={nav.sort.dir}
           onSort={nav.setSort}
+          remote={isRemote(nav.currentPath)}
         />
       )}
 

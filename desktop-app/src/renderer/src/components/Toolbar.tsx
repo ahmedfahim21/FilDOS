@@ -23,11 +23,14 @@ export function Toolbar({
   onNewFolder,
   onNewFile,
   pageTitle,
+  remote,
 }: {
   onNewFolder: () => void;
   onNewFile: () => void;
   /** When set, a metadata page is shown — folder-only controls are hidden. */
   pageTitle?: React.ReactNode;
+  /** True when browsing remote cloud storage — hides local-only controls. */
+  remote?: boolean;
 }) {
   const {
     back,
@@ -156,9 +159,11 @@ export function Toolbar({
         >
           <Icon name={showHidden ? 'eye' : 'eye-off'} />
         </Button>
-        <Button variant="ghost" size="icon" className="size-8" onClick={onNewFile} title="New file">
-          <Icon name="file-plus" />
-        </Button>
+        {!remote && (
+          <Button variant="ghost" size="icon" className="size-8" onClick={onNewFile} title="New file">
+            <Icon name="file-plus" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" className="size-8" onClick={onNewFolder} title="New folder">
           <Icon name="new-folder" />
         </Button>
