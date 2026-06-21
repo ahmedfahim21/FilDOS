@@ -1,9 +1,20 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { isRemote } from '@shared/remote';
+import { isRemote, parseRemote } from '@shared/remote';
 import { useNavigation } from '@/state/navigation';
 import { useToast } from '@/state/toast';
 import { segments } from '@/lib/path';
 import { cn } from '@/lib/utils';
+import gdriveLogo from '@/assets/cloud/GDrive.png';
+import dropboxLogo from '@/assets/cloud/Dropbox.png';
+import onedriveLogo from '@/assets/cloud/OneDrive.png';
+import megaLogo from '@/assets/cloud/mega.webp';
+
+const PROVIDER_LOGOS: Record<string, string> = {
+  gdrive: gdriveLogo,
+  dropbox: dropboxLogo,
+  onedrive: onedriveLogo,
+  mega: megaLogo,
+};
 
 /**
  * Breadcrumb trail that flips into an editable path field on double-click or
@@ -94,12 +105,18 @@ export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
     isRemote(currentPath) && rawCrumbs.length > 0
       ? [{ ...rawCrumbs[0], label: accountLabels[rawCrumbs[0].label] ?? rawCrumbs[0].label }, ...rawCrumbs.slice(1)]
       : rawCrumbs;
+  const providerLogo = isRemote(currentPath)
+    ? PROVIDER_LOGOS[parseRemote(currentPath)?.provider ?? '']
+    : undefined;
   return (
     <div
       className="group flex flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap [-webkit-app-region:no-drag]"
       title={currentPath}
       onDoubleClick={startEdit}
     >
+      {providerLogo && (
+        <img src={providerLogo} alt="" className="ml-1 mr-0.5 size-4 shrink-0 rounded object-contain" />
+      )}
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;
         return (
