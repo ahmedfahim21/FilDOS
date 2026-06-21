@@ -2,8 +2,8 @@ import { extname, basename } from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { Readable } from 'node:stream';
-import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
+import https from 'node:https';
+import type { IncomingMessage } from 'node:http';
 import { formatRemote } from '@shared/remote';
 import type { Entry, FileInfo } from '@shared/types';
 import type { Provider } from '../provider';
@@ -39,8 +39,30 @@ function makeAuthError(msg: string): NodeJS.ErrnoException {
   return Object.assign(new Error(msg), { code: 'EAUTH' });
 }
 
-function throwOnStatus(res: Response, context?: string): void {
+/**
+ * Encode an object as JSON safe for HTTP headers (escape all non-ASCII chars).
+ * The official Dropbox SDK calls this "httpHeaderSafeJson" — without it, paths
+ * containing accented letters or non-Latin scripts produce a malformed header
+ * and Dropbox returns HTTP 400.
+ */
+function headerSafeJson(obj: unknown): string {
+  return JSON.stringify(obj).replace(/[-￿]/g, (c) =>
+    `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
+async function checkStatus(res: Response, context?: string): Promise<void> {
   if (res.ok) return;
+  let detail = '';
+  try {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text) as { error_summary?: string };
+      detail = j.error_summary ?? text.slice(0, 200);
+    } catch {
+      detail = text.slice(0, 200);
+    }
+  } catch { /* body unreadable */ }
   const err = new Error() as NodeJS.ErrnoException;
   switch (res.status) {
     case 401:
@@ -53,7 +75,7 @@ function throwOnStatus(res: Response, context?: string): void {
       break;
     case 409:
       err.code = 'ENOENT';
-      err.message = 'This item no longer exists in Dropbox.';
+      err.message = detail ? `Dropbox: ${detail}` : 'This item no longer exists in Dropbox.';
       break;
     case 429:
       err.code = 'EBUSY';
@@ -61,9 +83,36 @@ function throwOnStatus(res: Response, context?: string): void {
       break;
     default:
       err.code = 'EUNKNOWN';
-      err.message = `Dropbox error${context ? ` (${context})` : ''}: HTTP ${res.status}.`;
+      err.message = `Dropbox error${context ? ` (${context})` : ''}: HTTP ${res.status}${detail ? ` — ${detail}` : ''}.`;
   }
   throw err;
+}
+
+/** POST to a content endpoint without a body — avoids fetch adding Content-Length: 0. */
+function contentRequest(path: string, token: string, apiArg: string): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'content.dropboxapi.com',
+        path: `/2${path}`,
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Dropbox-API-Arg': apiArg },
+      },
+      resolve,
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function collectChunks(stream: IncomingMessage): Promise<Buffer[]> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(chunk as Buffer);
+  return chunks;
+}
+
+async function readStream(stream: IncomingMessage): Promise<string> {
+  return (await collectChunks(stream)).join('').slice(0, 200);
 }
 
 function metaToEntry(m: DbxMetadata, accountId: string): Entry {
@@ -122,7 +171,7 @@ export class DropboxProvider implements Provider {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    throwOnStatus(res, endpoint);
+    await checkStatus(res, endpoint);
     return res.json() as Promise<T>;
   }
 
@@ -238,17 +287,17 @@ export class DropboxProvider implements Provider {
 
   async download(accountId: string, remotePath: string, localDest: string): Promise<string> {
     const token = await this.accessToken(accountId);
-    const res = await fetch(`${CONTENT}/files/download`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Dropbox-API-Arg': JSON.stringify({ path: toDbxPath(remotePath) }),
-      },
-    });
-    throwOnStatus(res, 'download');
-    if (!res.body) throw new Error('Empty response from Dropbox.');
+    // Use https.request instead of fetch — undici adds Content-Length: 0 to no-body
+    // POSTs, which Dropbox's content endpoint rejects with 400.
+    const res = await contentRequest('/files/download', token, headerSafeJson({ path: toDbxPath(remotePath) }));
+    if (res.statusCode !== 200) {
+      const body = await readStream(res);
+      const err = new Error(`Dropbox download failed (HTTP ${res.statusCode}): ${body}`) as NodeJS.ErrnoException;
+      err.code = res.statusCode === 401 ? 'EAUTH' : res.statusCode === 403 ? 'EACCES' : 'EUNKNOWN';
+      throw err;
+    }
     await mkdir(localDest.slice(0, localDest.lastIndexOf('/')), { recursive: true });
-    await pipeline(Readable.fromWeb(res.body as NodeReadableStream), createWriteStream(localDest));
+    await pipeline(res, createWriteStream(localDest));
     return localDest;
   }
 
@@ -262,11 +311,11 @@ export class DropboxProvider implements Provider {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/octet-stream',
-        'Dropbox-API-Arg': JSON.stringify({ path: destDbxPath, mode: 'add', autorename: true }),
+        'Dropbox-API-Arg': headerSafeJson({ path: destDbxPath, mode: 'add', autorename: true }),
       },
       body: content,
     });
-    throwOnStatus(res, 'upload');
+    await checkStatus(res, 'upload');
     return metaToEntry((await res.json()) as DbxMetadata, accountId);
   }
 
@@ -274,21 +323,19 @@ export class DropboxProvider implements Provider {
     try {
       const token = await this.accessToken(accountId);
       const dbxSize = size <= 64 ? 'w64h64' : size <= 128 ? 'w128h128' : size <= 256 ? 'w256h256' : 'w480h320';
-      const res = await fetch(`${CONTENT}/files/get_thumbnail_v2`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Dropbox-API-Arg': JSON.stringify({
-            resource: { '.tag': 'path', path: toDbxPath(path) },
-            format: { '.tag': 'jpeg' },
-            size: { '.tag': dbxSize },
-            mode: { '.tag': 'strict' },
-          }),
-        },
-      });
-      if (!res.ok) return null;
-      const buf = await res.arrayBuffer();
-      return `data:image/jpeg;base64,${Buffer.from(buf).toString('base64')}`;
+      const res = await contentRequest(
+        '/files/get_thumbnail_v2',
+        token,
+        headerSafeJson({
+          resource: { '.tag': 'path', path: toDbxPath(path) },
+          format: { '.tag': 'jpeg' },
+          size: { '.tag': dbxSize },
+          mode: { '.tag': 'strict' },
+        }),
+      );
+      if (res.statusCode !== 200) return null;
+      const buf = Buffer.concat(await collectChunks(res));
+      return `data:image/jpeg;base64,${buf.toString('base64')}`;
     } catch {
       return null;
     }
