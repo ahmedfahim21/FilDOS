@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const RATE_LIMIT_WINDOW = 20 * 1000;
 const recentSubmissions = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: "Waitlist is not configured" }, { status: 503 });
+    }
+
     const { email } = await req.json();
 
     const ip = req.headers.get("x-forwarded-for") || "unknown";

@@ -1,57 +1,57 @@
-
+// Self-hosted brand fonts (no CDN, CSP-safe) — mirrors the desktop app.
+// Space Grotesk: UI / display. Space Mono: wordmark, code, technical text.
+import "@fontsource/space-grotesk/300.css";
+import "@fontsource/space-grotesk/400.css";
+import "@fontsource/space-grotesk/500.css";
+import "@fontsource/space-grotesk/700.css";
+import "@fontsource/space-mono/400.css";
+import "@fontsource/space-mono/700.css";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 
+const description =
+  "FilDOS is an open-source, AI-native file explorer for macOS, Windows and Linux. Find files by meaning, organize with smart tags, and keep everything local-first and fast.";
+
 export const metadata: Metadata = {
   title: {
-    default: "FilDOS - AI-Native Decentralized Storage",
-    template: "%s | FilDOS",
+    default: "FilDOS — The open-source, AI-native file explorer",
+    template: "%s · FilDOS",
   },
-  description:
-    "FilDOS is a secure, AI-native decentralized cloud storage solution that prioritizes meaning-first data organization and retrieval. Built on Filecoin with semantic search capabilities.",
+  description,
+  applicationName: "FilDOS",
   keywords: [
     "FilDOS",
-    "decentralized storage",
-    "AI storage",
-    "Filecoin",
+    "file explorer",
+    "file manager",
+    "AI file manager",
     "semantic search",
-    "blockchain storage",
-    "Web3 storage",
-    "IPFS",
-    "cloud storage",
-    "data privacy",
+    "open source",
+    "desktop app",
+    "macOS",
+    "Windows",
+    "Linux",
+    "Electron",
+    "local-first",
   ],
   authors: [{ name: "ArqosLabs" }],
   creator: "ArqosLabs",
   publisher: "ArqosLabs",
   metadataBase: new URL("https://fildos.cloud"),
-  alternates: {
-    canonical: "/",
-  },
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     locale: "en_US",
     url: "https://fildos.cloud",
     siteName: "FilDOS",
-    title: "FilDOS - AI-Native Decentralized Storage",
-    description:
-      "A secure, AI-native, meaning-first decentralized drive built on Filecoin. Store, search, and share files by meaning rather than cryptic identifiers.",
-    images: [
-      {
-        url: "/opengraph-image.png",
-        width: 1200,
-        height: 630,
-        alt: "FilDOS - AI-Native Decentralized Storage",
-      },
-    ],
+    title: "FilDOS — The open-source, AI-native file explorer",
+    description,
   },
   twitter: {
     card: "summary_large_image",
-    title: "FilDOS - AI-Native Decentralized Storage",
-    description:
-      "A secure, AI-native, meaning-first decentralized drive built on Filecoin. Store, search, and share files by meaning.",
-    images: ["/opengraph-image.png"],
+    title: "FilDOS — The open-source, AI-native file explorer",
+    description,
+    creator: "@fildos_cloud",
   },
   robots: {
     index: true,
@@ -64,11 +64,6 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
-  },
   manifest: "/site.webmanifest",
 };
 
@@ -79,11 +74,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-      >
-        <main className="flex flex-col">
-          {children}
-        </main>
+      <body className="antialiased">
+        {children}
         <Analytics />
       </body>
     </html>

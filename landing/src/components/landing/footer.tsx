@@ -1,65 +1,110 @@
-"use client";
-import Image from "next/image";
-import { Separator } from "../ui/separator";
 import Link from "next/link";
-import { Button } from "../ui/button";
-import { Twitter } from "lucide-react";
+import { Github } from "lucide-react";
+import { site } from "@/lib/site";
+import { Logo, Mark } from "@/components/brand/logo";
+
+const COLUMNS: { heading: string; links: { label: string; href: string; external?: boolean }[] }[] = [
+  {
+    heading: "Product",
+    links: [
+      { label: "Features", href: "#features" },
+      { label: "Showcase", href: "#showcase" },
+      { label: "Download", href: "#download" },
+    ],
+  },
+  {
+    heading: "Project",
+    links: [
+      { label: "GitHub", href: site.github, external: true },
+      { label: "Releases", href: site.releases, external: true },
+      { label: "Issues", href: `${site.github}/issues`, external: true },
+      { label: "License (MIT)", href: `${site.github}/blob/main/LICENSE`, external: true },
+    ],
+  },
+  {
+    heading: "Connect",
+    links: [
+      { label: "X / Twitter", href: site.twitter, external: true },
+    ],
+  },
+];
 
 export function LandingFooter() {
-    return (
-        <>
-            <section className="relative py-12 sm:py-16 md:py-20 bg-primary-foreground overflow-hidden">
-                <div className="absolute inset-0 w-full h-full z-0 opacity-25">
-                </div>
-                <div className="container mx-auto px-4 sm:px-6 text-center relative z-10">
-                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-medium mb-3 sm:mb-4">
-                        READY TO EXPERIENCE THE FUTURE OF STORAGE?
-                    </h2>
-                    <div className="w-full max-w-xs sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto mt-8 sm:mt-10 px-2 sm:px-0">
-                        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                            <iframe 
-                                className="absolute top-0 left-0 w-full h-full rounded-sm opacity-80"
-                                src="https://www.youtube.com/embed/fFJgACii3tM?si=vz6sEukN3K1oRKfn" 
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                                allowFullScreen
-                            ></iframe>
-                        </div>
-                    </div>
-                </div>
-            </section>
+  return (
+    <footer className="surface-ink relative overflow-hidden">
+      <div className="bg-node-grid pointer-events-none absolute inset-0 opacity-[0.08]" />
 
-            <footer className="relative bg-primary text-white pt-8 sm:pt-12 pb-4 overflow-hidden">
-                <div className="absolute inset-0 w-full h-full z-0 opacity-20">
-                </div>
-                <div className="container mx-auto px-4 sm:px-6 relative z-10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center">
-                        <div>
-                            <div className="flex items-center space-x-2 mb-3 sm:mb-4">
-                                <Image src="/FILDOS.png" alt="FilDOS Logo" width={32} height={32} className="w-6 h-6 sm:w-8 sm:h-8" />
-                                <h3 className="text-lg sm:text-xl font-medium">FilDOS</h3>
-                            </div>
-                            <p className="text-slate-100 text-sm sm:text-base font-light">
-                                A Secure, AI-Native, Meaning-First Decentralized Drive
-                            </p>
-                        </div>
-                        <div className="flex flex-col md:items-end items-start gap-3 sm:gap-4 mt-6 sm:mt-8 md:mt-0">
-                            <span className="text-slate-100 mb-1 sm:mb-2 text-sm sm:text-base font-light">Follow us for updates:</span>
-                            <Link href="https://x.com/fildos_cloud" target="_blank" rel="noopener noreferrer">
-                                <Button variant="outline" className="flex font-light items-center gap-2 border-gray-700 text-white bg-gray-800 hover:bg-gray-700 text-sm sm:text-base">
-                                    <Twitter className="w-4 h-4 sm:w-5 sm:h-5" />
-                                    <span>X (Twitter)</span>
-                                </Button>
-                            </Link>
-                        </div>
-                    </div>
+      {/* X-shaped CTA banner */}
+      <div className="relative mx-auto max-w-6xl px-5 pt-20">
+        <div className="relative overflow-hidden rounded-3xl border border-border bg-card px-6 py-12 text-center sm:px-12 sm:py-16">
+          <div className="hero-glow pointer-events-none absolute inset-x-0 top-0 h-48" />
+          <div className="relative">
+            <Mark className="mx-auto size-7 text-azure" />
+            <h2 className="mx-auto mt-5 max-w-xl text-balance text-2xl font-light leading-tight tracking-[-0.02em] text-foreground sm:text-4xl">
+              Your files deserve a better home.
+            </h2>
+            <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href="#download"
+                className="inline-flex h-11 items-center rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-azure-600"
+              >
+                Get FilDOS — it&apos;s free
+              </Link>
+              <Link
+                href={site.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center gap-2 rounded-lg border border-border px-5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Github className="size-4" /> Star on GitHub
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                    <Separator className="mt-6 sm:mt-8 mb-3 sm:mb-4 bg-white/80" />
+      {/* Footer columns */}
+      <div className="relative mx-auto max-w-6xl px-5 py-16">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+          <div>
+            <Logo className="text-lg" />
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
+              {site.tagline}. Search by meaning, organize with tags, stay local-first —
+              on macOS, Windows and Linux.
+            </p>
+          </div>
 
-                    <div className="text-center text-gray-100 text-xs sm:text-sm font-light">
-                        <p>&copy; 2025 FilDOS. All rights reserved</p>
-                    </div>
-                </div>
-            </footer>
-        </>
-    );
+          {COLUMNS.map((col) => (
+            <div key={col.heading}>
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                {col.heading}
+              </h3>
+              <ul className="mt-4 space-y-2.5">
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <Link
+                      href={l.href}
+                      {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      className="text-sm text-foreground/70 transition-colors hover:text-foreground"
+                    >
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
+          <p className="font-mono text-[11.5px] text-muted-foreground">
+            © {new Date().getFullYear()} Arqos Labs · MIT licensed
+          </p>
+          <p className="font-mono text-[11.5px] text-muted-foreground">
+            Built with care, in the open.
+          </p>
+        </div>
+      </div>
+    </footer>
+  );
 }

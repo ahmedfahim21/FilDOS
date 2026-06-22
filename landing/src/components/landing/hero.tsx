@@ -1,111 +1,102 @@
 "use client";
+
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
-import Dither from "./dither";
-import Image from "next/image";
-import { useScroll, motion, useTransform } from "motion/react";
-import WaitlistForm from "../ui/waitlist-form";
+import { ArrowRight, Github, Star } from "lucide-react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { site } from "@/lib/site";
+import { Mark } from "@/components/brand/logo";
+import { AppWindow } from "./app-window";
 
 export function LandingHero() {
-    const { scrollY } = useScroll();
-    const squeeze = useTransform(scrollY, [0, 300], [1, 0]);
-    const pushLeft = useTransform(scrollY, [0, 300], [0, -50]);
-    const pushRight = useTransform(scrollY, [0, 300], [0, 50]);
-    const pushLeftX = useTransform(pushLeft, (v) => `translateX(${v/2}px)`);
-    const pushRightX = useTransform(pushRight, (v) => `translateX(${v/2}px)`);
+  const reduce = useReducedMotion();
+  const { scrollY } = useScroll();
+  // Gentle parallax: the product shot drifts up and flattens as you scroll in.
+  const shotY = useTransform(scrollY, [0, 600], [0, reduce ? 0 : -60]);
+  const shotRotate = useTransform(scrollY, [0, 500], [reduce ? 0 : 7, 0]);
+  const shotScale = useTransform(scrollY, [0, 500], [reduce ? 1 : 0.985, 1]);
 
-    return (
-        <section className="relative overflow-hidden flex items-center justify-center bg-primary h-screen">
-            <div className="absolute inset-0 w-full h-full z-0 opacity-30">
-                <Dither
-                    disableAnimation={false}
-                    enableMouseInteraction={true}
-                    mouseRadius={0.4}
-                    colorNum={2.2}
-                    waveColor={[0.0078, 0.5843, 0.9647]}
-                    pixelSize={1}
-                    waveAmplitude={0.4}
-                    waveFrequency={9}
-                    waveSpeed={0.05}
-                />
-            </div>
-            <div className="container mt-[-8rem] sm:mt-[-10rem] mx-auto px-4 sm:px-6 flex flex-col items-center justify-center relative z-10">
-                <div className="flex flex-col items-center gap-6 sm:gap-8">
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-center text-slate-100 animate-fade-in-up leading-tight px-2">
-                        A Secure, AI-Native, Meaning-First Decentralized Drive
-                    </h1>
-                    <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-slate-800 mb-4 sm:mb-8 max-w-2xl text-center animate-fade-in-up delay-200 px-2">
-                        <span>Where storage understands you.</span>
-                    </p>
-                    <div className="text-xs sm:text-sm text-slate-100 font-light text-center px-2">Checkout early beta & join the waitlist</div>
-                    <div className="w-full flex flex-col sm:flex-row gap-3 sm:gap-4 animate-fade-in-up delay-300 mx-auto justify-center items-center px-2">
-                        <Link href="https://app.fildos.cloud/get-started">
-                            <Button size="lg" className="bg-white text-primary font-medium hover:bg-white/90 shadow-xl hover:shadow-2xl px-6 sm:px-10 py-3 sm:py-5 rounded-md transition-all duration-300 border-2 border-white/20 text-sm sm:text-base w-full sm:w-auto">
-                                Try Early Beta
-                                <ArrowRight className="ml-1 w-5 h-5 sm:w-6 sm:h-6 bg-primary/20 rounded-full" />
-                            </Button>
-                        </Link>
-                        <WaitlistForm />
-                    </div>
-                    </div>
-            </div>
-            {/* Bottom logo row */}
-            <div className="absolute bottom-6 sm:bottom-10 left-1/2 transform -translate-x-1/2 w-full flex items-center justify-center z-10 px-2">
-                {/* Left logos */}
-                <div className="flex items-center justify-end flex-1">
-                    {[
-                        "audio.png",
-                        "document.png",
-                        "image.png",
-                        "video.png"
-                    ].map((logo) => (
-                        <motion.img
-                            key={logo}
-                            src={`/logos/${logo}`}
-                            alt={logo.replace('.png', '')}
-                            width={50}
-                            className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-1 sm:mx-2 bg-white/90 rounded-md"
-                            style={{
-                                opacity: squeeze,
-                                transform: pushRightX,
-                            }}
-                            transition={{ opacity: { duration: 0.5 } }}
-                        />
-                    ))}
-                </div>
-                {/* Center FilDOS logo with glassmorphic bg */}
-                <div className="flex items-center justify-center mx-1 sm:mx-2">
-                    <Link href="https://app.fildos.cloud/get-started">
-                        <div className="flex items-center justify-center px-2 sm:px-3 py-1 sm:py-2 rounded-2xl sm:rounded-3xl bg-white/20 backdrop-blur-lg shadow-lg border border-white/40 hover:scale-105 transition-transform duration-100">
-                            <Image src="/FILDOS.png" alt="FilDOS Logo" width={96} height={96} className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 opacity-90 z-10" />
-                        </div>
-                    </Link>
-                </div>
-                {/* Right logos */}
-                <div className="flex items-center justify-start flex-1">
-                    {[
-                        "pdf.png",
-                        "presentation.png",
-                        "spreadsheet.png",
-                        "other.png"
-                    ].map((logo) => (
-                        <motion.img
-                            key={logo}
-                            src={`/logos/${logo}`}
-                            alt={logo.replace('.png', '')}
-                            width={50}
-                            height={50}
-                            className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 mx-1 sm:mx-2 bg-white/90 rounded-md"
-                            style={{
-                                opacity: squeeze,
-                                transform: pushLeftX,
-                            }}
-                            transition={{ opacity: { duration: 0.5 } }}
-                        />
-                    ))}
-                </div>
-            </div>
-        </section >
-    );
+  return (
+    <section className="relative overflow-hidden pt-28 pb-16 sm:pt-32 sm:pb-24">
+      {/* Layered background: fine grid + node grid + Azure aura. */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="bg-fine-grid mask-radial-fade absolute inset-0" />
+        <div className="bg-node-grid mask-radial-fade absolute inset-0 opacity-70" />
+        <div className="hero-glow absolute inset-x-0 top-[-6rem] h-[36rem]" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-background" />
+      </div>
+
+      <div className="mx-auto max-w-6xl px-5">
+        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+          {/* Eyebrow */}
+          <Link
+            href={site.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border bg-card/70 py-1 pl-1.5 pr-3 text-[12.5px] shadow-card-soft backdrop-blur"
+          >
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">
+              <Mark className="size-3" />
+              Open source
+            </span>
+            <span className="text-muted-foreground">AI-native file explorer</span>
+            <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </Link>
+
+          {/* Headline */}
+          <h1 className="animate-fade-in-up delay-100 mt-6 text-balance text-[2.6rem] font-light leading-[1.04] tracking-[-0.03em] text-foreground sm:text-6xl">
+            Find any file by
+            <br className="hidden sm:block" />{" "}
+            <span className="text-gradient-azure font-medium">describing it.</span>
+          </h1>
+
+          {/* Subhead */}
+          <p className="animate-fade-in-up delay-200 mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
+            FilDOS is an open-source file explorer built for the AI era — search by
+            meaning, organize with smart tags, and keep everything fast, private and
+            local-first across macOS, Windows&nbsp;and&nbsp;Linux.
+          </p>
+
+          {/* CTAs */}
+          <div className="animate-fade-in-up delay-300 mt-9 flex flex-col items-center gap-3 sm:flex-row">
+            <Link
+              href="#download"
+              className="group inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white shadow-[0_8px_24px_-8px_rgba(2,149,246,0.6)] transition-all hover:bg-azure-600 hover:shadow-[0_10px_28px_-6px_rgba(2,149,246,0.7)]"
+            >
+              Get FilDOS — it&apos;s free
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <Link
+              href={site.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card px-5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <Github className="size-4" />
+              View on GitHub
+              <span className="flex items-center gap-1 border-l border-border pl-2.5 text-muted-foreground">
+                <Star className="size-3.5" /> Star
+              </span>
+            </Link>
+          </div>
+
+          <p className="animate-fade-in-up delay-400 mt-5 font-mono text-[11.5px] text-muted-foreground">
+            Free &amp; open source · macOS · Windows · Linux
+          </p>
+        </div>
+
+        {/* Product shot */}
+        <div className="[perspective:2000px]">
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 40 }}
+            animate={reduce ? {} : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            style={{ y: shotY, rotateX: shotRotate, scale: shotScale, transformOrigin: "center top" }}
+            className="mx-auto mt-14 max-w-5xl sm:mt-16"
+          >
+            <AppWindow />
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
 }

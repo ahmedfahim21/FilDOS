@@ -1,18 +1,24 @@
 import { LandingNavbar } from "@/components/landing/navbar";
 import { LandingHero } from "@/components/landing/hero";
-import { LandingAbout } from "@/components/landing/about";
-import { HowItWorks } from "@/components/landing/how-it-works";
-import { SocialProof } from "@/components/landing/social-proof";
+import { TechStrip } from "@/components/landing/tech-strip";
+import { Features } from "@/components/landing/features";
+import { Showcase } from "@/components/landing/showcase";
+import { OpenSource } from "@/components/landing/open-source";
+import { Download } from "@/components/landing/download";
 import { LandingFooter } from "@/components/landing/footer";
 
 export default function LandingPage() {
   return (
-    <div>
+    <div id="top" className="relative overflow-x-hidden">
       <LandingNavbar />
-      <LandingHero />
-      <LandingAbout />
-      <HowItWorks />
-      <SocialProof />
+      <main>
+        <LandingHero />
+        <TechStrip />
+        <Features />
+        <Showcase />
+        <OpenSource />
+        <Download />
+      </main>
       <LandingFooter />
     </div>
   );
