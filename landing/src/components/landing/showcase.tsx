@@ -18,7 +18,7 @@ function Tile({
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-6",
+        "flex flex-col overflow-hidden rounded-2xl border border-border bg-card p-6 transition-colors duration-300 hover:border-primary/30",
         className,
       )}
     >
@@ -42,7 +42,7 @@ function Result({
   score: number;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40">
       <FileIcon kind={kind} size={26} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] text-foreground">{name}</div>
@@ -59,7 +59,7 @@ function Result({
 
 function TagChip({ color, label, count }: { color: string; label: string; count: number }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[12px] text-foreground">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[12px] text-foreground transition-colors hover:border-primary/50 hover:bg-primary/5">
       <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
       {label}
       <span className="text-[11px] text-muted-foreground">{count}</span>
@@ -128,7 +128,7 @@ export function Showcase() {
                 <TagChip color="#7165e8" label="Design" count={23} />
                 <TagChip color="#d65891" label="Personal" count={9} />
               </div>
-              <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
+              <div className="mt-4 flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40">
                 <FileIcon kind="pdf" size={26} />
                 <span className="flex-1 truncate text-[13px] text-foreground">Q2 Report.pdf</span>
                 <span className="flex gap-1">
@@ -151,7 +151,7 @@ export function Showcase() {
                 {PROVIDERS.map((p) => (
                   <div
                     key={p.name}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2"
+                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                   >
                     <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 font-mono text-xs font-bold text-primary">
                       {p.initial}
@@ -181,7 +181,7 @@ export function Showcase() {
                 {RECENTS.map((r) => (
                   <div
                     key={r.name}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2"
+                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                   >
                     <FileIcon kind={r.kind} size={26} />
                     <span className="flex-1 truncate text-[13px] text-foreground">{r.name}</span>
@@ -207,7 +207,7 @@ export function Showcase() {
                 ].map((k) => (
                   <div
                     key={k.label}
-                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2"
+                    className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                   >
                     <span className="flex gap-1">
                       {k.keys.map((key) => (
@@ -233,7 +233,7 @@ export function Showcase() {
                 {["macOS", "Windows", "Linux"].map((os) => (
                   <div
                     key={os}
-                    className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2"
+                    className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 transition-colors hover:border-primary/40"
                   >
                     <span className="text-[13px] text-foreground">{os}</span>
                     <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-muted-foreground">

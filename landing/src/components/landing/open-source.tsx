@@ -87,22 +87,14 @@ export function OpenSource() {
               </span>
             </div>
 
-            <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
+            <div className="mt-6">
               <Link
                 href={site.github}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-azure-600"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-white transition-colors hover:bg-azure-600 sm:w-auto"
               >
                 <Star className="size-4" /> Star on GitHub
-              </Link>
-              <Link
-                href={site.github}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                Read the code
               </Link>
             </div>
           </div>

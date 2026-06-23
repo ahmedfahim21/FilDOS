@@ -1,19 +1,43 @@
 "use client";
 
+import type { PointerEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, Github, Star } from "lucide-react";
-import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
+import { ArrowRight, Github } from "lucide-react";
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+} from "motion/react";
 import { site } from "@/lib/site";
 import { Mark } from "@/components/brand/logo";
 import { AppWindow } from "./app-window";
 
 export function LandingHero() {
   const reduce = useReducedMotion();
+
+  // Gentle scroll parallax for the whole product shot.
   const { scrollY } = useScroll();
-  // Gentle parallax: the product shot drifts up and flattens as you scroll in.
-  const shotY = useTransform(scrollY, [0, 600], [0, reduce ? 0 : -60]);
-  const shotRotate = useTransform(scrollY, [0, 500], [reduce ? 0 : 7, 0]);
-  const shotScale = useTransform(scrollY, [0, 500], [reduce ? 1 : 0.985, 1]);
+  const shotY = useTransform(scrollY, [0, 600], [0, reduce ? 0 : -44]);
+
+  // Pointer-driven 3D tilt — the window leans toward the cursor.
+  const rx = useSpring(useMotionValue(0), { stiffness: 140, damping: 18 });
+  const ry = useSpring(useMotionValue(0), { stiffness: 140, damping: 18 });
+
+  function handlePointer(e: PointerEvent<HTMLDivElement>) {
+    if (reduce || e.pointerType === "touch") return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    ry.set(px * 7);
+    rx.set(-py * 5);
+  }
+  function resetTilt() {
+    rx.set(0);
+    ry.set(0);
+  }
 
   return (
     <section className="relative overflow-hidden pt-28 pb-16 sm:pt-32 sm:pb-24">
@@ -27,20 +51,14 @@ export function LandingHero() {
 
       <div className="mx-auto max-w-6xl px-5">
         <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
-          {/* Eyebrow */}
-          <Link
-            href={site.github}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border bg-card/70 py-1 pl-1.5 pr-3 text-[12.5px] shadow-card-soft backdrop-blur"
-          >
+          {/* Eyebrow (decorative) */}
+          <span className="animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border bg-card/70 py-1 pl-1.5 pr-3 text-[12.5px] shadow-card-soft backdrop-blur">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">
               <Mark className="size-3" />
               Open source
             </span>
             <span className="text-muted-foreground">AI-native file explorer</span>
-            <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          </span>
 
           {/* Headline */}
           <h1 className="animate-fade-in-up delay-100 mt-6 text-balance text-[2.6rem] font-light leading-[1.04] tracking-[-0.03em] text-foreground sm:text-6xl">
@@ -56,7 +74,7 @@ export function LandingHero() {
             local-first across macOS, Windows&nbsp;and&nbsp;Linux.
           </p>
 
-          {/* CTAs */}
+          {/* CTAs — one primary, one secondary */}
           <div className="animate-fade-in-up delay-300 mt-9 flex flex-col items-center gap-3 sm:flex-row">
             <Link
               href="#download"
@@ -73,9 +91,6 @@ export function LandingHero() {
             >
               <Github className="size-4" />
               View on GitHub
-              <span className="flex items-center gap-1 border-l border-border pl-2.5 text-muted-foreground">
-                <Star className="size-3.5" /> Star
-              </span>
             </Link>
           </div>
 
@@ -84,18 +99,19 @@ export function LandingHero() {
           </p>
         </div>
 
-        {/* Product shot */}
-        <div className="[perspective:2000px]">
-          <motion.div
-            initial={reduce ? false : { opacity: 0, y: 40 }}
-            animate={reduce ? {} : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            style={{ y: shotY, rotateX: shotRotate, scale: shotScale, transformOrigin: "center top" }}
-            className="mx-auto mt-14 max-w-5xl sm:mt-16"
-          >
-            <AppWindow />
-          </motion.div>
-        </div>
+        {/* Product shot — scroll parallax + pointer tilt */}
+        <motion.div style={{ y: shotY }} className="mx-auto mt-14 max-w-5xl sm:mt-16">
+          <div className="[perspective:2000px]" onPointerMove={handlePointer} onPointerLeave={resetTilt}>
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 40 }}
+              animate={reduce ? {} : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.9, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              style={{ rotateX: rx, rotateY: ry, transformStyle: "preserve-3d" }}
+            >
+              <AppWindow />
+            </motion.div>
+          </div>
+        </motion.div>
       </div>
     </section>
   );
