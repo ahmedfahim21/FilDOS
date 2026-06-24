@@ -96,6 +96,38 @@ rather than hand-rolling.
 - `fs/trashTracker.ts` — hybrid trash (see below).
 - `db/` — SQLite metadata layer (see below): tags, recents, per-folder views.
 - `prefs.ts` — prefs in the SQLite `prefs` table (JSON values).
+- `ai/` — the AI seam (see below): provider registry + embedded embedding worker.
+
+### The AI layer (`src/main/ai/`)
+
+The foundation of the AI phase. It **mirrors the cloud provider seam**: an
+`AiProvider` interface (`providers/types.ts`), a runtime `registry.ts`
+(register/get + `activeAiProvider()` from `prefs.ai.activeProvider`), and two
+providers — `providers/embedded.ts` (on-device) and `providers/cloud.ts` (a
+deferred stub that throws `EUNSUPPORTED`). Handlers in `ai/handlers.ts`
+(`ai:status` / `ai:download` / `ai:embed` / `ai:embedImages`, wrapped in
+`Result<T>`) resolve the active model id (`prefs.ai.modelId`) and dispatch to the
+active provider; `Events.aiModelProgress` streams download progress per model.
+
+`src/shared/aiModels.ts` is the **model catalog** (shared by worker + Settings):
+several `feature-extraction` text/code models (MiniLM, BGE, GTE, multilingual
+E5; 384-d) plus a `clip` image model (CLIP ViT-B/32, 512-d) that embeds **both**
+text and image files into one space. Each entry has a `kind` the worker switches
+on. Adding a model = one catalog entry (verify it loads with `dtype: 'q8'` and
+record its dim); no other code changes for feature-extraction models.
+
+Embeddings run **on-device** via `@huggingface/transformers` on the **WASM**
+backend — zero native deps, matching the `node:sqlite` philosophy.
+`modelWorker.ts` runs in an Electron `utilityProcess` (so load/inference never
+block the main process), memoizes one loaded model per id, and is a **second
+main entry** in `electron.vite.config.ts`; `transformers` is ESM-only so the
+worker `import()`s it dynamically. onnxruntime-web's `.wasm` files are copied
+beside the worker (`out/main`) by the inline `copyOnnxWasm` plugin, and the
+worker points `wasmPaths` at its own `__dirname` to stay offline. Models cache to
+`userData/models` (the main process hands the worker that path via
+`process.env.FILDOS_MODELS_DIR`, since a utilityProcess can't call
+`app.getPath`). The renderer drives it from Settings (`state/ai.tsx` context +
+`components/SettingsView.tsx`, with a per-model picker and live status).
 
 ### The database layer (`src/main/db/`)
 
