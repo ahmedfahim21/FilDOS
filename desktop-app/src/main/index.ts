@@ -6,6 +6,10 @@ import { registerCloudHandlers } from './cloud/handlers';
 import { registerProvider } from './cloud/registry';
 import { GDriveProvider } from './cloud/providers/gdrive';
 import { DropboxProvider } from './cloud/providers/dropbox';
+import { registerAiHandlers } from './ai/handlers';
+import { registerAiProvider } from './ai/registry';
+import { EmbeddedAiProvider } from './ai/providers/embedded';
+import { CloudAiProvider } from './ai/providers/cloud';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -55,8 +59,13 @@ app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   registerProvider('gdrive', new GDriveProvider());
   registerProvider('dropbox', new DropboxProvider());
+  // The embedded AI worker can't call app.getPath; hand it the model cache dir.
+  process.env.FILDOS_MODELS_DIR = join(app.getPath('userData'), 'models');
+  registerAiProvider('embedded', new EmbeddedAiProvider());
+  registerAiProvider('cloud', new CloudAiProvider());
   registerFsHandlers();
   registerCloudHandlers();
+  registerAiHandlers();
   createWindow();
 
   app.on('activate', () => {

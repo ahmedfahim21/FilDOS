@@ -27,6 +27,8 @@ import {
   RotateCcw,
   Scissors,
   Search,
+  Settings,
+  Sparkles,
   Tag,
   Trash2,
   X,
@@ -63,7 +65,9 @@ type IconName =
   | 'plus'
   | 'drive'
   | 'eject'
-  | 'cloud';
+  | 'cloud'
+  | 'settings'
+  | 'sparkles';
 
 /** Maps the app's semantic icon names onto lucide-react glyphs. */
 const ICONS: Record<IconName, LucideIcon> = {
@@ -98,6 +102,8 @@ const ICONS: Record<IconName, LucideIcon> = {
   drive: HardDrive,
   eject: ArrowUpFromLine,
   cloud: Cloud,
+  settings: Settings,
+  sparkles: Sparkles,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

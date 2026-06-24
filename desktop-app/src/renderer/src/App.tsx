@@ -16,6 +16,7 @@ import {
 import { ToastProvider, useToast } from '@/state/toast';
 import { ClipboardProvider, useClipboard } from '@/state/clipboard';
 import { UndoProvider, useUndo } from '@/state/undo';
+import { AiProvider } from '@/state/ai';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
@@ -34,6 +35,7 @@ import { TrashView } from '@/components/TrashView';
 import { RecentsView } from '@/components/RecentsView';
 import { TagFilesView } from '@/components/TagFilesView';
 import { CloudConnectView } from '@/components/CloudConnectView';
+import { SettingsView } from '@/components/SettingsView';
 import { Icon } from '@/components/Icon';
 import { TagDot } from '@/components/TagDots';
 import { Toasts } from '@/components/Toasts';
@@ -442,6 +444,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Cloud Storage';
+  } else if (page?.kind === 'settings') {
+    pageTitle = (
+      <>
+        <Icon name="settings" size={15} /> Settings
+      </>
+    );
+    pageLabel = 'Settings';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -469,6 +478,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onOpenRecents={() => nav.openPage({ kind: 'recents' })}
           onOpenTrash={() => nav.openPage({ kind: 'trash' })}
           onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
+          onOpenSettings={() => nav.openPage({ kind: 'settings' })}
           onDropOnTag={handleDropOnTag}
         />
         <main className="bg-background flex min-w-0 flex-1 flex-col">
@@ -478,6 +488,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
             <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
           ) : nav.page?.kind === 'cloud-connect' ? (
             <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
+          ) : nav.page?.kind === 'settings' ? (
+            <SettingsView onBack={nav.back} />
           ) : nav.page?.kind === 'tag' ? (
             pageTag && (
               <TagFilesView
@@ -641,9 +653,11 @@ export default function App({
     <ToastProvider>
       <ClipboardProvider>
         <UndoProvider>
-          <NavigationProvider initialPath={initialPath} initial={navInitial}>
-            <Browser initialView={initialView} />
-          </NavigationProvider>
+          <AiProvider>
+            <NavigationProvider initialPath={initialPath} initial={navInitial}>
+              <Browser initialView={initialView} />
+            </NavigationProvider>
+          </AiProvider>
         </UndoProvider>
       </ClipboardProvider>
     </ToastProvider>

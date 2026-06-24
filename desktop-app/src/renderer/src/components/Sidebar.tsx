@@ -39,6 +39,7 @@ export function Sidebar({
   onOpenRecents,
   onOpenTrash,
   onOpenCloudConnect,
+  onOpenSettings,
   onDropOnTag,
 }: {
   tags: Tag[];
@@ -50,6 +51,7 @@ export function Sidebar({
   onOpenRecents: () => void;
   onOpenTrash: () => void;
   onOpenCloudConnect: () => void;
+  onOpenSettings: () => void;
   onDropOnTag: (tag: Tag, e: DragEvent) => void;
 }) {
   const { currentPath, navigate } = useNavigation();
@@ -299,6 +301,14 @@ export function Sidebar({
       >
         <Icon name="trash" size={16} />
         <span>Trash</span>
+      </button>
+      <button
+        className={itemClass(activePage?.kind === 'settings')}
+        onClick={onOpenSettings}
+        title="Settings"
+      >
+        <Icon name="settings" size={16} />
+        <span>Settings</span>
       </button>
 
       {pendingDisconnect && (

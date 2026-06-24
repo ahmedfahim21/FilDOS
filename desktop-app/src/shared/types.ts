@@ -143,6 +143,24 @@ export interface Prefs {
   viewMode?: ViewMode;
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
+  /** AI feature settings (enable toggle + active provider + model). */
+  ai?: { enabled: boolean; activeProvider: string; modelId: string };
+}
+
+/** Lifecycle of a provider's embedding model. */
+export type AiModelState = 'absent' | 'downloading' | 'ready' | 'error';
+
+/** Snapshot of a provider's embedding model, surfaced in Settings. */
+export interface AiModelStatus {
+  state: AiModelState;
+  /** Model identifier (e.g. 'Xenova/all-MiniLM-L6-v2'). */
+  modelId: string;
+  /** Embedding dimensionality (e.g. 384); 0 when unknown. */
+  dim: number;
+  /** Download progress in [0, 1] while `state === 'downloading'`. */
+  progress?: number;
+  /** Error detail when `state === 'error'`. */
+  message?: string;
 }
 
 /** The API surface exposed on `window.fsapi` by the preload bridge. */
@@ -234,4 +252,18 @@ export interface CloudApi {
   listAccounts(): Promise<Result<AccountRecord[]>>;
   /** Remove an account and its stored credentials. */
   disconnect(accountId: string): Promise<Result<void>>;
+}
+
+/** The API surface exposed on `window.ai` by the preload bridge. */
+export interface AiApi {
+  /** State of a model (defaults to the active one when modelId is omitted). */
+  status(modelId?: string): Promise<Result<AiModelStatus>>;
+  /** Ensure the active model is downloaded (progress via onModelProgress). */
+  download(): Promise<Result<void>>;
+  /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
+  embed(texts: string[]): Promise<Result<number[][]>>;
+  /** Embed each image file by path; image-capable models (CLIP) only. */
+  embedImages(paths: string[]): Promise<Result<number[][]>>;
+  /** Subscribe to model download/state progress; returns an unsubscribe fn. */
+  onModelProgress(cb: (status: AiModelStatus) => void): () => void;
 }
