@@ -45,6 +45,10 @@ export const Channels = {
   cloudConnect: 'cloud:connect',
   cloudListAccounts: 'cloud:listAccounts',
   cloudDisconnect: 'cloud:disconnect',
+  aiStatus: 'ai:status',
+  aiDownload: 'ai:download',
+  aiEmbed: 'ai:embed',
+  aiEmbedImages: 'ai:embedImages',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
@@ -53,4 +57,6 @@ export type ChannelName = (typeof Channels)[keyof typeof Channels];
 export const Events = {
   /** A watched directory changed on disk; payload is the directory path. */
   dirChanged: 'fs:changed',
+  /** AI model download/state progress; payload is an AiModelStatus. */
+  aiModelProgress: 'ai:modelProgress',
 } as const;

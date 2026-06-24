@@ -1,6 +1,15 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { Channels, Events } from '@shared/channels';
-import type { CloudApi, FsApi, Prefs, RecentsApi, TagsApi, ViewsApi } from '@shared/types';
+import type {
+  AiApi,
+  AiModelStatus,
+  CloudApi,
+  FsApi,
+  Prefs,
+  RecentsApi,
+  TagsApi,
+  ViewsApi,
+} from '@shared/types';
 
 /**
  * The single, explicit API exposed to the renderer. We never hand the renderer
@@ -92,6 +101,20 @@ const cloudApi: CloudApi = {
   disconnect: (accountId) => ipcRenderer.invoke(Channels.cloudDisconnect, accountId),
 };
 contextBridge.exposeInMainWorld('cloud', cloudApi);
+
+// On-device AI: model status/download/embed, plus a download-progress stream.
+const aiApi: AiApi = {
+  status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
+  download: () => ipcRenderer.invoke(Channels.aiDownload),
+  embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
+  embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
+  onModelProgress: (cb: (status: AiModelStatus) => void) => {
+    const listener = (_e: IpcRendererEvent, status: AiModelStatus) => cb(status);
+    ipcRenderer.on(Events.aiModelProgress, listener);
+    return () => ipcRenderer.removeListener(Events.aiModelProgress, listener);
+  },
+};
+contextBridge.exposeInMainWorld('ai', aiApi);
 
 // Expose the platform path separator so the renderer can split breadcrumbs
 // without bundling Node's `path`.
