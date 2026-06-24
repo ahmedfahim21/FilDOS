@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/types';
-import { formatDate, formatSize, isImage, typeLabel } from './format';
+import { canPreview, formatDate, formatSize, isImage, typeLabel } from './format';
 
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
@@ -80,5 +80,19 @@ describe('isImage', () => {
   it('rejects non-images and directories', () => {
     expect(isImage(makeEntry({ ext: 'txt' }))).toBe(false);
     expect(isImage(makeEntry({ ext: 'png', isDirectory: true }))).toBe(false);
+  });
+});
+
+describe('canPreview', () => {
+  it('previews images, PDFs and videos', () => {
+    expect(canPreview(makeEntry({ ext: 'png' }))).toBe(true);
+    expect(canPreview(makeEntry({ ext: 'pdf' }))).toBe(true);
+    expect(canPreview(makeEntry({ ext: 'mp4' }))).toBe(true);
+  });
+
+  it('rejects plain text, directories and audio', () => {
+    expect(canPreview(makeEntry({ ext: 'txt' }))).toBe(false);
+    expect(canPreview(makeEntry({ ext: 'mp3' }))).toBe(false);
+    expect(canPreview(makeEntry({ ext: 'pdf', isDirectory: true }))).toBe(false);
   });
 });

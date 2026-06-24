@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { AppError, FileInfo, Tag } from '@shared/types';
-import { formatDate, formatSize, typeLabel } from '@/lib/format';
+import { canPreview, formatDate, formatSize, typeLabel } from '@/lib/format';
 import { fileLogo } from '@/lib/fileLogo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useThumbnail } from '@/hooks/useThumbnail';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
 
@@ -31,6 +32,8 @@ export function InfoPanel({
   const [error, setError] = useState<AppError | null>(null);
   // Recursive folder size: null until computed.
   const [folderBytes, setFolderBytes] = useState<number | null>(null);
+  // Live preview for images/PDFs/videos; null falls back to the type icon.
+  const preview = useThumbnail(path, 256, !!info && canPreview(info));
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +82,15 @@ export function InfoPanel({
       {info && (
         <div className="p-4">
           <div className="flex flex-col items-center gap-2.5 pt-2 pb-4.5">
-            <img src={fileLogo(info)} alt="" width={40} height={40} />
+            {preview ? (
+              <img
+                src={preview}
+                alt=""
+                className="max-h-32 max-w-full rounded-md object-contain"
+              />
+            ) : (
+              <img src={fileLogo(info)} alt="" width={40} height={40} />
+            )}
             <div
               className="text-center font-semibold select-text wrap-break-word"
               title={info.name}

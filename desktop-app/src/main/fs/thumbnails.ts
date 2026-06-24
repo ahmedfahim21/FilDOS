@@ -19,7 +19,12 @@ export async function thumbnail(path: string, size: number): Promise<string | nu
       width: size,
       height: size,
     });
-    url = img.isEmpty() ? null : img.toDataURL();
+    // `size` is a square bounding box, so createThumbnailFromPath pins the
+    // image's *logical* size to size×size even though the underlying bitmap
+    // keeps the source aspect ratio. toDataURL() encodes at that squished
+    // logical size — distorting non-square images — whereas toPNG() exports
+    // the real (aspect-correct) bitmap, so we build the data URL from that.
+    url = img.isEmpty() ? null : `data:image/png;base64,${img.toPNG().toString('base64')}`;
   } catch {
     url = null; // unsupported type or platform
   }
