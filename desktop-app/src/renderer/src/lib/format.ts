@@ -47,3 +47,28 @@ const IMAGE_EXTS = new Set([
 export function isImage(entry: Entry): boolean {
   return !entry.isDirectory && IMAGE_EXTS.has(entry.ext);
 }
+
+// Beyond raster images, the OS thumbnailers (QuickLook on macOS, the Shell
+// thumbnail provider on Windows) can render previews for PDFs and most video
+// formats. Unsupported types/platforms just yield null and fall back to the
+// type icon, so this list is free to be generous.
+const PREVIEW_EXTS = new Set([
+  ...IMAGE_EXTS,
+  'pdf',
+  'mp4',
+  'mov',
+  'm4v',
+  'avi',
+  'mkv',
+  'webm',
+  'wmv',
+  'flv',
+  '3gp',
+  'mpg',
+  'mpeg',
+]);
+
+/** Whether an entry is a file we should attempt a live thumbnail preview for. */
+export function canPreview(entry: Entry): boolean {
+  return !entry.isDirectory && PREVIEW_EXTS.has(entry.ext);
+}

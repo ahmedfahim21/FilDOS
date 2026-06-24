@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Entry, IconSize, Tag } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
-import { isImage } from '@/lib/format';
+import { canPreview } from '@/lib/format';
 import { fileLogo } from '@/lib/fileLogo';
 import { cn } from '@/lib/utils';
 import { useThumbnail } from '@/hooks/useThumbnail';
@@ -17,9 +17,9 @@ const TILE: Record<
   IconSize,
   { width: number; height: number; thumb: number; preview: number; logo: number }
 > = {
-  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 26 },
-  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 34 },
-  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 48 },
+  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 40 },
+  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 54 },
+  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 84 },
 };
 
 const STATE =
@@ -170,7 +170,7 @@ function GridTile({
   onItemDragStart: (entry: Entry, e: DragEvent) => void;
   onDropOnFolder: (folder: Entry, e: DragEvent) => void;
 }) {
-  const thumb = useThumbnail(entry.path, tile.thumb, isImage(entry));
+  const thumb = useThumbnail(entry.path, tile.thumb, canPreview(entry));
   const [over, setOver] = useState(false);
 
   return (
@@ -224,11 +224,17 @@ function GridTile({
           src={thumb ?? fileLogo(entry)}
           alt=""
           draggable={false}
-          className={cn('max-h-full max-w-full object-contain', thumb && 'rounded-sm')}
-          style={{
-            maxWidth: thumb ? tile.preview : tile.logo,
-            maxHeight: thumb ? tile.preview : tile.logo,
-          }}
+          className={cn(
+            // Thumbnails fill a fixed square, cropping the overflow (object-cover)
+            // so portraits/landscapes keep their aspect ratio instead of being
+            // squeezed; type logos stay contained and centered.
+            thumb ? 'rounded-sm object-cover' : 'max-h-full max-w-full object-contain',
+          )}
+          style={
+            thumb
+              ? { width: tile.preview, height: tile.preview }
+              : { maxWidth: tile.logo, maxHeight: tile.logo }
+          }
         />
       </div>
       {editing ? (
