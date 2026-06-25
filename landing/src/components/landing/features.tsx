@@ -112,7 +112,7 @@ export function Features() {
               delay={(i % 3) * 0.06}
               className="group relative bg-card p-7 transition-colors hover:bg-accent/40"
             >
-              <span className="flex size-11 items-center justify-center rounded-xl border border-primary/15 bg-primary/[0.07] text-azure">
+              <span className="flex size-11 items-center justify-center rounded-xl border border-primary/15 bg-primary/[0.07] text-azure transition-all duration-300 group-hover:scale-105 group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:shadow-[0_8px_20px_-8px_rgba(2,149,246,0.45)]">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"

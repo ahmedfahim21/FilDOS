@@ -5,6 +5,8 @@ import { HeroSpotlight } from "@/components/landing/heroes/spotlight";
 import { HeroSwitcher, type HeroVariant } from "@/components/landing/heroes/switcher";
 import { TechStrip } from "@/components/landing/tech-strip";
 import { Features } from "@/components/landing/features";
+import { Formats } from "@/components/landing/formats";
+import { Ask } from "@/components/landing/ask";
 import { Showcase } from "@/components/landing/showcase";
 import { OpenSource } from "@/components/landing/open-source";
 import { Download } from "@/components/landing/download";
@@ -32,6 +34,8 @@ export default async function LandingPage({
         <Hero />
         <TechStrip />
         <Features />
+        <Formats />
+        <Ask />
         <Showcase />
         <OpenSource />
         <Download />

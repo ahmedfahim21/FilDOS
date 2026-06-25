@@ -95,8 +95,8 @@ export function Showcase() {
           {/* Semantic search — hero tile */}
           <Reveal className="lg:col-span-4">
             <Tile
-              title="Ask in plain language"
-              desc="Type what you remember. FilDOS ranks results by meaning and shows you why each matched."
+              title="Results ranked by meaning"
+              desc="Type what you remember. FilDOS orders every match by relevance and shows you exactly why it surfaced."
               className="h-full"
             >
               <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2.5">
