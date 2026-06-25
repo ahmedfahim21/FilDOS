@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Input } from "./input";
-import { Button } from "./button";
+import { ArrowRight, Check } from "lucide-react";
 
 export default function WaitlistForm() {
   const [email, setEmail] = useState("");
@@ -13,54 +12,57 @@ export default function WaitlistForm() {
     setStatus("loading");
     setMessage("");
 
-    const res = await fetch("/api/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await res.json();
-    if (res.ok || data.message === "Already joined") {
-      setStatus("success");
-      setMessage(data.message);
-      setEmail("");
-    } else {
+    try {
+      const res = await fetch("/api/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok || data.message === "Already joined") {
+        setStatus("success");
+        setMessage(data.message === "Already joined" ? "You're already on the list." : "You're on the list!");
+        setEmail("");
+      } else {
+        setStatus("error");
+        setMessage(data.error ?? "Something went wrong.");
+      }
+    } catch {
       setStatus("error");
-      setMessage(data.error);
+      setMessage("Network error. Try again.");
     }
   };
 
+  if (status === "success") {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 text-sm text-success">
+        <Check className="size-4" />
+        {message}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center">
-      <form onSubmit={handleSubmit} className="flex flex-row items-center w-full sm:w-auto gap-0">
-        <Input
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-1.5 shadow-card-soft focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15">
+        <input
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Enter your email"
-          className="border-2 border-r-0 border-secondary/20 bg-white/90 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-xl w-full sm:w-56 px-4 py-5 text-xl rounded-none rounded-l-md"
+          placeholder="you@example.com"
+          className="min-w-0 flex-1 bg-transparent px-3 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
-        <Button
+        <button
           type="submit"
           disabled={status === "loading"}
-          className="rounded-none rounded-r-md px-5 py-5 font-medium border-2 border-primary/20 border-l-0 shadow-xl hover:shadow-2xl transition-all duration-300 bg-primary text-white hover:bg-primary/90"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-azure-600 disabled:opacity-60"
         >
-          {status === "loading"
-            ? "Joining..."
-            : status === "success" && message === "Success"
-            ? "Joined!"
-            : status === "success" && message === "Already joined"
-            ? "Already joined"
-            : status === "error" && message === "Too many requests"
-            ? "Too many requests"
-            : status === "error" && message === "Server error"
-            ? "Server error"
-            : status === "error"
-            ? "Try Again"
-            : "Join Waitlist"}
-        </Button>
-      </form>
-    </div>
+          {status === "loading" ? "Joining…" : "Notify me"}
+          {status !== "loading" && <ArrowRight className="size-3.5" />}
+        </button>
+      </div>
+      {status === "error" && <p className="mt-2 text-xs text-destructive">{message}</p>}
+    </form>
   );
 }

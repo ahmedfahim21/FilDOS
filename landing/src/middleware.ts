@@ -4,8 +4,13 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   
-  // Allow home page and API routes
-  if (pathname === '/' || pathname.startsWith('/api/')) {
+  // Allow home page, API routes, and generated metadata routes (OG image, etc.)
+  if (
+    pathname === '/' ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/opengraph-image') ||
+    pathname.startsWith('/twitter-image')
+  ) {
     return NextResponse.next();
   }
   

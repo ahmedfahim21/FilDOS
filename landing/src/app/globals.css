@@ -1,362 +1,231 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
+/*
+ * FilDOS landing — design tokens mirror the desktop app
+ * (desktop-app/src/renderer/src/styles/global.css) and the brand guidelines:
+ * Azure #0295f6 primary, Ink #0c1322 deep surfaces, Mist secondary text,
+ * Cloud light surfaces. Type: Space Grotesk (display/UI) + Space Mono (wordmark,
+ * code, technical). The fonts are loaded by next/font in layout.tsx and exposed
+ * here as --font-grotesk / --font-mono-brand.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* FilDOS type system. */
+  --font-sans: var(--font-grotesk), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono-brand), ui-monospace, "SF Mono", monospace;
+
+  /* Raw brand palette (FilDOS Brand Guidelines). */
+  --color-azure: #0295f6;
+  --color-azure-600: #0277d6;
+  --color-ink: #0c1322;
+  --color-ink-700: #131c30;
+  --color-ink-600: #1c2740;
+  --color-mist: #7c87a6;
+  --color-cloud: #f0f1f5;
+
+  --animate-marquee: marquee 32s linear infinite;
 }
 
 :root {
   --radius: 0.625rem;
+
+  /* Self-hosted brand families (imported in layout.tsx). */
+  --font-grotesk: "Space Grotesk";
+  --font-mono-brand: "Space Mono";
+
+  /* Light canvas — White surface, Cloud panels, Ink text, Mist secondary. */
   --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --foreground: #0f1117;
+  --card: #ffffff;
+  --card-foreground: #0f1117;
+  --popover: #ffffff;
+  --popover-foreground: #0f1117;
   --primary: #0295f6;
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: #9AD5fb;
-  --secondary-foreground: #3a383b;
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --primary-foreground: #ffffff;
+  --secondary: #f0f1f5;
+  --secondary-foreground: #0f1117;
+  --muted: #f0f1f5;
+  --muted-foreground: #7c87a6;
+  --accent: #f0f1f5;
+  --accent-foreground: #0f1117;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --border: #e8eaf0;
+  --input: #e8eaf0;
+  --ring: #0295f6;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
   }
 }
 
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ── Brand surfaces ───────────────────────────────────────────────────────
+ * Ink sections invert the token set so shadcn-style utilities (bg-card,
+ * text-muted-foreground, border-border …) read correctly on dark. */
+.surface-ink {
+  --background: #0c1322;
+  --foreground: #eef2fb;
+  --card: #131c30;
+  --card-foreground: #eef2fb;
+  --popover: #131c30;
+  --popover-foreground: #eef2fb;
+  --secondary: #1c2740;
+  --secondary-foreground: #eef2fb;
+  --muted: #1c2740;
+  --muted-foreground: #8c97b6;
+  --accent: #1c2740;
+  --accent-foreground: #eef2fb;
+  --border: #24304d;
+  --input: #24304d;
+  background: var(--background);
+  color: var(--foreground);
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+/* ── The node-grid motif (echoes the 3×3 mark) ──────────────────────────── */
+.bg-node-grid {
+  background-image: radial-gradient(circle at center, color-mix(in oklab, var(--primary) 26%, transparent) 1.1px, transparent 1.1px);
+  background-size: 26px 26px;
+}
+.bg-fine-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--primary) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--primary) 9%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+/* Radial fade so a grid melts into the page instead of ending in a hard edge. */
+.mask-radial-fade {
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 30%, transparent 78%);
+}
+.mask-b-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
 }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+/* Azure aura behind the hero product shot. */
+.hero-glow {
+  background:
+    radial-gradient(60% 50% at 50% 42%, color-mix(in oklab, var(--primary) 30%, transparent), transparent 70%),
+    radial-gradient(40% 40% at 78% 28%, color-mix(in oklab, #7165e8 22%, transparent), transparent 70%);
+  filter: blur(36px);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* App-window chrome shadow — layered, soft, slightly Azure-tinted. */
+.shadow-window {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.6) inset,
+    0 30px 60px -18px rgba(12, 19, 34, 0.32),
+    0 12px 24px -12px rgba(2, 149, 246, 0.22),
+    0 0 0 1px rgba(12, 19, 34, 0.06);
+}
+.shadow-card-soft {
+  box-shadow: 0 1px 2px rgba(12, 19, 34, 0.04), 0 12px 28px -16px rgba(12, 19, 34, 0.18);
 }
 
-/* Custom animations for hero section */
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+/* Gradient text for the one accent word in the headline. */
+.text-gradient-azure {
+  background: linear-gradient(120deg, #0295f6 0%, #4db5fb 55%, #7165e8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-@keyframes float-slow {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
+/* ── Motion ──────────────────────────────────────────────────────────────
+ * Tiny, declarative reveal helpers; respected only when motion is allowed. */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes float-medium {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-15px); }
-}
-
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes spin-slower {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes wave1 {
-  0%, 100% { transform: translateX(0px) translateY(0px); }
-  25% { transform: translateX(5px) translateY(-2px); }
-  50% { transform: translateX(0px) translateY(-4px); }
-  75% { transform: translateX(-5px) translateY(-2px); }
-}
-
-@keyframes wave2 {
-  0%, 100% { transform: translateX(0px) translateY(0px); }
-  25% { transform: translateX(-5px) translateY(-3px); }
-  50% { transform: translateX(0px) translateY(-6px); }
-  75% { transform: translateX(5px) translateY(-3px); }
-}
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
-@keyframes fade-in-up {
-  from { 
-    opacity: 0; 
-    transform: translateY(30px); 
-  }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
-  }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
-
-@keyframes pulse-glow {
-  0%, 100% { 
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% { 
-    opacity: 0.8;
-    transform: scale(1.05);
-  }
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
 }
-
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-float-slow {
-  animation: float-slow 8s ease-in-out infinite;
-}
-
-.animate-float-medium {
-  animation: float-medium 7s ease-in-out infinite;
-}
-
-.animate-spin-slow {
-  animation: spin-slow 20s linear infinite;
-}
-
-.animate-spin-slower {
-  animation: spin-slower 30s linear infinite;
-}
-
-.animate-wave1 {
-  animation: wave1 8s ease-in-out infinite;
-}
-
-.animate-wave2 {
-  animation: wave2 10s ease-in-out infinite;
-}
-
-.animate-fade-in {
-  animation: fade-in 1s ease-out;
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 1s ease-out;
+  animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 1s ease-out both;
+}
+.animate-float-soft {
+  animation: float-soft 7s ease-in-out infinite;
+}
+.caret {
+  display: inline-block;
+  width: 0.6ch;
+  background: currentColor;
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-float-soft { animation: none; }
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 4s ease-in-out infinite;
+/* Custom scrollbar — subtle, brand-tinted. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--mist, #7c87a6) 45%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
-
-.delay-100 {
-  animation-delay: 0.1s;
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--mist, #7c87a6) 70%, transparent);
+  background-clip: padding-box;
 }
-
-.delay-200 {
-  animation-delay: 0.2s;
-}
-
-.delay-300 {
-  animation-delay: 0.3s;
-}
-
-.delay-500 {
-  animation-delay: 0.5s;
-}
-
-/* Interactive elements and hover effects */
-@keyframes card-hover {
-  0% { transform: translateY(0) scale(1); }
-  100% { transform: translateY(-8px) scale(1.02); }
-}
-
-@keyframes button-hover {
-  0% { transform: scale(1); }
-  100% { transform: scale(1.05); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
-}
-
-@keyframes glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(2, 149, 246, 0.3); }
-  50% { box-shadow: 0 0 30px rgba(2, 149, 246, 0.6); }
-}
-
-@keyframes slide-in-left {
-  from { 
-    opacity: 0; 
-    transform: translateX(-30px); 
-  }
-  to { 
-    opacity: 1; 
-    transform: translateX(0); 
-  }
-}
-
-@keyframes slide-in-right {
-  from { 
-    opacity: 0; 
-    transform: translateX(30px); 
-  }
-  to { 
-    opacity: 1; 
-    transform: translateX(0); 
-  }
-}
-
-@keyframes bounce-in {
-  0% { 
-    opacity: 0; 
-    transform: scale(0.3) translateY(100px); 
-  }
-  50% { 
-    opacity: 1; 
-    transform: scale(1.05) translateY(-10px); 
-  }
-  70% { 
-    transform: scale(0.98) translateY(5px); 
-  }
-  100% { 
-    opacity: 1; 
-    transform: scale(1) translateY(0); 
-  }
-}
-
-/* Utility classes for interactions */
-.animate-card-hover {
-  animation: card-hover 0.3s ease-out forwards;
-}
-
-.animate-slide-in-left {
-  animation: slide-in-left 0.8s ease-out;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.8s ease-out;
-}
-
-.animate-bounce-in {
-  animation: bounce-in 0.8s ease-out;
-}
-
-.animate-glow {
-  animation: glow 2s ease-in-out infinite;
-}
-
-.animate-shake {
-  animation: shake 0.5s ease-in-out;
-}
-
-/* Card hover effects */
-.card-interactive {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-}
-
-.card-interactive:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
-.card-interactive:hover .card-icon {
-  transform: scale(1.1) rotate(5deg);
-}
-
-.card-icon {
-  transition: all 0.3s ease;
-}
-
-/* Button enhancements */
-.btn-primary-enhanced {
-  background: linear-gradient(135deg, #0295f6 0%, #0275d8 100%);
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.btn-primary-enhanced::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.btn-primary-enhanced:hover::before {
-  left: 100%;
-}
-

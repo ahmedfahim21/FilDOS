@@ -1,12 +1,18 @@
 {
-  "name": "FilDOS - AI-Native Decentralized Storage",
+  "name": "FilDOS — The open-source, AI-native file explorer",
   "short_name": "FilDOS",
-  "description": "A secure, AI-native, meaning-first decentralized drive built on Filecoin",
+  "description": "Find files by meaning, organize with smart tags, and stay local-first. The open-source file explorer for macOS, Windows and Linux.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "theme_color": "#0295f6",
   "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/favicon.ico",
       "sizes": "32x32",
