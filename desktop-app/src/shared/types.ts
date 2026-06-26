@@ -72,6 +72,14 @@ export interface SearchHit extends Entry {
   relativePath: string;
 }
 
+/** A semantic-search hit: a file ranked by meaning, with the matching snippet. */
+export interface SemanticHit extends SearchHit {
+  /** Cosine similarity of the best-matching chunk, in [0, 1]. */
+  score: number;
+  /** A slice of the matching chunk's text, for preview. */
+  snippet: string;
+}
+
 /** A record of something moved to the Trash, used for best-effort restore. */
 export interface TrashedItem {
   id: string;
@@ -268,6 +276,8 @@ export interface IndexApi {
   listExcludes(): Promise<Result<string[]>>;
   /** Set how often (minutes) the background rescan runs. */
   setInterval(minutes: number): Promise<Result<void>>;
+  /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
+  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
   onProgress(cb: (progress: IndexProgress) => void): () => void;
 }

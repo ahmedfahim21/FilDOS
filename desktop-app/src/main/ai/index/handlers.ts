@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
-import type { AppError, IndexConfig, IndexProgress, Result } from '@shared/types';
+import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
 import { DEFAULT_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
@@ -10,6 +10,7 @@ import * as aiIndex from '../../db/aiIndex';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
+import { semanticSearch } from './search';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -129,6 +130,20 @@ export function registerIndexHandlers(): void {
       await patchConfig({ intervalMinutes: Math.max(1, Math.min(1440, Math.round(minutes))) });
       await watcher.refresh(); // apply the new cadence immediately
     }),
+  );
+
+  ipcMain.handle(
+    Channels.indexSearch,
+    (_e, query: string, opts?: { rootPath?: string; k?: number }) =>
+      wrap<SemanticHit[]>(async () => {
+        const provider = await activeAiProvider();
+        if (!provider) {
+          throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
+        }
+        const modelId = (await getPrefs()).ai?.modelId ?? DEFAULT_MODEL_ID;
+        const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
+        return semanticSearch(provider, modelId, vectorStore, query, { rootPath, k: opts?.k });
+      }),
   );
 }
 

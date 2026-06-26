@@ -1,0 +1,117 @@
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { IndexState } from '@shared/types';
+import type { AiProvider } from '../providers/types';
+import * as aiIndex from '../../db/aiIndex';
+import { closeDb, initDb } from '../../db';
+import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
+import { useTempDir } from '../../fs/fixtures';
+import { semanticSearch } from './search';
+
+const tmp = useTempDir();
+const store = new SqliteVectorStore();
+
+/** A provider that embeds any query to a fixed vector (the test controls ranking). */
+function fakeProvider(queryVec: number[]): AiProvider {
+  return {
+    id: 'fake',
+    capabilities: { embed: true, generate: false, images: false },
+    async status(modelId) {
+      return { state: 'ready', modelId, dim: queryVec.length };
+    },
+    async download() {},
+    async embed() {
+      return [Float32Array.from(queryVec)];
+    },
+    async embedImages() {
+      return [];
+    },
+  };
+}
+
+const state = (path: string): IndexState => ({
+  path,
+  mtime: 1,
+  size: 1,
+  contentHash: null,
+  modelId: 'm1',
+  indexedAt: 1,
+  status: 'indexed',
+});
+
+/** Write a real file and index it with one chunk carrying `vec`. */
+async function indexFile(path: string, vec: number[], text: string): Promise<void> {
+  await fs.writeFile(path, text);
+  await aiIndex.upsertState(state(path));
+  await store.upsert(path, [{ chunkIx: 0, text, embedding: Float32Array.from(vec), modelId: 'm1' }]);
+}
+
+beforeEach(() => initDb(':memory:'));
+afterEach(() => closeDb());
+
+describe('semanticSearch', () => {
+  it('ranks the most similar file first and returns its snippet', async () => {
+    const a = join(tmp(), 'a.txt');
+    const b = join(tmp(), 'b.txt');
+    const c = join(tmp(), 'c.txt');
+    await indexFile(a, [1, 0, 0], 'alpha content about ships');
+    await indexFile(b, [0, 1, 0], 'beta content about trains');
+    await indexFile(c, [0, 0, 1], 'gamma content about planes');
+
+    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), 'm1', store, 'vessels at sea');
+
+    expect(hits[0].path).toBe(a);
+    expect(hits[0].snippet).toContain('alpha');
+    expect(hits[0].score).toBeGreaterThan(hits[1].score);
+  });
+
+  it('collapses multiple chunks of one file to a single best-scored hit', async () => {
+    const a = join(tmp(), 'a.txt');
+    await fs.writeFile(a, 'two chunks');
+    await aiIndex.upsertState(state(a));
+    await store.upsert(a, [
+      // Different directions — cosine ignores magnitude — so 'strong' wins.
+      { chunkIx: 0, text: 'weak match', embedding: Float32Array.from([1, 1, 0]), modelId: 'm1' },
+      { chunkIx: 1, text: 'strong match', embedding: Float32Array.from([1, 0, 0]), modelId: 'm1' },
+    ]);
+
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0].snippet).toContain('strong');
+  });
+
+  it('scopes results to rootPath', async () => {
+    await fs.mkdir(join(tmp(), 'docs'));
+    await fs.mkdir(join(tmp(), 'other'));
+    const inDocs = join(tmp(), 'docs', 'a.txt');
+    const outside = join(tmp(), 'other', 'c.txt');
+    await indexFile(inDocs, [1, 0, 0], 'in docs');
+    await indexFile(outside, [1, 0, 0], 'outside');
+
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q', {
+      rootPath: join(tmp(), 'docs'),
+    });
+
+    expect(hits.map((h) => h.path)).toEqual([inDocs]);
+  });
+
+  it('returns empty for a blank query or an empty index', async () => {
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, '   ')).toEqual([]);
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'anything')).toEqual([]);
+  });
+
+  it('prunes and omits files deleted on disk', async () => {
+    const a = join(tmp(), 'a.txt');
+    const b = join(tmp(), 'b.txt');
+    await indexFile(a, [1, 0, 0], 'alpha');
+    await indexFile(b, [0, 1, 0], 'beta');
+    await fs.rm(a); // deleted after indexing
+
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+
+    expect(hits.map((h) => h.path)).not.toContain(a);
+    expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index
+  });
+});

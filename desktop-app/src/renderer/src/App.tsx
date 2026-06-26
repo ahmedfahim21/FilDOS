@@ -34,6 +34,7 @@ import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
 import { TrashView } from '@/components/TrashView';
 import { RecentsView } from '@/components/RecentsView';
+import { SemanticSearchView } from '@/components/SemanticSearchView';
 import { TagFilesView } from '@/components/TagFilesView';
 import { CloudConnectView } from '@/components/CloudConnectView';
 import { SettingsView } from '@/components/SettingsView';
@@ -339,6 +340,10 @@ function Browser({ initialView }: { initialView: ViewState }) {
             e.preventDefault();
             setDialog({ kind: 'new-folder' });
             return;
+          case 'f':
+            e.preventDefault();
+            nav.openPage({ kind: 'semantic-search', rootPath: nav.currentPath });
+            return;
           case 'z':
             e.preventDefault();
             handleUndo();
@@ -457,6 +462,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Settings';
+  } else if (page?.kind === 'semantic-search') {
+    pageTitle = (
+      <>
+        <Icon name="search" size={15} /> Semantic Search
+      </>
+    );
+    pageLabel = 'Semantic Search';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -496,6 +508,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
             <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
           ) : nav.page?.kind === 'settings' ? (
             <SettingsView onBack={nav.back} />
+          ) : nav.page?.kind === 'semantic-search' ? (
+            <SemanticSearchView
+              rootPath={nav.page.rootPath}
+              onBack={nav.back}
+              onNavigate={nav.navigate}
+              onInfo={(p) => setInfoPath(p)}
+            />
           ) : nav.page?.kind === 'tag' ? (
             pageTag && (
               <TagFilesView
