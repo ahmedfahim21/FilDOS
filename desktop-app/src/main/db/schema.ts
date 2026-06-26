@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /**
  * Drizzle table definitions mirroring the SQL migrations in ./index.ts. The
@@ -63,3 +63,30 @@ export const accounts = sqliteTable('accounts', {
   token: text('token').notNull(),
   createdAt: integer('created_at').notNull(),
 });
+
+/** AI index bookkeeping: one row per indexed file (see file_chunks for content). */
+export const indexState = sqliteTable('index_state', {
+  path: text('path').primaryKey(),
+  mtime: integer('mtime').notNull(),
+  size: integer('size').notNull(),
+  contentHash: text('content_hash'),
+  modelId: text('model_id').notNull(),
+  indexedAt: integer('indexed_at').notNull(),
+  status: text('status').notNull(),
+});
+
+/** Extracted, chunked text per file with optional embedding (Float32 LE BLOB). */
+export const fileChunks = sqliteTable(
+  'file_chunks',
+  {
+    id: integer('id').primaryKey(),
+    path: text('path')
+      .notNull()
+      .references(() => indexState.path, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    chunkIx: integer('chunk_ix').notNull(),
+    text: text('text').notNull(),
+    embedding: blob('embedding', { mode: 'buffer' }),
+    modelId: text('model_id').notNull(),
+  },
+  (t) => [index('idx_file_chunks_path').on(t.path)],
+);

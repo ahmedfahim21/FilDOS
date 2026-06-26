@@ -163,6 +163,54 @@ export interface AiModelStatus {
   message?: string;
 }
 
+/** Outcome of indexing a single file. */
+export type IndexStatus = 'indexed' | 'skipped' | 'error';
+
+/** Bookkeeping row for an indexed file (mirrors the index_state table). */
+export interface IndexState {
+  /** Absolute file path (primary key). */
+  path: string;
+  /** Last-modified time in ms, paired with size for cheap staleness checks. */
+  mtime: number;
+  /** Size in bytes. */
+  size: number;
+  /** Content hash that confirms a real change; null when not computed. */
+  contentHash: string | null;
+  /** Embedding model that produced this file's chunks. */
+  modelId: string;
+  /** When the file was last indexed, in ms. */
+  indexedAt: number;
+  status: IndexStatus;
+}
+
+/** A stored text chunk with its (optional) embedding. */
+export interface FileChunk {
+  path: string;
+  /** 0-based position of the chunk within the file. */
+  chunkIx: number;
+  text: string;
+  /** Embedding vector; null until the embedder has run. */
+  embedding: Float32Array | null;
+  modelId: string;
+}
+
+/** A chunk paired with its embedding, ready to persist in the vector store. */
+export interface ChunkVector {
+  chunkIx: number;
+  text: string;
+  embedding: Float32Array;
+  modelId: string;
+}
+
+/** A vector-search hit: the matching chunk plus its cosine similarity. */
+export interface SearchMatch {
+  path: string;
+  chunkIx: number;
+  text: string;
+  /** Cosine similarity in [-1, 1]; higher is closer. */
+  score: number;
+}
+
 /** The API surface exposed on `window.fsapi` by the preload bridge. */
 export interface FsApi {
   listDir(path: string): Promise<Result<Entry[]>>;
