@@ -145,6 +145,14 @@ export interface Prefs {
   columnWidths?: { size: number; type: number; modified: number };
   /** AI feature settings (enable toggle + active provider + model). */
   ai?: { enabled: boolean; activeProvider: string; modelId: string };
+  /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
+  index?: {
+    enabled?: boolean;
+    roots?: string[];
+    excludes?: string[];
+    /** Minutes between background rescans of the roots. */
+    intervalMinutes?: number;
+  };
 }
 
 /** Lifecycle of a provider's embedding model. */
@@ -209,6 +217,59 @@ export interface SearchMatch {
   text: string;
   /** Cosine similarity in [-1, 1]; higher is closer. */
   score: number;
+}
+
+/** What the background indexer is doing right now. */
+export type IndexRunState = 'idle' | 'scanning' | 'indexing' | 'paused' | 'error';
+
+/** A snapshot of indexing progress, pushed to the renderer as it advances. */
+export interface IndexProgress {
+  state: IndexRunState;
+  /** Files visited during the current crawl. */
+  scanned: number;
+  /** Jobs to process this run (the progress denominator). */
+  total: number;
+  /** Jobs completed this run (the progress numerator). */
+  indexed: number;
+  /** Files that failed and were skipped. */
+  errors: number;
+  /** Path currently being processed, or null when idle. */
+  currentFile: string | null;
+  /** Error detail when `state === 'error'`. */
+  message?: string;
+}
+
+/** Indexing configuration persisted in `prefs.index`. */
+export interface IndexConfig {
+  enabled: boolean;
+  /** Roots to crawl (defaults to the user's home directory). */
+  roots: string[];
+  /** Files/folders the user has excluded from indexing. */
+  excludes: string[];
+  /** Minutes between background rescans of the roots. */
+  intervalMinutes: number;
+}
+
+/** The API surface exposed on `window.index` (background indexing control). */
+export interface IndexApi {
+  /** Enable indexing and start a crawl; progress arrives via `onProgress`. */
+  start(): Promise<Result<void>>;
+  /** Stop processing; the queue is preserved for a later start(). */
+  pause(): Promise<Result<void>>;
+  /** Forget the entire index and queue. */
+  clear(): Promise<Result<void>>;
+  /** Current progress snapshot. */
+  status(): Promise<Result<IndexProgress>>;
+  /** Exclude a file/folder from indexing (and drop anything already indexed under it). */
+  addExclude(path: string): Promise<Result<void>>;
+  /** Remove an exclusion. */
+  removeExclude(path: string): Promise<Result<void>>;
+  /** The current exclusion list. */
+  listExcludes(): Promise<Result<string[]>>;
+  /** Set how often (minutes) the background rescan runs. */
+  setInterval(minutes: number): Promise<Result<void>>;
+  /** Subscribe to indexing progress; returns an unsubscribe fn. */
+  onProgress(cb: (progress: IndexProgress) => void): () => void;
 }
 
 /** The API surface exposed on `window.fsapi` by the preload bridge. */

@@ -129,6 +129,23 @@ worker points `wasmPaths` at its own `__dirname` to stay offline. Models cache t
 `app.getPath`). The renderer drives it from Settings (`state/ai.tsx` context +
 `components/SettingsView.tsx`, with a per-model picker and live status).
 
+**Indexer (`src/main/ai/index/`).** The background pipeline that turns files into
+searchable vectors. `extract.ts` (text/code/data by extension; binary + size-cap
+skip) → `chunk.ts` (~512-token char-approx windows) → the active provider's
+`embed()` → `db/vectorStore.sqlite.ts` (Float32 BLOBs, brute-force cosine).
+`indexer.ts` is the orchestrator: it crawls the configured roots (default the
+home dir; `ignore.ts` skips dotfiles/`node_modules`/caches/bundles + user
+exclusions), compares `fs.stat` to `index_state` so unchanged files are no-ops,
+and drains the persistent `index_jobs` queue one file at a time (yielding between
+files; a failed file is marked errored, never fatal). `watcher.ts` keeps it fresh
+— a recursive `fs.watch` per root (mac/Windows; Linux falls back) plus a periodic
+reconcile timer. `index/handlers.ts` owns the singleton indexer + watcher, the
+`index:*` channels (`start`/`pause`/`clear`/`status` + exclusion management) and
+`Events.indexProgress`; startup resumes leftover jobs, quit tears watches down.
+Renderer: `state/indexing.tsx` + the Indexing section in `SettingsView.tsx`, and
+a "Exclude from AI index" context-menu action. Dependencies are injected into
+`Indexer`/`IndexWatcher` so tests drive them with a fake provider, no Electron.
+
 ### The database layer (`src/main/db/`)
 
 Everything that isn't the filesystem itself lives in SQLite at
@@ -151,8 +168,13 @@ Electron ≥ 35 (Node 22) — CI runs Node 22 for the same reason.
 - `tags.ts` / `recents.ts` / `views.ts` — feature queries. Every mutation is a
   single statement (no multi-await transactions, so concurrent IPC handlers
   can't interleave).
+- `aiIndex.ts` / `indexJobs.ts` / `vectorStore.sqlite.ts` — the AI index storage:
+  `index_state` (per-file bookkeeping) + `file_chunks` (text + Float32 embedding
+  BLOB, FK cascade) + `index_jobs` (the persistent indexing queue). Same
+  single-statement-mutation discipline; consumed by the indexer above.
 - `remap.ts` — after rename/move, handlers call `remapPaths(old, new, sep)` to
-  carry tags/recents/folder-views along (raw `UPDATE OR REPLACE`, prefix-safe).
+  carry tags/recents/folder-views/`index_state` along (raw `UPDATE OR REPLACE`,
+  prefix-safe; `file_chunks` follows `index_state` via its FK cascade).
 
 Stale rows (files deleted outside FilDOS) are pruned lazily when a tag's files
 or the recents list are fetched, by stat'ing each path in the handler.

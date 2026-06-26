@@ -22,6 +22,7 @@ import type { Prefs } from '@shared/types';
 import { remapPaths } from '../db';
 import * as tags from '../db/tags';
 import * as recents from '../db/recents';
+import * as aiIndex from '../db/aiIndex';
 import { getFolderView, setFolderView } from '../db/views';
 import { listDrives, ejectDrive } from './drives';
 
@@ -174,7 +175,16 @@ export function registerFsHandlers(): void {
         p.trash(ref.accountId, paths.map((x) => parseRemote(x)!.path)),
       );
     }
-    return wrap(() => trashItems(paths.map(assertValidPath)));
+    return wrap(async () => {
+      const valid = paths.map(assertValidPath);
+      const items = await trashItems(valid);
+      // Drop AI-index rows for the trashed files and any indexed descendants.
+      for (const p of valid) {
+        const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
+        if (under.length) await aiIndex.remove(under);
+      }
+      return items;
+    });
   });
 
   ipcMain.handle(Channels.listTrashed, () => wrap(() => listTrashed()));

@@ -90,3 +90,16 @@ export const fileChunks = sqliteTable(
   },
   (t) => [index('idx_file_chunks_path').on(t.path)],
 );
+
+/** Persistent indexing queue; one pending job per path (see db/indexJobs.ts). */
+export const indexJobs = sqliteTable(
+  'index_jobs',
+  {
+    path: text('path').primaryKey(),
+    op: text('op').notNull(),
+    enqueuedAt: integer('enqueued_at').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    status: text('status').notNull(),
+  },
+  (t) => [index('idx_index_jobs_status').on(t.status, t.enqueuedAt)],
+);

@@ -37,6 +37,10 @@ interface ContextMenuProps {
   onRename: () => void;
   onTrash: () => void;
   onInfo: () => void;
+  /** Toggle the selection's AI-index exclusion; omitted when AI is off or remote. */
+  onToggleIndexExclude?: () => void;
+  /** True when the whole selection is already excluded (flips the label to Include). */
+  indexExcluded?: boolean;
   // Tags (selection mode)
   tags: Tag[];
   /** True when every selected item carries the tag. */
@@ -154,6 +158,12 @@ export function ContextMenu(props: ContextMenuProps) {
             <DropdownMenuItem variant="destructive" onSelect={props.onTrash}>
               <Icon name="trash" /> Move to Trash{count > 1 ? ` (${count})` : ''}
             </DropdownMenuItem>
+            {props.onToggleIndexExclude && (
+              <DropdownMenuItem onSelect={props.onToggleIndexExclude}>
+                <Icon name={props.indexExcluded ? 'eye' : 'eye-off'} />{' '}
+                {props.indexExcluded ? 'Include in AI index' : 'Exclude from AI index'}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onInfo} disabled={!single}>
               <Icon name="info" /> Get Info

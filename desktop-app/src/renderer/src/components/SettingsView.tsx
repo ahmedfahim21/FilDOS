@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AiModelStatus } from '@shared/types';
 import { AI_MODELS, type AiModality } from '@shared/aiModels';
 import { useAi } from '@/state/ai';
+import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
@@ -76,6 +77,7 @@ function ModelState({ status, sizeMb }: { status?: AiModelStatus; sizeMb: number
 
 export function SettingsView({ onBack }: { onBack: () => void }) {
   const ai = useAi();
+  const indexing = useIndexing();
   const { notifyError } = useToast();
   const [embedding, setEmbedding] = useState(false);
   const [embedResult, setEmbedResult] = useState<string | null>(null);
@@ -90,6 +92,20 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const disabled = !ai.enabled || isCloud;
   const activeStatus = ai.status;
   const activeState = activeStatus?.state ?? 'absent';
+
+  const ix = indexing.progress;
+  const indexRunning = ix?.state === 'scanning' || ix?.state === 'indexing';
+  const indexPct = ix && ix.total > 0 ? Math.round((ix.indexed / ix.total) * 100) : 0;
+  const indexLabel =
+    ix?.state === 'scanning'
+      ? 'Scanning files…'
+      : ix?.state === 'indexing'
+        ? `Indexing… ${ix.indexed} / ${ix.total}`
+        : ix?.state === 'paused'
+          ? 'Paused'
+          : ix?.state === 'error'
+            ? (ix.message ?? 'Indexing failed')
+            : 'Idle';
 
   async function handleDownload() {
     const res = await ai.download();
@@ -271,6 +287,132 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               downloads the model if needed.
             </p>
           </div>
+        </section>
+
+        {/* Indexing section */}
+        <section
+          className={cn(
+            'border-border bg-card mt-5 rounded-xl border p-5',
+            !ai.enabled && 'pointer-events-none opacity-50',
+          )}
+        >
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <span className="text-primary">
+                <Icon name="search" size={18} />
+              </span>
+              <div>
+                <div className="text-foreground text-sm font-medium">Indexing</div>
+                <div className="text-muted-foreground text-[11px]">
+                  Builds the search index from your files in the background
+                </div>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {indexRunning ? (
+                <button
+                  onClick={indexing.pause}
+                  className="border-border hover:bg-accent rounded-lg border px-3 py-1.5 text-sm transition-colors"
+                >
+                  Pause
+                </button>
+              ) : (
+                <button
+                  onClick={() => void indexing.start()}
+                  disabled={activeState !== 'ready'}
+                  title={activeState !== 'ready' ? 'Download the embedding model first' : undefined}
+                  className="border-primary text-primary hover:bg-primary hover:text-white rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Start
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div className="border-border mb-4 rounded-lg border px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-foreground text-sm">{indexLabel}</span>
+              {!!ix?.errors && (
+                <span className="text-muted-foreground text-[11px]">{ix.errors} skipped</span>
+              )}
+            </div>
+            {indexRunning && (
+              <>
+                <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full rounded-full transition-all"
+                    style={{ width: `${indexPct}%` }}
+                  />
+                </div>
+                {ix?.currentFile && (
+                  <div className="text-muted-foreground mt-1.5 truncate font-mono text-[10px]">
+                    {ix.currentFile}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Rescan cadence */}
+          <div className="border-border mb-4 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-foreground text-sm">Rescan every</div>
+              <div className="text-muted-foreground text-[11px]">
+                How often the background scan checks for new or changed files
+              </div>
+            </div>
+            <select
+              value={indexing.intervalMinutes}
+              onChange={(e) => indexing.setIntervalMinutes(Number(e.target.value))}
+              className="border-border bg-card text-foreground shrink-0 rounded-lg border px-2 py-1 text-sm"
+            >
+              {[5, 15, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m < 60 ? `${m} min` : '1 hour'}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Exclusions */}
+          <div className="mb-3">
+            <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
+              Excluded from indexing
+            </div>
+            {indexing.excludes.length === 0 ? (
+              <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-[11px]">
+                Nothing excluded. Right-click a file or folder to exclude it.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {indexing.excludes.map((path) => (
+                  <div
+                    key={path}
+                    className="border-border flex items-center gap-3 rounded-lg border px-3 py-2"
+                  >
+                    <code className="text-foreground min-w-0 flex-1 truncate font-mono text-[11px]">
+                      {path}
+                    </code>
+                    <button
+                      onClick={() => indexing.removeExclude(path)}
+                      aria-label={`Stop excluding ${path}`}
+                      className="text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => void indexing.clear()}
+            className="text-muted-foreground hover:text-foreground text-[11px] underline-offset-2 hover:underline"
+          >
+            Clear index
+          </button>
         </section>
       </div>
     </div>
