@@ -56,6 +56,7 @@ export const Channels = {
   indexAddExclude: 'index:addExclude',
   indexRemoveExclude: 'index:removeExclude',
   indexListExcludes: 'index:listExcludes',
+  indexSetInterval: 'index:setInterval',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];

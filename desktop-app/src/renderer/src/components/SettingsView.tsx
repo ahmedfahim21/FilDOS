@@ -354,6 +354,27 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             )}
           </div>
 
+          {/* Rescan cadence */}
+          <div className="border-border mb-4 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-foreground text-sm">Rescan every</div>
+              <div className="text-muted-foreground text-[11px]">
+                How often the background scan checks for new or changed files
+              </div>
+            </div>
+            <select
+              value={indexing.intervalMinutes}
+              onChange={(e) => indexing.setIntervalMinutes(Number(e.target.value))}
+              className="border-border bg-card text-foreground shrink-0 rounded-lg border px-2 py-1 text-sm"
+            >
+              {[5, 15, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m < 60 ? `${m} min` : '1 hour'}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Exclusions */}
           <div className="mb-3">
             <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">

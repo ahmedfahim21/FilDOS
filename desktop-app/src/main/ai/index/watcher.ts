@@ -20,10 +20,16 @@ import { isIgnored } from './ignore';
  */
 
 const DEBOUNCE_MS = 2000;
-const PERIOD_MS = 15 * 60 * 1000;
+/** Floor on the rescan interval, so a bad pref can't busy-loop the indexer. */
+const MIN_INTERVAL_MINUTES = 1;
 
 export interface WatcherDeps {
-  config: () => Promise<{ enabled: boolean; roots: string[]; excludes: string[] }>;
+  config: () => Promise<{
+    enabled: boolean;
+    roots: string[];
+    excludes: string[];
+    intervalMinutes: number;
+  }>;
   /** Kick a reconcile (typically `() => void indexer.reconcile()`). */
   reconcile: () => void;
 }
@@ -39,7 +45,7 @@ export class IndexWatcher {
   /** Arm the recursive watches and the periodic timer from current config. */
   async start(): Promise<void> {
     this.stop();
-    const { enabled, roots, excludes } = await this.deps.config();
+    const { enabled, roots, excludes, intervalMinutes } = await this.deps.config();
     if (!enabled) return;
     this.excludes = excludes;
 
@@ -57,7 +63,8 @@ export class IndexWatcher {
         // Recursive watch unsupported (Linux) or root unwatchable — the timer covers it.
       }
     }
-    this.timer = setInterval(() => this.deps.reconcile(), PERIOD_MS);
+    const periodMs = Math.max(MIN_INTERVAL_MINUTES, intervalMinutes) * 60 * 1000;
+    this.timer = setInterval(() => this.deps.reconcile(), periodMs);
   }
 
   /** Tear everything down (call on quit, or before re-arming after a config change). */

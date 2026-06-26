@@ -146,7 +146,13 @@ export interface Prefs {
   /** AI feature settings (enable toggle + active provider + model). */
   ai?: { enabled: boolean; activeProvider: string; modelId: string };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
-  index?: { enabled?: boolean; roots?: string[]; excludes?: string[] };
+  index?: {
+    enabled?: boolean;
+    roots?: string[];
+    excludes?: string[];
+    /** Minutes between background rescans of the roots. */
+    intervalMinutes?: number;
+  };
 }
 
 /** Lifecycle of a provider's embedding model. */
@@ -240,6 +246,8 @@ export interface IndexConfig {
   roots: string[];
   /** Files/folders the user has excluded from indexing. */
   excludes: string[];
+  /** Minutes between background rescans of the roots. */
+  intervalMinutes: number;
 }
 
 /** The API surface exposed on `window.index` (background indexing control). */
@@ -258,6 +266,8 @@ export interface IndexApi {
   removeExclude(path: string): Promise<Result<void>>;
   /** The current exclusion list. */
   listExcludes(): Promise<Result<string[]>>;
+  /** Set how often (minutes) the background rescan runs. */
+  setInterval(minutes: number): Promise<Result<void>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
   onProgress(cb: (progress: IndexProgress) => void): () => void;
 }

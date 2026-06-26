@@ -36,6 +36,7 @@ async function indexConfig(): Promise<IndexConfig> {
     enabled: ix.enabled ?? false,
     roots: ix.roots?.length ? ix.roots : [homedir()],
     excludes: ix.excludes ?? [],
+    intervalMinutes: ix.intervalMinutes ?? 15,
   };
 }
 
@@ -73,7 +74,12 @@ const indexer = new Indexer({
 const watcher = new IndexWatcher({
   config: async () => {
     const c = await indexConfig();
-    return { enabled: c.enabled, roots: c.roots, excludes: await effectiveExcludes() };
+    return {
+      enabled: c.enabled,
+      roots: c.roots,
+      excludes: await effectiveExcludes(),
+      intervalMinutes: c.intervalMinutes,
+    };
   },
   reconcile: () => void indexer.reconcile(),
 });
@@ -116,6 +122,13 @@ export function registerIndexHandlers(): void {
 
   ipcMain.handle(Channels.indexListExcludes, () =>
     wrap<string[]>(async () => (await indexConfig()).excludes),
+  );
+
+  ipcMain.handle(Channels.indexSetInterval, (_e, minutes: number) =>
+    wrap<void>(async () => {
+      await patchConfig({ intervalMinutes: Math.max(1, Math.min(1440, Math.round(minutes))) });
+      await watcher.refresh(); // apply the new cadence immediately
+    }),
   );
 }
 

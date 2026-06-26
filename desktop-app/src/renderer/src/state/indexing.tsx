@@ -6,11 +6,14 @@ interface IndexingContextValue {
   progress: IndexProgress | null;
   /** Files/folders excluded from indexing. */
   excludes: string[];
+  /** Minutes between background rescans. */
+  intervalMinutes: number;
   start: () => Promise<Result<void>>;
   pause: () => Promise<Result<void>>;
   clear: () => Promise<Result<void>>;
   addExclude: (path: string) => Promise<void>;
   removeExclude: (path: string) => Promise<void>;
+  setIntervalMinutes: (minutes: number) => Promise<void>;
 }
 
 const IndexingContext = createContext<IndexingContextValue | null>(null);
@@ -23,6 +26,7 @@ const IndexingContext = createContext<IndexingContextValue | null>(null);
 export function IndexingProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState<IndexProgress | null>(null);
   const [excludes, setExcludes] = useState<string[]>([]);
+  const [intervalMinutes, setInterval] = useState(15);
 
   const refreshExcludes = useCallback(async () => {
     const res = await window.index.listExcludes();
@@ -32,6 +36,9 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.index.status().then((r) => {
       if (r.ok) setProgress(r.data);
+    });
+    window.prefs.get().then((p) => {
+      if (p.index?.intervalMinutes) setInterval(p.index.intervalMinutes);
     });
     refreshExcludes();
   }, [refreshExcludes]);
@@ -57,10 +64,24 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
     },
     [refreshExcludes],
   );
+  const setIntervalMinutes = useCallback(async (minutes: number) => {
+    setInterval(minutes); // optimistic
+    await window.index.setInterval(minutes);
+  }, []);
 
   return (
     <IndexingContext.Provider
-      value={{ progress, excludes, start, pause, clear, addExclude, removeExclude }}
+      value={{
+        progress,
+        excludes,
+        intervalMinutes,
+        start,
+        pause,
+        clear,
+        addExclude,
+        removeExclude,
+        setIntervalMinutes,
+      }}
     >
       {children}
     </IndexingContext.Provider>
