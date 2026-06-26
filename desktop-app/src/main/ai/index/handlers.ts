@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result } from '@shared/types';
@@ -43,6 +43,17 @@ async function patchConfig(patch: Partial<IndexConfig>): Promise<void> {
   await setPrefs({ index: { ...(await indexConfig()), ...patch } });
 }
 
+/**
+ * The user's exclusions plus FilDOS's own data dir. The SQLite WAL and model
+ * cache live under `userData` (on macOS that's ~/Library/Application Support,
+ * which the built-in ignore rules don't catch), and that dir sits inside the
+ * watched home root — without excluding it, our own writes would re-trigger the
+ * watcher in a loop. Not shown in the user-facing exclusion list.
+ */
+async function effectiveExcludes(): Promise<string[]> {
+  return [...(await indexConfig()).excludes, app.getPath('userData')];
+}
+
 const vectorStore = new SqliteVectorStore();
 
 function broadcast(progress: IndexProgress): void {
@@ -54,10 +65,7 @@ function broadcast(progress: IndexProgress): void {
 const indexer = new Indexer({
   provider: () => activeAiProvider(),
   modelId: async () => (await getPrefs()).ai?.modelId ?? DEFAULT_MODEL_ID,
-  config: async () => {
-    const c = await indexConfig();
-    return { roots: c.roots, excludes: c.excludes };
-  },
+  config: async () => ({ roots: (await indexConfig()).roots, excludes: await effectiveExcludes() }),
   vectorStore,
   emit: broadcast,
 });
@@ -65,9 +73,9 @@ const indexer = new Indexer({
 const watcher = new IndexWatcher({
   config: async () => {
     const c = await indexConfig();
-    return { enabled: c.enabled, roots: c.roots };
+    return { enabled: c.enabled, roots: c.roots, excludes: await effectiveExcludes() };
   },
-  reconcile: () => void indexer.start(),
+  reconcile: () => void indexer.reconcile(),
 });
 
 /** Register the indexing IPC handlers. Call once after the AI providers exist. */
@@ -94,6 +102,7 @@ export function registerIndexHandlers(): void {
       // Drop anything already indexed at or under the excluded path.
       const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
       if (under.length) await aiIndex.remove(under);
+      await watcher.refresh(); // teach the watcher to ignore the new exclusion
     }),
   );
 
@@ -101,6 +110,7 @@ export function registerIndexHandlers(): void {
     wrap<void>(async () => {
       const cfg = await indexConfig();
       await patchConfig({ excludes: cfg.excludes.filter((x) => x !== path) });
+      await watcher.refresh();
     }),
   );
 

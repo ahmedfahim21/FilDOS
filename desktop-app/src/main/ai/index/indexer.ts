@@ -65,30 +65,58 @@ export class Indexer {
     };
   }
 
-  /** Begin (or restart) a full crawl + index of every configured root. */
-  async start(): Promise<void> {
+  /** Manual start (from Settings): announces progress and surfaces errors. */
+  start(): Promise<void> {
+    return this.run(false);
+  }
+
+  /**
+   * Background reconcile (the watcher / periodic timer). Stays silent when the
+   * model isn't ready or nothing changed, so a reconcile that finds no work
+   * never flips the UI idle→scanning→indexing→idle.
+   */
+  reconcile(): Promise<void> {
+    return this.run(true);
+  }
+
+  private async run(silent: boolean): Promise<void> {
     if (this.state === 'scanning' || this.state === 'indexing') return;
-    this.resetCounters();
     this.paused = false;
 
     const provider = await this.deps.provider();
-    if (!provider) return this.fail('No AI provider is configured.');
+    if (!provider) {
+      if (!silent) this.fail('No AI provider is configured.');
+      return;
+    }
     const modelId = await this.deps.modelId();
-    const status = await provider.status(modelId);
-    if (status.state !== 'ready') {
-      return this.fail(`The model “${modelId}” isn’t downloaded yet — download it first.`);
+    if ((await provider.status(modelId)).state !== 'ready') {
+      if (!silent) this.fail(`The model “${modelId}” isn’t downloaded yet — download it first.`);
+      return;
     }
 
     const { roots, excludes } = await this.deps.config();
     this.excludes = excludes;
+    this.resetCounters();
+    if (!silent) {
+      this.state = 'scanning';
+      this.emit(true);
+    }
 
-    this.state = 'scanning';
-    this.emit(true);
     for (const root of roots) {
       if (this.paused) break;
       await this.crawlRoot(root, excludes, modelId);
     }
     this.total = await jobs.countPending();
+
+    if (this.total === 0) {
+      // Nothing to do. Settle to idle, but only announce it if we'd already
+      // shown activity — a silent reconcile leaves the UI untouched.
+      if (this.state !== 'idle') {
+        this.state = 'idle';
+        this.emit(true);
+      }
+      return;
+    }
 
     await this.drain(modelId, provider);
   }
@@ -203,7 +231,7 @@ export class Indexer {
           changed.push(full);
           await flush();
         }
-        if (this.scanned % 200 === 0) this.emit();
+        if (this.state === 'scanning' && this.scanned % 200 === 0) this.emit();
       }
     };
 

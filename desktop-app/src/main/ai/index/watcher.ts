@@ -1,4 +1,6 @@
 import { watch, type FSWatcher } from 'node:fs';
+import { join } from 'node:path';
+import { isIgnored } from './ignore';
 
 /**
  * Keeps the index fresh against on-disk changes with two mechanisms:
@@ -9,17 +11,20 @@ import { watch, type FSWatcher } from 'node:fs';
  *  - a **periodic reconcile** timer — the cross-platform backbone and the
  *    primary mechanism on Linux.
  *
- * Both just nudge a debounced `reconcile()` (the indexer's crawl, which no-ops
- * unchanged files and prunes vanished ones). This is separate from the
- * renderer's `fs/watch.ts` (which drives the file-list UI) — different concern.
+ * Both nudge a debounced `reconcile()` (the indexer's crawl, which no-ops
+ * unchanged files and prunes vanished ones). Change events are filtered through
+ * the same ignore rules as the crawl, so noise from caches, dependency trees,
+ * excluded paths, and FilDOS's own data dir doesn't spin the indexer — without
+ * it, every SQLite WAL write under the watched home dir would re-trigger us in a
+ * feedback loop. Separate from the renderer's `fs/watch.ts` (file-list UI).
  */
 
 const DEBOUNCE_MS = 2000;
 const PERIOD_MS = 15 * 60 * 1000;
 
 export interface WatcherDeps {
-  config: () => Promise<{ enabled: boolean; roots: string[] }>;
-  /** Kick a reconcile (typically `() => void indexer.start()`). */
+  config: () => Promise<{ enabled: boolean; roots: string[]; excludes: string[] }>;
+  /** Kick a reconcile (typically `() => void indexer.reconcile()`). */
   reconcile: () => void;
 }
 
@@ -27,18 +32,25 @@ export class IndexWatcher {
   private watchers: FSWatcher[] = [];
   private timer: NodeJS.Timeout | null = null;
   private debounce: NodeJS.Timeout | null = null;
+  private excludes: string[] = [];
 
   constructor(private readonly deps: WatcherDeps) {}
 
   /** Arm the recursive watches and the periodic timer from current config. */
   async start(): Promise<void> {
     this.stop();
-    const { enabled, roots } = await this.deps.config();
+    const { enabled, roots, excludes } = await this.deps.config();
     if (!enabled) return;
+    this.excludes = excludes;
 
     for (const root of roots) {
       try {
-        const w = watch(root, { recursive: true, persistent: false }, () => this.schedule());
+        const w = watch(root, { recursive: true, persistent: false }, (_event, filename) => {
+          // Drop events for paths we'd never index — chiefly our own DB/model
+          // writes under the user-data dir, which else would loop forever.
+          if (filename != null && isIgnored(join(root, filename.toString()), this.excludes)) return;
+          this.schedule();
+        });
         w.on('error', () => {});
         this.watchers.push(w);
       } catch {

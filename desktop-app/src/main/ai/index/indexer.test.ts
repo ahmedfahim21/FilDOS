@@ -39,6 +39,7 @@ function fakeProvider(boom?: string) {
 /** Build an indexer over the temp dir with the given excludes + provider. */
 function makeIndexer(provider: AiProvider, excludes: string[] = []) {
   let last: IndexProgress | null = null;
+  let emits = 0;
   const indexer = new Indexer({
     provider: async () => provider,
     modelId: async () => 'm1',
@@ -46,9 +47,10 @@ function makeIndexer(provider: AiProvider, excludes: string[] = []) {
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
       last = p;
+      emits++;
     },
   });
-  return { indexer, progress: () => last };
+  return { indexer, progress: () => last, emits: () => emits };
 }
 
 const write = (name: string, body: string) => fs.writeFile(join(tmp(), name), body);
@@ -127,6 +129,33 @@ describe('Indexer.start', () => {
     await second.indexer.start();
     expect(await aiIndex.getState(join(tmp(), 'hide.txt'))).toBeNull();
     expect(await aiIndex.getState(join(tmp(), 'keep.txt'))).not.toBeNull();
+  });
+});
+
+describe('Indexer.reconcile', () => {
+  it('stays silent when nothing changed (no UI churn)', async () => {
+    await write('a.txt', 'hello');
+    const { provider } = fakeProvider();
+    const { indexer, emits } = makeIndexer(provider);
+    await indexer.start();
+    const afterStart = emits();
+
+    await indexer.reconcile(); // background tick, nothing changed
+
+    expect(emits()).toBe(afterStart); // no progress events emitted
+    expect(indexer.status().state).toBe('idle');
+  });
+
+  it('picks up a newly added file', async () => {
+    await write('a.txt', 'hello');
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+
+    await write('b.txt', 'brand new');
+    await indexer.reconcile();
+
+    expect((await aiIndex.getState(join(tmp(), 'b.txt')))?.status).toBe('indexed');
   });
 });
 
