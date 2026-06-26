@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { closeDb, db, initDb, remapPaths } from './index';
-import { fileTags, folderViews, recents, tags } from './schema';
+import { fileChunks, fileTags, folderViews, indexState, recents, tags } from './schema';
 
 beforeEach(async () => {
   initDb(':memory:');
@@ -53,5 +54,21 @@ describe('remapPaths', () => {
     remapPaths('/a.txt', '/b.txt', '/'); // overwrite move
 
     expect(await taggedPaths()).toEqual(['/b.txt']);
+  });
+
+  it('carries the AI index along, with chunks following via ON UPDATE CASCADE', async () => {
+    await db()
+      .insert(indexState)
+      .values({ path: '/a/file.txt', mtime: 1, size: 1, modelId: 'm1', indexedAt: 1, status: 'indexed' });
+    await db()
+      .insert(fileChunks)
+      .values({ path: '/a/file.txt', chunkIx: 0, text: 'hi', modelId: 'm1' });
+
+    remapPaths('/a/file.txt', '/b/renamed.txt', '/');
+
+    expect((await db().select().from(indexState))[0].path).toBe('/b/renamed.txt');
+    const chunks = await db().select().from(fileChunks).where(eq(fileChunks.path, '/b/renamed.txt'));
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].text).toBe('hi');
   });
 });

@@ -12,7 +12,9 @@ export function remapPaths(oldPath: string, newPath: string, sep: string): void 
   const d = rawDb();
   d.exec('BEGIN');
   try {
-    for (const table of ['file_tags', 'recents', 'folder_views']) {
+    // file_chunks is intentionally absent: its rows follow index_state via the
+    // FK's ON UPDATE CASCADE when the path is rewritten below.
+    for (const table of ['file_tags', 'recents', 'folder_views', 'index_state']) {
       d.prepare(
         `UPDATE OR REPLACE ${table}
          SET path = :new || substr(path, length(:old) + 1)

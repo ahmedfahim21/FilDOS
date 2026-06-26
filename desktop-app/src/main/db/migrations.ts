@@ -58,6 +58,32 @@ const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  `
+  -- AI index storage. One row per indexed file plus its extracted chunks.
+  -- No embedder/worker yet — these tables are the persistence the indexing
+  -- phase will sit on. mtime+size give a cheap staleness check; content_hash
+  -- confirms a real change; model_id lets a model swap invalidate old vectors.
+  CREATE TABLE index_state (
+    path         TEXT PRIMARY KEY,
+    mtime        INTEGER NOT NULL,
+    size         INTEGER NOT NULL,
+    content_hash TEXT,
+    model_id     TEXT NOT NULL,
+    indexed_at   INTEGER NOT NULL,
+    status       TEXT NOT NULL          -- 'indexed' | 'skipped' | 'error'
+  );
+
+  CREATE TABLE file_chunks (
+    id        INTEGER PRIMARY KEY,
+    path      TEXT NOT NULL
+                REFERENCES index_state(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    chunk_ix  INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    embedding BLOB,                      -- Float32 LE; NULL until the embedder runs
+    model_id  TEXT NOT NULL
+  );
+  CREATE INDEX idx_file_chunks_path ON file_chunks(path);
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */
