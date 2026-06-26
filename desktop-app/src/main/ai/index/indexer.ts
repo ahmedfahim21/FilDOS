@@ -34,6 +34,8 @@ export interface IndexerDeps {
   vectorStore: VectorStore;
   /** Push a progress snapshot to the renderer (or capture it in tests). */
   emit: (progress: IndexProgress) => void;
+  /** Whether to skip a path (defaults to the built-in ignore rules). */
+  ignore?: (path: string, excludes: readonly string[]) => boolean;
 }
 
 export class Indexer {
@@ -49,8 +51,11 @@ export class Indexer {
   private draining = false;
   private excludes: string[] = [];
   private lastEmit = 0;
+  private readonly ignore: (path: string, excludes: readonly string[]) => boolean;
 
-  constructor(private readonly deps: IndexerDeps) {}
+  constructor(private readonly deps: IndexerDeps) {
+    this.ignore = deps.ignore ?? isIgnored;
+  }
 
   /** Current progress snapshot. */
   status(): IndexProgress {
@@ -206,7 +211,7 @@ export class Indexer {
       for (const dirent of dirents) {
         if (this.paused) return;
         const full = join(dir, dirent.name);
-        if (dirent.isSymbolicLink() || isIgnored(full, excludes)) continue;
+        if (dirent.isSymbolicLink() || this.ignore(full, excludes)) continue;
         if (dirent.isDirectory()) {
           await walk(full, depth + 1);
           continue;
@@ -290,7 +295,7 @@ export class Indexer {
       await aiIndex.remove([path]); // vanished since enqueue
       return;
     }
-    if (!stat.isFile() || !isExtractable(path) || isIgnored(path, this.excludes)) {
+    if (!stat.isFile() || !isExtractable(path) || this.ignore(path, this.excludes)) {
       await aiIndex.remove([path]); // no longer indexable
       return;
     }

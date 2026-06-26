@@ -9,6 +9,7 @@ import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
+import { isUnder } from './ignore';
 
 import { useTempDir } from '../../fs/fixtures';
 
@@ -49,6 +50,10 @@ function makeIndexer(provider: AiProvider, excludes: string[] = []) {
       last = p;
       emits++;
     },
+    // Honour only user exclusions here — the OS temp dir lives under an
+    // ignored segment on Windows (AppData), which the built-in rules would
+    // otherwise skip. Built-ins have their own coverage in ignore.test.ts.
+    ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
   });
   return { indexer, progress: () => last, emits: () => emits };
 }
