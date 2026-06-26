@@ -10,6 +10,11 @@ import { registerAiHandlers } from './ai/handlers';
 import { registerAiProvider } from './ai/registry';
 import { EmbeddedAiProvider } from './ai/providers/embedded';
 import { CloudAiProvider } from './ai/providers/cloud';
+import {
+  registerIndexHandlers,
+  startIndexBackground,
+  stopIndexBackground,
+} from './ai/index/handlers';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -66,7 +71,10 @@ app.whenReady().then(() => {
   registerFsHandlers();
   registerCloudHandlers();
   registerAiHandlers();
+  registerIndexHandlers();
   createWindow();
+  // Resume any indexing left over from last session (no-op unless enabled).
+  startIndexBackground();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -77,4 +85,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('quit', () => closeDb());
+app.on('quit', () => {
+  stopIndexBackground();
+  closeDb();
+});

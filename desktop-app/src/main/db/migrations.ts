@@ -84,6 +84,19 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_file_chunks_path ON file_chunks(path);
   `,
+  `
+  -- Persistent indexing queue. One pending job per path so re-enqueuing a file
+  -- coalesces; a 'remove' supersedes a stale 'upsert'. Survives restarts: every
+  -- row is treated as pending on startup, so the indexer just drains the table.
+  CREATE TABLE index_jobs (
+    path        TEXT PRIMARY KEY,
+    op          TEXT NOT NULL,            -- 'upsert' | 'remove'
+    enqueued_at INTEGER NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL             -- 'pending' | 'error'
+  );
+  CREATE INDEX idx_index_jobs_status ON index_jobs(status, enqueued_at);
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

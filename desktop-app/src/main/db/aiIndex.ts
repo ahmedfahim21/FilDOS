@@ -86,6 +86,26 @@ export async function remove(paths: string[]): Promise<void> {
  */
 export const prune = remove;
 
+/** Wipe the whole index (used by "Clear index"); chunks cascade away. */
+export async function clearAll(): Promise<void> {
+  await db().delete(indexState);
+}
+
+/**
+ * Every index_state row, optionally narrowed to a subtree. The indexer loads
+ * these into a Map at the start of a crawl so staleness checks are in-memory
+ * instead of one query per file.
+ */
+export async function statesUnder(underPath?: string): Promise<IndexState[]> {
+  const base = db().select().from(indexState);
+  const rows = underPath
+    ? await base.where(
+        or(eq(indexState.path, underPath), like(indexState.path, `${underPath}${sep}%`)),
+      )
+    : await base;
+  return rows as IndexState[];
+}
+
 /**
  * Pull embedded chunks for brute-force vector search, optionally narrowed to a
  * subtree (`underPath`) and/or a file extension (`ext`, without the dot). Rows

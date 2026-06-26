@@ -49,6 +49,13 @@ export const Channels = {
   aiDownload: 'ai:download',
   aiEmbed: 'ai:embed',
   aiEmbedImages: 'ai:embedImages',
+  indexStart: 'index:start',
+  indexPause: 'index:pause',
+  indexClear: 'index:clear',
+  indexStatus: 'index:status',
+  indexAddExclude: 'index:addExclude',
+  indexRemoveExclude: 'index:removeExclude',
+  indexListExcludes: 'index:listExcludes',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
@@ -59,4 +66,6 @@ export const Events = {
   dirChanged: 'fs:changed',
   /** AI model download/state progress; payload is an AiModelStatus. */
   aiModelProgress: 'ai:modelProgress',
+  /** Background indexing progress; payload is an IndexProgress. */
+  indexProgress: 'index:progress',
 } as const;

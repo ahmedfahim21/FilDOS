@@ -5,6 +5,8 @@ import type {
   AiModelStatus,
   CloudApi,
   FsApi,
+  IndexApi,
+  IndexProgress,
   Prefs,
   RecentsApi,
   TagsApi,
@@ -115,6 +117,23 @@ const aiApi: AiApi = {
   },
 };
 contextBridge.exposeInMainWorld('ai', aiApi);
+
+// Background indexing: start/pause/clear, exclusions, and a live progress stream.
+const indexApi: IndexApi = {
+  start: () => ipcRenderer.invoke(Channels.indexStart),
+  pause: () => ipcRenderer.invoke(Channels.indexPause),
+  clear: () => ipcRenderer.invoke(Channels.indexClear),
+  status: () => ipcRenderer.invoke(Channels.indexStatus),
+  addExclude: (path) => ipcRenderer.invoke(Channels.indexAddExclude, path),
+  removeExclude: (path) => ipcRenderer.invoke(Channels.indexRemoveExclude, path),
+  listExcludes: () => ipcRenderer.invoke(Channels.indexListExcludes),
+  onProgress: (cb: (progress: IndexProgress) => void) => {
+    const listener = (_e: IpcRendererEvent, progress: IndexProgress) => cb(progress);
+    ipcRenderer.on(Events.indexProgress, listener);
+    return () => ipcRenderer.removeListener(Events.indexProgress, listener);
+  },
+};
+contextBridge.exposeInMainWorld('index', indexApi);
 
 // Expose the platform path separator so the renderer can split breadcrumbs
 // without bundling Node's `path`.

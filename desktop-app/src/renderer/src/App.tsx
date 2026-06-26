@@ -16,7 +16,8 @@ import {
 import { ToastProvider, useToast } from '@/state/toast';
 import { ClipboardProvider, useClipboard } from '@/state/clipboard';
 import { UndoProvider, useUndo } from '@/state/undo';
-import { AiProvider } from '@/state/ai';
+import { AiProvider, useAi } from '@/state/ai';
+import { IndexingProvider, useIndexing } from '@/state/indexing';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
@@ -58,6 +59,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const clipboard = useClipboard();
   const undo = useUndo();
   const actions = useFileActions();
+  const ai = useAi();
+  const indexing = useIndexing();
   const { notify, notifyError } = useToast();
   const { entries, visible, loading, error } = useDirectory();
   const tagState = useTagState(visible);
@@ -545,6 +548,19 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onRename={() => startRename(selectedEntries[0])}
           onTrash={() => setDialog({ kind: 'trash', entries: selectedEntries })}
           onInfo={() => setInfoPath(selectedEntries[0].path)}
+          onExcludeFromIndex={
+            ai.enabled && !isRemote(nav.currentPath)
+              ? async () => {
+                  await Promise.all(selectedPaths.map((p) => indexing.addExclude(p)));
+                  notify(
+                    'success',
+                    selectedPaths.length > 1
+                      ? `Excluded ${selectedPaths.length} items from indexing`
+                      : 'Excluded from indexing',
+                  );
+                }
+              : undefined
+          }
           tags={tagState.tags}
           isTagOnSelection={isTagOnSelection}
           onToggleTag={(tag, apply) => toggleTagOnPaths(selectedPaths, tag, apply)}
@@ -654,9 +670,11 @@ export default function App({
       <ClipboardProvider>
         <UndoProvider>
           <AiProvider>
-            <NavigationProvider initialPath={initialPath} initial={navInitial}>
-              <Browser initialView={initialView} />
-            </NavigationProvider>
+            <IndexingProvider>
+              <NavigationProvider initialPath={initialPath} initial={navInitial}>
+                <Browser initialView={initialView} />
+              </NavigationProvider>
+            </IndexingProvider>
           </AiProvider>
         </UndoProvider>
       </ClipboardProvider>
