@@ -143,6 +143,9 @@ function Browser({ initialView }: { initialView: ViewState }) {
 
   const selectedEntries = visible.filter((e) => selection.has(e.path));
   const selectedPaths = selectedEntries.map((e) => e.path);
+  // The whole selection is already excluded from indexing → offer to re-include.
+  const allIndexExcluded =
+    selectedPaths.length > 0 && selectedPaths.every((p) => indexing.excludes.includes(p));
   const selectedSize = selectedEntries.reduce(
     (sum, e) => sum + (e.isDirectory ? 0 : e.size),
     0,
@@ -548,16 +551,21 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onRename={() => startRename(selectedEntries[0])}
           onTrash={() => setDialog({ kind: 'trash', entries: selectedEntries })}
           onInfo={() => setInfoPath(selectedEntries[0].path)}
-          onExcludeFromIndex={
+          indexExcluded={allIndexExcluded}
+          onToggleIndexExclude={
             ai.enabled && !isRemote(nav.currentPath)
               ? async () => {
-                  await Promise.all(selectedPaths.map((p) => indexing.addExclude(p)));
-                  notify(
-                    'success',
-                    selectedPaths.length > 1
-                      ? `Excluded ${selectedPaths.length} items from indexing`
-                      : 'Excluded from indexing',
-                  );
+                  const n = selectedPaths.length;
+                  if (allIndexExcluded) {
+                    await Promise.all(selectedPaths.map((p) => indexing.removeExclude(p)));
+                    notify('success', n > 1 ? `Included ${n} items in indexing` : 'Included in indexing');
+                  } else {
+                    await Promise.all(selectedPaths.map((p) => indexing.addExclude(p)));
+                    notify(
+                      'success',
+                      n > 1 ? `Excluded ${n} items from indexing` : 'Excluded from indexing',
+                    );
+                  }
                 }
               : undefined
           }
