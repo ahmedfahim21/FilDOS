@@ -21,6 +21,8 @@ import {
   LayoutGrid,
   List,
   type LucideIcon,
+  Monitor,
+  Moon,
   Pencil,
   Plus,
   RefreshCw,
@@ -29,6 +31,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Sun,
   Tag,
   Trash2,
   X,
@@ -67,7 +70,10 @@ type IconName =
   | 'eject'
   | 'cloud'
   | 'settings'
-  | 'sparkles';
+  | 'sparkles'
+  | 'sun'
+  | 'moon'
+  | 'monitor';
 
 /** Maps the app's semantic icon names onto lucide-react glyphs. */
 const ICONS: Record<IconName, LucideIcon> = {
@@ -104,6 +110,9 @@ const ICONS: Record<IconName, LucideIcon> = {
   cloud: Cloud,
   settings: Settings,
   sparkles: Sparkles,
+  sun: Sun,
+  moon: Moon,
+  monitor: Monitor,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

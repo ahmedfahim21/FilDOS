@@ -142,8 +142,13 @@ export interface DriveItem {
   removable: boolean;
 }
 
+/** UI color theme; 'system' follows the OS. */
+export type Theme = 'light' | 'dark' | 'system';
+
 /** Persisted user preferences (window + global view defaults). */
 export interface Prefs {
+  /** Color theme (defaults to 'system'). */
+  theme?: Theme;
   windowBounds?: { x: number; y: number; width: number; height: number };
   lastPath?: string;
   showHidden?: boolean;

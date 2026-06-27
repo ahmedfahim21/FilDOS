@@ -5,10 +5,10 @@
  * Design tokens shared with the web app: the shadcn/ui token vocabulary plus
  * the FilDOS brand palette (#0295f6 primary, blue-tinted dark surfaces).
  * `@theme inline` points Tailwind color utilities at these variables, so the
- * prefers-color-scheme override below drives light/dark for every utility AND
- * for shadcn components (which read the same tokens). Unlike the web app we use
- * prefers-color-scheme rather than a `.dark` class — the desktop follows the OS
- * theme and has no manual toggle (yet).
+ * `.dark` override below drives light/dark for every utility AND for shadcn
+ * components (which read the same tokens). A `.dark` class on <html> is toggled
+ * by lib/theme.ts from the user's Light/Dark/System choice (System tracks the OS
+ * via matchMedia), so an explicit choice always wins over the OS.
  */
 @theme inline {
   --color-background: var(--background);
@@ -59,7 +59,7 @@
 
 :root {
   --radius: 0.625rem;
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* Light mode: White canvas, Cloud surfaces, Ink text, Mist secondary. */
   --background: #ffffff;
@@ -91,38 +91,37 @@
   --sidebar-ring: #0295f6;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Dark mode: Ink app shell, lifted Ink cards, light (#eef2fb) text, Mist
-     * secondary, Azure accents — per the brand "Sidebar · dark" context. */
-    --background: #0c1322;
-    --foreground: #eef2fb;
-    --card: #131c30;
-    --card-foreground: #eef2fb;
-    --popover: #131c30;
-    --popover-foreground: #eef2fb;
-    --primary: #0295f6;
-    --primary-foreground: #ffffff;
-    --secondary: #1c2740;
-    --secondary-foreground: #eef2fb;
-    --muted: #1c2740;
-    --muted-foreground: #7c87a6;
-    --accent: #1c2740;
-    --accent-foreground: #eef2fb;
-    --destructive: #f87171;
-    --success: #4ade80;
-    --border: #24304d;
-    --input: #24304d;
-    --ring: #0295f6;
-    --sidebar: #0c1322;
-    --sidebar-foreground: #eef2fb;
-    --sidebar-primary: #0295f6;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #1c2740;
-    --sidebar-accent-foreground: #eef2fb;
-    --sidebar-border: #24304d;
-    --sidebar-ring: #0295f6;
-  }
+.dark {
+  /* Dark mode: Ink app shell, lifted Ink cards, light (#eef2fb) text, Mist
+   * secondary, Azure accents — per the brand "Sidebar · dark" context. */
+  color-scheme: dark;
+  --background: #0c1322;
+  --foreground: #eef2fb;
+  --card: #131c30;
+  --card-foreground: #eef2fb;
+  --popover: #131c30;
+  --popover-foreground: #eef2fb;
+  --primary: #0295f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1c2740;
+  --secondary-foreground: #eef2fb;
+  --muted: #1c2740;
+  --muted-foreground: #7c87a6;
+  --accent: #1c2740;
+  --accent-foreground: #eef2fb;
+  --destructive: #f87171;
+  --success: #4ade80;
+  --border: #24304d;
+  --input: #24304d;
+  --ring: #0295f6;
+  --sidebar: #0c1322;
+  --sidebar-foreground: #eef2fb;
+  --sidebar-primary: #0295f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1c2740;
+  --sidebar-accent-foreground: #eef2fb;
+  --sidebar-border: #24304d;
+  --sidebar-ring: #0295f6;
 }
 
 @layer base {

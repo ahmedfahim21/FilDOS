@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, Theme } from '@shared/types';
 import { getModelDef, INDEX_MODEL_IDS } from '@shared/aiModels';
 import { useAi } from '@/state/ai';
 import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
+import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+
+const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
+  { value: 'system', label: 'System', icon: 'monitor' },
+  { value: 'light', label: 'Light', icon: 'sun' },
+  { value: 'dark', label: 'Dark', icon: 'moon' },
+];
 
 interface ProviderOption {
   id: string;
@@ -113,12 +120,23 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const { notifyError } = useToast();
   const [embedding, setEmbedding] = useState(false);
   const [embedResult, setEmbedResult] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>('system');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onBack]);
+
+  useEffect(() => {
+    window.prefs.get().then((p) => setTheme(p.theme ?? 'system'));
+  }, []);
+
+  function chooseTheme(value: Theme) {
+    setTheme(value);
+    applyTheme(value);
+    window.prefs.set({ theme: value });
+  }
 
   const isCloud = ai.activeProvider === 'cloud';
   const disabled = !ai.enabled || isCloud;
@@ -160,6 +178,36 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             Configure FilDOS. AI features run on your machine by default.
           </p>
         </div>
+
+        {/* Appearance section */}
+        <section className="border-border bg-card mb-5 rounded-xl border p-5">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="text-primary">
+              <Icon name="sun" size={18} />
+            </span>
+            <div>
+              <div className="text-foreground text-sm font-medium">Appearance</div>
+              <div className="text-muted-foreground text-[11px]">Theme for the app interface</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {THEMES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => chooseTheme(t.value)}
+                className={cn(
+                  'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
+                  theme === t.value
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-accent',
+                )}
+              >
+                <Icon name={t.icon} size={18} />
+                <span className="text-foreground text-sm">{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
 
         {/* AI section */}
         <section className="border-border bg-card rounded-xl border p-5">
