@@ -38,12 +38,13 @@ function fakeProvider(boom?: string) {
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
-function makeIndexer(provider: AiProvider, excludes: string[] = [], modelId = 'm1') {
+function makeIndexer(provider: AiProvider, excludes: string[] = [], textModel = 'm1') {
   let last: IndexProgress | null = null;
   let emits = 0;
   const indexer = new Indexer({
     provider: async () => provider,
-    modelId: async () => modelId,
+    textModel,
+    imageModel: 'clip',
     config: async () => ({ roots: [tmp()], excludes }),
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
@@ -68,7 +69,7 @@ describe('Indexer.start', () => {
   it('populates chunks and bookkeeping for a folder', async () => {
     await write('a.txt', 'hello world');
     await write('b.md', '# Title\n\nsome body text');
-    await write('photo.png', 'not text'); // non-extractable, skipped
+    await write('movie.mp4', 'not indexable'); // not text, not an image — skipped
 
     const { provider } = fakeProvider();
     const { indexer } = makeIndexer(provider);
@@ -76,7 +77,7 @@ describe('Indexer.start', () => {
 
     expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
     expect((await aiIndex.getState(join(tmp(), 'b.md')))?.status).toBe('indexed');
-    expect(await aiIndex.getState(join(tmp(), 'photo.png'))).toBeNull();
+    expect(await aiIndex.getState(join(tmp(), 'movie.mp4'))).toBeNull();
     expect(await chunkCount()).toBeGreaterThan(0);
     expect(indexer.status().state).toBe('idle');
   });
@@ -137,29 +138,19 @@ describe('Indexer.start', () => {
   });
 });
 
-describe('Indexer — image indexing (CLIP)', () => {
-  const CLIP = 'Xenova/clip-vit-base-patch32';
-
-  it('indexes image files when a CLIP model is active', async () => {
+describe('Indexer — multimodal routing', () => {
+  it('indexes text and image files with their respective models', async () => {
+    await write('a.txt', 'hello world');
     await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
     const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider, [], CLIP);
+    const { indexer } = makeIndexer(provider); // textModel 'm1', imageModel 'clip'
 
     await indexer.start();
 
-    const st = await aiIndex.getState(join(tmp(), 'pic.png'));
-    expect(st?.status).toBe('indexed');
-    expect(await chunkCount()).toBe(1); // one embedding per image
-  });
-
-  it('ignores images under a text model', async () => {
-    await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
-    const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider); // default text model 'm1'
-
-    await indexer.start();
-
-    expect(await aiIndex.getState(join(tmp(), 'pic.png'))).toBeNull();
+    expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.modelId).toBe('m1');
+    const img = await aiIndex.getState(join(tmp(), 'pic.png'));
+    expect(img?.status).toBe('indexed');
+    expect(img?.modelId).toBe('clip'); // routed to the image model
   });
 });
 
@@ -206,15 +197,21 @@ describe('Indexer.clear', () => {
 });
 
 describe('Indexer.start — guards', () => {
-  it('fails gracefully when the model is not ready', async () => {
+  it('fails gracefully when no provider is configured', async () => {
     await write('a.txt', 'hello');
-    const { provider } = fakeProvider();
-    provider.status = async (modelId) => ({ state: 'absent', modelId, dim: 3 });
-    const { indexer } = makeIndexer(provider);
+    const seen: IndexProgress[] = [];
+    const indexer = new Indexer({
+      provider: async () => null,
+      textModel: 'm1',
+      imageModel: 'clip',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: (p) => seen.push(p),
+    });
 
     await indexer.start();
 
-    expect(indexer.status().state).toBe('error');
+    expect(seen.at(-1)?.state).toBe('error');
     expect(await chunkCount()).toBe(0);
   });
 });

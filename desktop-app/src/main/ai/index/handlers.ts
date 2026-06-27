@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { DEFAULT_MODEL_ID } from '@shared/aiModels';
+import { IMAGE_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
@@ -66,7 +66,8 @@ function broadcast(progress: IndexProgress): void {
 
 const indexer = new Indexer({
   provider: () => activeAiProvider(),
-  modelId: async () => (await getPrefs()).ai?.modelId ?? DEFAULT_MODEL_ID,
+  textModel: TEXT_MODEL_ID,
+  imageModel: IMAGE_MODEL_ID,
   config: async () => ({ roots: (await indexConfig()).roots, excludes: await effectiveExcludes() }),
   vectorStore,
   emit: broadcast,
@@ -140,9 +141,14 @@ export function registerIndexHandlers(): void {
         if (!provider) {
           throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
         }
-        const modelId = (await getPrefs()).ai?.modelId ?? DEFAULT_MODEL_ID;
         const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return semanticSearch(provider, modelId, vectorStore, query, { rootPath, k: opts?.k });
+        return semanticSearch(
+          provider,
+          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
+          vectorStore,
+          query,
+          { rootPath, k: opts?.k },
+        );
       }),
   );
 }

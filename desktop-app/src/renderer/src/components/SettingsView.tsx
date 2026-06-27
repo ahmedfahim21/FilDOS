@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AiModelStatus } from '@shared/types';
-import { AI_MODELS, type AiModality } from '@shared/aiModels';
+import { getModelDef, INDEX_MODEL_IDS } from '@shared/aiModels';
 import { useAi } from '@/state/ai';
 import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
@@ -18,12 +18,6 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'embedded', name: 'On-device', blurb: 'Runs locally — private, no API key', available: true },
   { id: 'cloud', name: 'Hosted', blurb: 'Coming soon', available: false },
 ];
-
-const MODALITY_LABEL: Record<AiModality, string> = {
-  text: 'Text',
-  code: 'Code',
-  image: 'Images',
-};
 
 /** A small Azure on/off switch. */
 function Toggle({
@@ -56,23 +50,61 @@ function Toggle({
   );
 }
 
-/** Right-aligned per-model state: ready check, live progress, or size hint. */
-function ModelState({ status, sizeMb }: { status?: AiModelStatus; sizeMb: number }) {
-  if (status?.state === 'ready') {
-    return (
-      <span className="text-primary flex shrink-0 items-center gap-1 text-[11px]">
-        <Icon name="check" size={13} /> Ready
-      </span>
-    );
-  }
-  if (status?.state === 'downloading') {
-    return (
-      <span className="text-muted-foreground shrink-0 text-[11px]">
-        {Math.round((status.progress ?? 0) * 100)}%
-      </span>
-    );
-  }
-  return <span className="text-muted-foreground shrink-0 text-[11px]">~{sizeMb} MB</span>;
+/** One of the two managed models, with live status + a download/retry button. */
+function ModelRow({
+  id,
+  status,
+  onDownload,
+}: {
+  id: string;
+  status?: AiModelStatus;
+  onDownload: () => void;
+}) {
+  const def = getModelDef(id);
+  const state = status?.state ?? 'absent';
+  const pct = Math.round((status?.progress ?? 0) * 100);
+  return (
+    <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-foreground truncate text-sm">{def?.label ?? id}</span>
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
+            {def?.modality === 'image' ? 'Images' : 'Text & documents'}
+          </span>
+        </div>
+        <div className="text-muted-foreground text-[11px]">
+          {state === 'ready'
+            ? `Ready · ${status?.dim ?? def?.dim ?? ''}-d`
+            : state === 'downloading'
+              ? `Downloading… ${pct}%`
+              : state === 'error'
+                ? (status?.message ?? 'Download failed')
+                : `Not downloaded · ~${def?.sizeMb ?? '?'} MB`}
+        </div>
+        {state === 'downloading' && (
+          <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
+            <div
+              className="bg-primary h-full rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+      </div>
+      {state === 'ready' ? (
+        <span className="text-primary shrink-0">
+          <Icon name="check" size={16} />
+        </span>
+      ) : (
+        <button
+          onClick={onDownload}
+          disabled={state === 'downloading'}
+          className="border-primary text-primary hover:bg-primary hover:text-white shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-wait disabled:opacity-60"
+        >
+          {state === 'downloading' ? 'Downloading…' : state === 'error' ? 'Retry' : 'Download'}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function SettingsView({ onBack }: { onBack: () => void }) {
@@ -90,8 +122,6 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
   const isCloud = ai.activeProvider === 'cloud';
   const disabled = !ai.enabled || isCloud;
-  const activeStatus = ai.status;
-  const activeState = activeStatus?.state ?? 'absent';
 
   const ix = indexing.progress;
   const indexRunning = ix?.state === 'scanning' || ix?.state === 'indexing';
@@ -106,11 +136,6 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
           : ix?.state === 'error'
             ? (ix.message ?? 'Indexing failed')
             : 'Idle';
-
-  async function handleDownload() {
-    const res = await ai.download();
-    if (!res.ok) notifyError(res.error);
-  }
 
   async function handleTestEmbed() {
     setEmbedding(true);
@@ -179,91 +204,36 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
-          {/* Model picker */}
-          <div className={cn('mb-4', disabled && 'pointer-events-none opacity-50')}>
+          {/* Models — managed automatically (no user choice). */}
+          <div className={cn('mb-3', disabled && 'pointer-events-none opacity-50')}>
             <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
-              Embedding model
+              Models
             </div>
             {isCloud ? (
               <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-[11px]">
-                Switch to On-device to choose a model.
+                Switch to On-device to use models.
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {AI_MODELS.map((m) => {
-                  const active = ai.modelId === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => ai.setModel(m.id)}
-                      className={cn(
-                        'flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                        active ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent',
-                      )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-foreground truncate text-sm">{m.label}</span>
-                          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
-                            {MODALITY_LABEL[m.modality]}
-                          </span>
-                          <span className="text-muted-foreground text-[10px]">{m.dim}-d</span>
-                        </div>
-                        <div className="text-muted-foreground truncate text-[11px]">
-                          {m.description}
-                        </div>
-                      </div>
-                      <ModelState status={ai.statuses[m.id]} sizeMb={m.sizeMb} />
-                    </button>
-                  );
-                })}
+                {INDEX_MODEL_IDS.map((id) => (
+                  <ModelRow
+                    key={id}
+                    id={id}
+                    status={ai.statuses[id]}
+                    onDownload={() =>
+                      ai.downloadModel(id).then((r) => {
+                        if (!r.ok) notifyError(r.error);
+                        ai.refreshStatuses();
+                      })
+                    }
+                  />
+                ))}
+                <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
+                  FilDOS picks the right model per file automatically — a text model for documents
+                  and CLIP for images. Both download when AI is enabled.
+                </p>
               </div>
             )}
-          </div>
-
-          {/* Active model status + download */}
-          <div className={cn('mb-3', disabled && 'pointer-events-none opacity-50')}>
-            <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <div className="text-foreground truncate text-sm">{ai.modelId}</div>
-                <div className="text-muted-foreground text-[11px]">
-                  {isCloud
-                    ? 'Not available for this provider'
-                    : activeState === 'ready'
-                      ? `Ready · ${activeStatus?.dim ?? ''}-d`
-                      : activeState === 'downloading'
-                        ? `Downloading… ${Math.round((activeStatus?.progress ?? 0) * 100)}%`
-                        : activeState === 'error'
-                          ? (activeStatus?.message ?? 'Download failed')
-                          : 'Not downloaded'}
-                </div>
-                {activeState === 'downloading' && (
-                  <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
-                    <div
-                      className="bg-primary h-full rounded-full transition-all"
-                      style={{ width: `${Math.round((activeStatus?.progress ?? 0) * 100)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-              {activeState === 'ready' ? (
-                <span className="text-primary shrink-0">
-                  <Icon name="check" size={16} />
-                </span>
-              ) : (
-                <button
-                  onClick={handleDownload}
-                  disabled={ai.busy || activeState === 'downloading' || disabled}
-                  className="border-primary text-primary hover:bg-primary hover:text-white shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-wait disabled:opacity-60"
-                >
-                  {activeState === 'downloading'
-                    ? 'Downloading…'
-                    : activeState === 'error'
-                      ? 'Retry'
-                      : 'Download'}
-                </button>
-              )}
-            </div>
           </div>
 
           {/* Test embed */}
@@ -283,7 +253,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               )}
             </div>
             <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
-              Embeds a sample string with the selected model to verify it end-to-end. The first run
+              Embeds a sample string with the text model to verify it end-to-end. The first run
               downloads the model if needed.
             </p>
           </div>
@@ -319,8 +289,8 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               ) : (
                 <button
                   onClick={() => void indexing.start()}
-                  disabled={activeState !== 'ready'}
-                  title={activeState !== 'ready' ? 'Download the embedding model first' : undefined}
+                  disabled={!ai.ready}
+                  title={!ai.ready ? 'Download the model first' : undefined}
                   className="border-primary text-primary hover:bg-primary hover:text-white rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Start

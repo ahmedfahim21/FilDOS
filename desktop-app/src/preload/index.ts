@@ -107,7 +107,7 @@ contextBridge.exposeInMainWorld('cloud', cloudApi);
 // On-device AI: model status/download/embed, plus a download-progress stream.
 const aiApi: AiApi = {
   status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
-  download: () => ipcRenderer.invoke(Channels.aiDownload),
+  download: (modelId) => ipcRenderer.invoke(Channels.aiDownload, modelId),
   embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
   embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
   onModelProgress: (cb: (status: AiModelStatus) => void) => {

@@ -59,7 +59,7 @@ describe('semanticSearch', () => {
     await indexFile(b, [0, 1, 0], 'beta content about trains');
     await indexFile(c, [0, 0, 1], 'gamma content about planes');
 
-    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), 'm1', store, 'vessels at sea');
+    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), { text: 'm1', image: 'clip' }, store, 'vessels at sea');
 
     expect(hits[0].path).toBe(a);
     expect(hits[0].snippet).toContain('alpha');
@@ -76,7 +76,7 @@ describe('semanticSearch', () => {
       { chunkIx: 1, text: 'strong match', embedding: Float32Array.from([1, 0, 0]), modelId: 'm1' },
     ]);
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
 
     expect(hits).toHaveLength(1);
     expect(hits[0].snippet).toContain('strong');
@@ -90,7 +90,7 @@ describe('semanticSearch', () => {
     await indexFile(inDocs, [1, 0, 0], 'in docs');
     await indexFile(outside, [1, 0, 0], 'outside');
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q', {
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q', {
       rootPath: join(tmp(), 'docs'),
     });
 
@@ -98,8 +98,8 @@ describe('semanticSearch', () => {
   });
 
   it('returns empty for a blank query or an empty index', async () => {
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, '   ')).toEqual([]);
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'anything')).toEqual([]);
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, '   ')).toEqual([]);
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'anything')).toEqual([]);
   });
 
   it('ignores chunks embedded by a different model', async () => {
@@ -111,7 +111,7 @@ describe('semanticSearch', () => {
       { chunkIx: 0, text: 'alpha', embedding: Float32Array.from([1, 0, 0]), modelId: 'OTHER' },
     ]);
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
 
     expect(hits).toEqual([]); // no same-model chunks → clean empty, not a false match
   });
@@ -123,7 +123,7 @@ describe('semanticSearch', () => {
     await indexFile(b, [0, 1, 0], 'beta');
     await fs.rm(a); // deleted after indexing
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
 
     expect(hits.map((h) => h.path)).not.toContain(a);
     expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AI_MODELS, DEFAULT_MODEL_ID, getModelDef, promptFor } from './aiModels';
+import { AI_MODELS, DEFAULT_MODEL_ID, getModelDef, promptFor, relevanceOf } from './aiModels';
 
 describe('AI model catalog', () => {
   it('has a unique id per model', () => {
@@ -31,5 +31,14 @@ describe('AI model catalog', () => {
     expect(promptFor('Xenova/all-MiniLM-L6-v2', 'query')).toBe('');
     expect(promptFor('Xenova/gte-small', 'query')).toBe('');
     expect(promptFor('nope', 'query')).toBe('');
+  });
+
+  it('maps cosine to a [0,1] relevance using each model calibration', () => {
+    // BGE floor 0.35, ceil 0.80.
+    expect(relevanceOf('Xenova/bge-small-en-v1.5', 0.35)).toBeCloseTo(0, 5);
+    expect(relevanceOf('Xenova/bge-small-en-v1.5', 0.8)).toBeCloseTo(1, 5);
+    expect(relevanceOf('Xenova/bge-small-en-v1.5', 0.2)).toBe(0); // below floor → clamped
+    // Unknown/uncalibrated model → cosine passes through.
+    expect(relevanceOf('nope', 0.42)).toBe(0.42);
   });
 });

@@ -1,26 +1,54 @@
 import { relative } from 'node:path';
-import type { SearchMatch, SemanticHit } from '@shared/types';
+import type { SemanticHit } from '@shared/types';
+import { relevanceOf } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import type { VectorStore } from './vectorStore';
 import * as service from '../../fs/service';
 import * as aiIndex from '../../db/aiIndex';
 
 /**
- * Semantic search: embed the query with the active model, rank indexed chunks by
- * cosine (via the vector store), then collapse to one hit per file and enrich
- * with live file metadata. Files that have since been deleted on disk are pruned
- * from the index and dropped from the results — the same lazy-prune the tag and
- * recents handlers do. Pure orchestration with injected deps so it's testable
- * without Electron (mirrors indexer.ts).
+ * Semantic search across both indexed modalities. The query is embedded by each
+ * model (the text model for documents, CLIP for images), each searches only its
+ * own chunks (cosine across models is meaningless), and the per-model cosines are
+ * mapped to a common [0, 1] relevance so the two can be ranked together. Results
+ * collapse to one hit per file and are enriched with live metadata; files deleted
+ * on disk are pruned. Pure orchestration with injected deps (testable, no Electron).
  */
 
 const DEFAULT_K = 20;
 /** Chunks per file vary, so over-fetch candidates before collapsing to files. */
 const OVERFETCH = 5;
 
-export async function semanticSearch(
+export interface SearchModels {
+  text: string;
+  image: string;
+}
+
+interface Scored {
+  path: string;
+  text: string;
+  /** Calibrated relevance in [0, 1]. */
+  score: number;
+}
+
+/** Embed the query with one model and rank that model's chunks; calibrated. */
+async function searchOne(
   provider: AiProvider,
   modelId: string,
+  vectorStore: VectorStore,
+  query: string,
+  rootPath: string | undefined,
+  k: number,
+): Promise<Scored[]> {
+  const [vec] = await provider.embed(modelId, [query], 'query');
+  if (!vec) return [];
+  const matches = await vectorStore.search(vec, { underPath: rootPath, k, modelId });
+  return matches.map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
+}
+
+export async function semanticSearch(
+  provider: AiProvider,
+  models: SearchModels,
   vectorStore: VectorStore,
   query: string,
   opts: { rootPath?: string; k?: number } = {},
@@ -28,25 +56,27 @@ export async function semanticSearch(
   const q = query.trim();
   if (!q) return [];
 
-  const [vec] = await provider.embed(modelId, [q], 'query');
-  if (!vec) return [];
-
   const k = opts.k ?? DEFAULT_K;
-  const matches = await vectorStore.search(vec, {
-    underPath: opts.rootPath,
-    k: Math.max(k * OVERFETCH, 50),
-    modelId, // only compare against chunks embedded by the same model
-  });
+  const fetchK = Math.max(k * OVERFETCH, 50);
 
-  // Collapse to the best-scoring chunk per file (matches arrive score-desc, so
-  // the first time we see a path is its best). Drop opposite-direction matches.
-  const bestPerFile = new Map<string, SearchMatch>();
-  for (const m of matches) {
-    if (m.score <= 0) continue;
-    if (!bestPerFile.has(m.path)) bestPerFile.set(m.path, m);
+  const text = await searchOne(provider, models.text, vectorStore, q, opts.rootPath, fetchK);
+  // Image search is best-effort — skip if the CLIP model isn't available.
+  let image: Scored[] = [];
+  try {
+    image = await searchOne(provider, models.image, vectorStore, q, opts.rootPath, fetchK);
+  } catch {
+    image = [];
   }
 
-  const best = [...bestPerFile.values()];
+  // Collapse to the best-scoring chunk per file, dropping sub-threshold matches.
+  const bestPerFile = new Map<string, Scored>();
+  for (const m of [...text, ...image]) {
+    if (m.score <= 0) continue;
+    const cur = bestPerFile.get(m.path);
+    if (!cur || m.score > cur.score) bestPerFile.set(m.path, m);
+  }
+
+  const best = [...bestPerFile.values()].sort((a, b) => b.score - a.score).slice(0, k * 3);
   const infos = await Promise.all(best.map((m) => service.getInfo(m.path).catch(() => null)));
 
   // Prune index rows for files that have vanished from disk.

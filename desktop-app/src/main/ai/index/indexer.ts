@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { IndexProgress, IndexState } from '@shared/types';
-import { getModelDef } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
@@ -27,8 +26,10 @@ const EMIT_INTERVAL_MS = 120;
 export interface IndexerDeps {
   /** The active embedding provider, or null when none is configured. */
   provider: () => Promise<AiProvider | null>;
-  /** The active embedding model id. */
-  modelId: () => Promise<string>;
+  /** Model id for text/document content. */
+  textModel: string;
+  /** Model id for images (CLIP). */
+  imageModel: string;
   /** Current roots + exclusions. */
   config: () => Promise<{ roots: string[]; excludes: string[] }>;
   /** Where embedded chunks are persisted. */
@@ -51,13 +52,18 @@ export class Indexer {
   private paused = false;
   private draining = false;
   private excludes: string[] = [];
-  /** Whether the active model is a CLIP model — only then do we index images. */
-  private imagesOn = false;
+  /** Models confirmed downloaded during the current run (avoids repeat calls). */
+  private readonly ensured = new Set<string>();
   private lastEmit = 0;
   private readonly ignore: (path: string, excludes: readonly string[]) => boolean;
 
   constructor(private readonly deps: IndexerDeps) {
     this.ignore = deps.ignore ?? isIgnored;
+  }
+
+  /** The model that should embed a given file: CLIP for images, else the text model. */
+  private modelFor(path: string): string {
+    return isImage(path) ? this.deps.imageModel : this.deps.textModel;
   }
 
   /** Current progress snapshot. */
@@ -96,15 +102,10 @@ export class Indexer {
       if (!silent) this.fail('No AI provider is configured.');
       return;
     }
-    const modelId = await this.deps.modelId();
-    if ((await provider.status(modelId)).state !== 'ready') {
-      if (!silent) this.fail(`The model “${modelId}” isn’t downloaded yet — download it first.`);
-      return;
-    }
 
     const { roots, excludes } = await this.deps.config();
     this.excludes = excludes;
-    this.imagesOn = getModelDef(modelId)?.kind === 'clip';
+    this.ensured.clear();
     this.resetCounters();
     if (!silent) {
       this.state = 'scanning';
@@ -113,7 +114,7 @@ export class Indexer {
 
     for (const root of roots) {
       if (this.paused) break;
-      await this.crawlRoot(root, excludes, modelId);
+      await this.crawlRoot(root, excludes);
     }
     this.total = await jobs.countPending();
 
@@ -127,28 +128,32 @@ export class Indexer {
       return;
     }
 
-    await this.drain(modelId, provider);
+    await this.drain(provider);
   }
 
   /**
    * Drain whatever is already queued, without re-crawling — for startup, where
-   * we resume jobs left over from a previous session. No-ops if the model isn't
-   * ready yet (the jobs stay pending until the user starts indexing).
+   * we resume jobs left over from a previous session.
    */
   async resume(): Promise<void> {
     await jobs.resume(); // re-arm transient errors from last session
     if ((await jobs.countPending()) === 0) return;
     const provider = await this.deps.provider();
     if (!provider) return;
-    const modelId = await this.deps.modelId();
-    if ((await provider.status(modelId)).state !== 'ready') return;
 
     this.resetCounters();
     this.paused = false;
     this.excludes = (await this.deps.config()).excludes;
-    this.imagesOn = getModelDef(modelId)?.kind === 'clip';
+    this.ensured.clear();
     this.total = await jobs.countPending();
-    await this.drain(modelId, provider);
+    await this.drain(provider);
+  }
+
+  /** Make sure a model is downloaded before we embed with it (idempotent). */
+  private async ensureModel(provider: AiProvider, modelId: string): Promise<void> {
+    if (this.ensured.has(modelId)) return;
+    await provider.download(modelId);
+    this.ensured.add(modelId);
   }
 
   /** Stop processing; the queue is preserved and a later start() picks it up. */
@@ -192,7 +197,7 @@ export class Indexer {
   }
 
   /** Walk one root: enqueue new/changed files, queue removals for vanished ones. */
-  private async crawlRoot(root: string, excludes: string[], modelId: string): Promise<void> {
+  private async crawlRoot(root: string, excludes: string[]): Promise<void> {
     const states = new Map<string, IndexState>();
     for (const s of await aiIndex.statesUnder(root)) states.set(s.path, s);
     const seen = new Set<string>();
@@ -236,7 +241,7 @@ export class Indexer {
           prev.status === 'error' ||
           prev.mtime !== stat.mtimeMs ||
           prev.size !== stat.size ||
-          prev.modelId !== modelId
+          prev.modelId !== this.modelFor(full)
         ) {
           changed.push(full);
           await flush();
@@ -255,7 +260,7 @@ export class Indexer {
   }
 
   /** Process the queue until empty or paused. */
-  private async drain(modelId: string, provider: AiProvider): Promise<void> {
+  private async drain(provider: AiProvider): Promise<void> {
     if (this.draining) return;
     this.draining = true;
     this.state = 'indexing';
@@ -266,7 +271,7 @@ export class Indexer {
         if (!job) break;
         this.currentFile = job.path;
         try {
-          await this.process(job, modelId, provider);
+          await this.process(job, provider);
           await jobs.done(job.path);
         } catch {
           await jobs.markError(job.path);
@@ -286,7 +291,7 @@ export class Indexer {
   }
 
   /** Index or remove a single file. Throws on failure so drain() can retry. */
-  private async process(job: IndexJob, modelId: string, provider: AiProvider): Promise<void> {
+  private async process(job: IndexJob, provider: AiProvider): Promise<void> {
     const { path } = job;
     if (job.op === 'remove') {
       await aiIndex.remove([path]);
@@ -305,7 +310,8 @@ export class Indexer {
       return;
     }
 
-    // Already current under this model — re-run is a no-op.
+    const modelId = this.modelFor(path);
+    // Already current under the right model — re-run is a no-op.
     const prev = await aiIndex.getState(path);
     if (
       prev &&
@@ -317,8 +323,10 @@ export class Indexer {
       return;
     }
 
-    // Images (CLIP only): one embedding per file, labelled by its name.
-    if (this.imagesOn && isImage(path)) {
+    await this.ensureModel(provider, modelId);
+
+    // Images: one CLIP embedding per file, labelled by its name (the snippet).
+    if (isImage(path)) {
       const [embedding] = await provider.embedImages(modelId, [path]);
       await aiIndex.upsertState(this.stateFor(path, stat, modelId, embedding ? 'indexed' : 'skipped'));
       await this.deps.vectorStore.upsert(
@@ -347,9 +355,9 @@ export class Indexer {
     );
   }
 
-  /** A file is indexable if its text can be extracted, or it's an image under CLIP. */
+  /** A file is indexable if its text can be extracted, or it's an image (CLIP). */
   private indexable(path: string): boolean {
-    return isExtractable(path) || (this.imagesOn && isImage(path));
+    return isExtractable(path) || isImage(path);
   }
 
   private stateFor(

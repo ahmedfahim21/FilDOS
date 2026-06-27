@@ -46,7 +46,7 @@ export function SemanticSearchView({
   const [menu, setMenu] = useState<{ x: number; y: number; hit: SemanticHit } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const ready = ai.enabled && ai.status?.state === 'ready';
+  const ready = ai.ready;
   // Cosine isn't a probability — show each hit's strength relative to the best
   // match in the set rather than a misleading absolute "confidence %".
   const topScore = results[0]?.score || 1;

@@ -41,17 +41,17 @@ export function registerAiHandlers(): void {
     wrap<AiModelStatus>(async () => (await provider()).status(await activeModelId(modelId))),
   );
 
-  ipcMain.handle(Channels.aiDownload, (e) =>
+  ipcMain.handle(Channels.aiDownload, (e, modelId?: string) =>
     wrap<void>(async () => {
       const p = await provider();
-      const modelId = await activeModelId();
+      const id = await activeModelId(modelId);
       // Forward the provider's progress to the requesting renderer for the
       // duration of the download (same sender.send pattern as fs/watch.ts).
       const off = p.onProgress?.((status) => {
         if (!e.sender.isDestroyed()) e.sender.send(Events.aiModelProgress, status);
       });
       try {
-        await p.download(modelId);
+        await p.download(id);
       } finally {
         off?.();
       }

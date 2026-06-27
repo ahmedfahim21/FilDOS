@@ -151,8 +151,8 @@ export interface Prefs {
   viewMode?: ViewMode;
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
-  /** AI feature settings (enable toggle + active provider + model). */
-  ai?: { enabled: boolean; activeProvider: string; modelId: string };
+  /** AI feature settings (enable toggle + provider; the model is chosen automatically). */
+  ai?: { enabled: boolean; activeProvider: string; modelId?: string };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
     enabled?: boolean;
@@ -377,8 +377,8 @@ export interface CloudApi {
 export interface AiApi {
   /** State of a model (defaults to the active one when modelId is omitted). */
   status(modelId?: string): Promise<Result<AiModelStatus>>;
-  /** Ensure the active model is downloaded (progress via onModelProgress). */
-  download(): Promise<Result<void>>;
+  /** Ensure a model is downloaded (defaults to the text model; progress via onModelProgress). */
+  download(modelId?: string): Promise<Result<void>>;
   /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
   embed(texts: string[]): Promise<Result<number[][]>>;
   /** Embed each image file by path; image-capable models (CLIP) only. */
