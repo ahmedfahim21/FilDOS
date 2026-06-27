@@ -1,6 +1,7 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { join } from 'node:path';
 import type { AiModelStatus } from '@shared/types';
+import type { EmbedRole } from '@shared/aiModels';
 import type { AiProvider } from './types';
 
 interface Pending {
@@ -85,8 +86,8 @@ export class EmbeddedAiProvider implements AiProvider {
     await this.request<void>('download', { modelId });
   }
 
-  async embed(modelId: string, texts: string[]): Promise<Float32Array[]> {
-    const rows = await this.request<number[][]>('embed', { modelId, texts });
+  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage'): Promise<Float32Array[]> {
+    const rows = await this.request<number[][]>('embed', { modelId, texts, role });
     return rows.map((row) => Float32Array.from(row));
   }
 

@@ -60,6 +60,8 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.18.0",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^6.0.227",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.6.0"

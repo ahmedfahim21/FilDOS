@@ -72,6 +72,14 @@ export interface SearchHit extends Entry {
   relativePath: string;
 }
 
+/** A semantic-search hit: a file ranked by meaning, with the matching snippet. */
+export interface SemanticHit extends SearchHit {
+  /** Cosine similarity of the best-matching chunk, in [0, 1]. */
+  score: number;
+  /** A slice of the matching chunk's text, for preview. */
+  snippet: string;
+}
+
 /** A record of something moved to the Trash, used for best-effort restore. */
 export interface TrashedItem {
   id: string;
@@ -134,8 +142,13 @@ export interface DriveItem {
   removable: boolean;
 }
 
+/** UI color theme; 'system' follows the OS. */
+export type Theme = 'light' | 'dark' | 'system';
+
 /** Persisted user preferences (window + global view defaults). */
 export interface Prefs {
+  /** Color theme (defaults to 'system'). */
+  theme?: Theme;
   windowBounds?: { x: number; y: number; width: number; height: number };
   lastPath?: string;
   showHidden?: boolean;
@@ -143,8 +156,8 @@ export interface Prefs {
   viewMode?: ViewMode;
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
-  /** AI feature settings (enable toggle + active provider + model). */
-  ai?: { enabled: boolean; activeProvider: string; modelId: string };
+  /** AI feature settings (enable toggle + provider; the model is chosen automatically). */
+  ai?: { enabled: boolean; activeProvider: string; modelId?: string };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
     enabled?: boolean;
@@ -268,6 +281,8 @@ export interface IndexApi {
   listExcludes(): Promise<Result<string[]>>;
   /** Set how often (minutes) the background rescan runs. */
   setInterval(minutes: number): Promise<Result<void>>;
+  /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
+  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
   onProgress(cb: (progress: IndexProgress) => void): () => void;
 }
@@ -367,8 +382,8 @@ export interface CloudApi {
 export interface AiApi {
   /** State of a model (defaults to the active one when modelId is omitted). */
   status(modelId?: string): Promise<Result<AiModelStatus>>;
-  /** Ensure the active model is downloaded (progress via onModelProgress). */
-  download(): Promise<Result<void>>;
+  /** Ensure a model is downloaded (defaults to the text model; progress via onModelProgress). */
+  download(modelId?: string): Promise<Result<void>>;
   /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
   embed(texts: string[]): Promise<Result<number[][]>>;
   /** Embed each image file by path; image-capable models (CLIP) only. */

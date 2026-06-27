@@ -36,7 +36,8 @@ export type NavLocation =
   | { kind: 'trash' }
   | { kind: 'tag'; tagId: number }
   | { kind: 'cloud-connect' }
-  | { kind: 'settings' };
+  | { kind: 'settings' }
+  | { kind: 'semantic-search'; rootPath: string };
 
 /** A non-folder location — what `<main>` renders instead of the file browser. */
 export type NavPage = Exclude<NavLocation, { kind: 'folder' }>;
@@ -46,6 +47,7 @@ function samePage(a: NavLocation, b: NavLocation): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'folder' && b.kind === 'folder') return a.path === b.path;
   if (a.kind === 'tag' && b.kind === 'tag') return a.tagId === b.tagId;
+  if (a.kind === 'semantic-search' && b.kind === 'semantic-search') return a.rootPath === b.rootPath;
   return a.kind === b.kind;
 }
 

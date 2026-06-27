@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Prefs } from '@shared/types';
 import App from './App';
+import { applyTheme } from './lib/theme';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Wordmark } from './components/Logo';
 import '@fontsource/space-grotesk/300.css';
@@ -18,6 +19,7 @@ function Root() {
   useEffect(() => {
     (async () => {
       const prefs = await window.prefs.get().catch(() => ({}) as Prefs);
+      applyTheme(prefs.theme ?? 'system');
 
       // Prefer the last folder if it still exists and is a directory.
       let path: string | undefined = prefs.lastPath;

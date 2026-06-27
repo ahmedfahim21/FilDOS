@@ -50,14 +50,17 @@ export function PageState({ children }: { children: ReactNode }) {
 export function PageRow({
   children,
   onDoubleClick,
+  onContextMenu,
 }: {
   children: ReactNode;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
     <div
       className="hover:bg-accent flex items-center gap-2.5 rounded-md px-2.5 py-2"
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
     >
       {children}
     </div>

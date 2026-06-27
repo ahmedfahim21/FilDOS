@@ -107,7 +107,7 @@ contextBridge.exposeInMainWorld('cloud', cloudApi);
 // On-device AI: model status/download/embed, plus a download-progress stream.
 const aiApi: AiApi = {
   status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
-  download: () => ipcRenderer.invoke(Channels.aiDownload),
+  download: (modelId) => ipcRenderer.invoke(Channels.aiDownload, modelId),
   embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
   embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
   onModelProgress: (cb: (status: AiModelStatus) => void) => {
@@ -128,6 +128,7 @@ const indexApi: IndexApi = {
   removeExclude: (path) => ipcRenderer.invoke(Channels.indexRemoveExclude, path),
   listExcludes: () => ipcRenderer.invoke(Channels.indexListExcludes),
   setInterval: (minutes) => ipcRenderer.invoke(Channels.indexSetInterval, minutes),
+  search: (query, opts) => ipcRenderer.invoke(Channels.indexSearch, query, opts),
   onProgress: (cb: (progress: IndexProgress) => void) => {
     const listener = (_e: IpcRendererEvent, progress: IndexProgress) => cb(progress);
     ipcRenderer.on(Events.indexProgress, listener);

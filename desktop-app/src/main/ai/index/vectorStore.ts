@@ -26,6 +26,8 @@ export interface SearchOpts {
   underPath?: string;
   /** Restrict to a file extension (without the dot), e.g. "md". */
   ext?: string;
+  /** Only match chunks embedded by this model (cosine across models is invalid). */
+  modelId?: string;
 }
 
 /**

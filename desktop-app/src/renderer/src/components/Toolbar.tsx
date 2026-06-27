@@ -1,6 +1,7 @@
 import { Grid2x2, Grid3x3, LayoutGrid, type LucideIcon } from 'lucide-react';
 import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
+import { useAi } from '@/state/ai';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -49,7 +50,10 @@ export function Toolbar({
     setQuery,
     searchRecursive,
     setSearchRecursive,
+    openPage,
+    currentPath,
   } = useNavigation();
+  const { enabled: aiEnabled } = useAi();
 
   return (
     <div className="border-border bg-card flex items-center gap-3 border-b px-3 py-2 [-webkit-app-region:drag]">
@@ -96,6 +100,18 @@ export function Toolbar({
             Subfolders
           </button>
         </div>
+      )}
+
+      {!pageTitle && aiEnabled && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 [-webkit-app-region:no-drag]"
+          title="Search by meaning"
+          onClick={() => openPage({ kind: 'semantic-search', rootPath: currentPath })}
+        >
+          <Icon name="sparkles" />
+        </Button>
       )}
 
       {!pageTitle && (

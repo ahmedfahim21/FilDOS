@@ -114,8 +114,12 @@ export async function statesUnder(underPath?: string): Promise<IndexState[]> {
 export async function searchCandidates(opts: {
   underPath?: string;
   ext?: string;
+  modelId?: string;
 } = {}): Promise<ChunkCandidate[]> {
   const filters = [isNotNull(fileChunks.embedding)];
+  // Only compare chunks embedded by the same model as the query — cosine across
+  // different models is meaningless (uniformly mid-high scores).
+  if (opts.modelId) filters.push(eq(fileChunks.modelId, opts.modelId));
   if (opts.underPath) {
     // Exact file, or anything beneath the folder — the trailing separator keeps
     // "/proj" from also matching a sibling "/projects".

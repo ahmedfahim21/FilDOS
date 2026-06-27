@@ -36,6 +36,7 @@ export class SqliteVectorStore implements VectorStore {
     const candidates = await aiIndex.searchCandidates({
       underPath: opts.underPath,
       ext: opts.ext,
+      modelId: opts.modelId,
     });
 
     return candidates
