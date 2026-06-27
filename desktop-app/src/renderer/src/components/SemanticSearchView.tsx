@@ -47,6 +47,9 @@ export function SemanticSearchView({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const ready = ai.enabled && ai.status?.state === 'ready';
+  // Cosine isn't a probability — show each hit's strength relative to the best
+  // match in the set rather than a misleading absolute "confidence %".
+  const topScore = results[0]?.score || 1;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -157,9 +160,15 @@ export function SemanticSearchView({
                 )}
                 <div className="text-muted-foreground truncate text-[10px]">{hit.relativePath}</div>
               </div>
-              <span className="text-muted-foreground shrink-0 text-[11px]">
-                {Math.round(hit.score * 100)}%
-              </span>
+              <div
+                className="bg-muted h-1.5 w-12 shrink-0 overflow-hidden rounded-full"
+                title={`Relevance relative to the top match · cosine ${hit.score.toFixed(2)}`}
+              >
+                <div
+                  className="bg-primary h-full"
+                  style={{ width: `${Math.round((hit.score / topScore) * 100)}%` }}
+                />
+              </div>
               <Button variant="outline" size="sm" onClick={() => open(hit)}>
                 <Icon name="open" size={14} /> Open
               </Button>

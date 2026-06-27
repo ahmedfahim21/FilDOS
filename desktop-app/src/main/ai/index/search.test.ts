@@ -102,6 +102,20 @@ describe('semanticSearch', () => {
     expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'anything')).toEqual([]);
   });
 
+  it('ignores chunks embedded by a different model', async () => {
+    const a = join(tmp(), 'a.txt');
+    await fs.writeFile(a, 'alpha');
+    await aiIndex.upsertState(state(a)); // state() uses modelId 'm1'
+    // Chunk was embedded by a *different* model than the query will use.
+    await store.upsert(a, [
+      { chunkIx: 0, text: 'alpha', embedding: Float32Array.from([1, 0, 0]), modelId: 'OTHER' },
+    ]);
+
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+
+    expect(hits).toEqual([]); // no same-model chunks → clean empty, not a false match
+  });
+
   it('prunes and omits files deleted on disk', async () => {
     const a = join(tmp(), 'a.txt');
     const b = join(tmp(), 'b.txt');

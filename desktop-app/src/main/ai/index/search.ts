@@ -35,6 +35,7 @@ export async function semanticSearch(
   const matches = await vectorStore.search(vec, {
     underPath: opts.rootPath,
     k: Math.max(k * OVERFETCH, 50),
+    modelId, // only compare against chunks embedded by the same model
   });
 
   // Collapse to the best-scoring chunk per file (matches arrive score-desc, so
