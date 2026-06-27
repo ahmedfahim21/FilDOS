@@ -30,20 +30,20 @@ function fakeProvider(boom?: string) {
       if (boom && texts.some((t) => t.includes(boom))) throw new Error('boom');
       return texts.map((t) => Float32Array.from([t.length, 1, 0]));
     },
-    async embedImages() {
-      return [];
+    async embedImages(_modelId, paths) {
+      return paths.map(() => Float32Array.from([0, 0, 1]));
     },
   };
   return { provider, calls: () => calls };
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
-function makeIndexer(provider: AiProvider, excludes: string[] = []) {
+function makeIndexer(provider: AiProvider, excludes: string[] = [], modelId = 'm1') {
   let last: IndexProgress | null = null;
   let emits = 0;
   const indexer = new Indexer({
     provider: async () => provider,
-    modelId: async () => 'm1',
+    modelId: async () => modelId,
     config: async () => ({ roots: [tmp()], excludes }),
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
@@ -134,6 +134,32 @@ describe('Indexer.start', () => {
     await second.indexer.start();
     expect(await aiIndex.getState(join(tmp(), 'hide.txt'))).toBeNull();
     expect(await aiIndex.getState(join(tmp(), 'keep.txt'))).not.toBeNull();
+  });
+});
+
+describe('Indexer — image indexing (CLIP)', () => {
+  const CLIP = 'Xenova/clip-vit-base-patch32';
+
+  it('indexes image files when a CLIP model is active', async () => {
+    await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider, [], CLIP);
+
+    await indexer.start();
+
+    const st = await aiIndex.getState(join(tmp(), 'pic.png'));
+    expect(st?.status).toBe('indexed');
+    expect(await chunkCount()).toBe(1); // one embedding per image
+  });
+
+  it('ignores images under a text model', async () => {
+    await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider); // default text model 'm1'
+
+    await indexer.start();
+
+    expect(await aiIndex.getState(join(tmp(), 'pic.png'))).toBeNull();
   });
 });
 

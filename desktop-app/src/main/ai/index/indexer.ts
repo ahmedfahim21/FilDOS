@@ -1,12 +1,13 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { IndexProgress, IndexState } from '@shared/types';
+import { getModelDef } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
-import { extractText, isExtractable } from './extract';
+import { extractText, isExtractable, isImage } from './extract';
 import { chunk } from './chunk';
 import { isIgnored } from './ignore';
 
@@ -50,6 +51,8 @@ export class Indexer {
   private paused = false;
   private draining = false;
   private excludes: string[] = [];
+  /** Whether the active model is a CLIP model — only then do we index images. */
+  private imagesOn = false;
   private lastEmit = 0;
   private readonly ignore: (path: string, excludes: readonly string[]) => boolean;
 
@@ -101,6 +104,7 @@ export class Indexer {
 
     const { roots, excludes } = await this.deps.config();
     this.excludes = excludes;
+    this.imagesOn = getModelDef(modelId)?.kind === 'clip';
     this.resetCounters();
     if (!silent) {
       this.state = 'scanning';
@@ -142,6 +146,7 @@ export class Indexer {
     this.resetCounters();
     this.paused = false;
     this.excludes = (await this.deps.config()).excludes;
+    this.imagesOn = getModelDef(modelId)?.kind === 'clip';
     this.total = await jobs.countPending();
     await this.drain(modelId, provider);
   }
@@ -216,7 +221,7 @@ export class Indexer {
           await walk(full, depth + 1);
           continue;
         }
-        if (!dirent.isFile() || !isExtractable(full)) continue;
+        if (!dirent.isFile() || !this.indexable(full)) continue;
         this.scanned++;
         seen.add(full);
         let stat;
@@ -295,7 +300,7 @@ export class Indexer {
       await aiIndex.remove([path]); // vanished since enqueue
       return;
     }
-    if (!stat.isFile() || !isExtractable(path) || this.ignore(path, this.excludes)) {
+    if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes)) {
       await aiIndex.remove([path]); // no longer indexable
       return;
     }
@@ -312,16 +317,19 @@ export class Indexer {
       return;
     }
 
+    // Images (CLIP only): one embedding per file, labelled by its name.
+    if (this.imagesOn && isImage(path)) {
+      const [embedding] = await provider.embedImages(modelId, [path]);
+      await aiIndex.upsertState(this.stateFor(path, stat, modelId, embedding ? 'indexed' : 'skipped'));
+      await this.deps.vectorStore.upsert(
+        path,
+        embedding ? [{ chunkIx: 0, text: basename(path), embedding, modelId }] : [],
+      );
+      return;
+    }
+
     const text = await extractText(path);
-    await aiIndex.upsertState({
-      path,
-      mtime: stat.mtimeMs,
-      size: stat.size,
-      contentHash: null,
-      modelId,
-      indexedAt: Date.now(),
-      status: text === null ? 'skipped' : 'indexed',
-    });
+    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed'));
 
     const chunks = text === null ? [] : chunk(text);
     if (chunks.length === 0) {
@@ -331,10 +339,25 @@ export class Indexer {
     const vectors = await provider.embed(
       modelId,
       chunks.map((c) => c.text),
+      'passage',
     );
     await this.deps.vectorStore.upsert(
       path,
       chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
     );
+  }
+
+  /** A file is indexable if its text can be extracted, or it's an image under CLIP. */
+  private indexable(path: string): boolean {
+    return isExtractable(path) || (this.imagesOn && isImage(path));
+  }
+
+  private stateFor(
+    path: string,
+    stat: { mtimeMs: number; size: number },
+    modelId: string,
+    status: IndexState['status'],
+  ): IndexState {
+    return { path, mtime: stat.mtimeMs, size: stat.size, contentHash: null, modelId, indexedAt: Date.now(), status };
   }
 }

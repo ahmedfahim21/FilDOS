@@ -12,6 +12,9 @@
  */
 export type AiModality = 'text' | 'code' | 'image';
 
+/** Whether text is being embedded as a search query or as document content. */
+export type EmbedRole = 'query' | 'passage';
+
 export interface AiModelDef {
   /** transformers.js repo id, e.g. 'Xenova/all-MiniLM-L6-v2'. */
   id: string;
@@ -27,6 +30,12 @@ export interface AiModelDef {
   sizeMb: number;
   /** One-line description for Settings. */
   description: string;
+  /**
+   * Instruction prefixes some retrieval models expect on the query vs. the
+   * indexed passage (BGE/E5 are asymmetric — skipping these noticeably hurts
+   * ranking). Symmetric models (MiniLM/GTE) omit this.
+   */
+  prompts?: Record<EmbedRole, string>;
 }
 
 export const AI_MODELS: AiModelDef[] = [
@@ -47,6 +56,10 @@ export const AI_MODELS: AiModelDef[] = [
     kind: 'feature-extraction',
     sizeMb: 33,
     description: 'Higher-quality English embeddings for documents and notes.',
+    prompts: {
+      query: 'Represent this sentence for searching relevant passages: ',
+      passage: '',
+    },
   },
   {
     id: 'Xenova/gte-small',
@@ -65,6 +78,7 @@ export const AI_MODELS: AiModelDef[] = [
     kind: 'feature-extraction',
     sizeMb: 118,
     description: 'Text and filenames across ~100 languages.',
+    prompts: { query: 'query: ', passage: 'passage: ' },
   },
   {
     id: 'Xenova/clip-vit-base-patch32',
@@ -77,8 +91,15 @@ export const AI_MODELS: AiModelDef[] = [
   },
 ];
 
-export const DEFAULT_MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
+// BGE-small with the query instruction below is a stronger default than MiniLM
+// for document retrieval, at a similar size.
+export const DEFAULT_MODEL_ID = 'Xenova/bge-small-en-v1.5';
 
 export function getModelDef(id: string): AiModelDef | undefined {
   return AI_MODELS.find((m) => m.id === id);
+}
+
+/** The instruction prefix for a model + role (empty when the model needs none). */
+export function promptFor(id: string, role: EmbedRole): string {
+  return getModelDef(id)?.prompts?.[role] ?? '';
 }

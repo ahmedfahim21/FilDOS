@@ -28,7 +28,7 @@ export async function semanticSearch(
   const q = query.trim();
   if (!q) return [];
 
-  const [vec] = await provider.embed(modelId, [q]);
+  const [vec] = await provider.embed(modelId, [q], 'query');
   if (!vec) return [];
 
   const k = opts.k ?? DEFAULT_K;
@@ -60,7 +60,7 @@ export async function semanticSearch(
         ...info,
         relativePath: opts.rootPath ? relative(opts.rootPath, m.path) : m.path,
         score: m.score,
-        snippet: m.text.slice(0, 240),
+        snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 240),
       };
     })
     .filter((h): h is SemanticHit => h !== null)

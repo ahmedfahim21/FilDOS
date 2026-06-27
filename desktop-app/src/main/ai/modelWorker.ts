@@ -24,7 +24,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import type { ProgressInfo } from '@huggingface/transformers';
 import type { AiModelStatus } from '@shared/types';
-import { getModelDef } from '@shared/aiModels';
+import { getModelDef, promptFor, type EmbedRole } from '@shared/aiModels';
 
 const CACHE_DIR = process.env.FILDOS_MODELS_DIR ?? join(__dirname, 'models');
 
@@ -160,10 +160,17 @@ function get(modelId: string): Promise<Loaded> {
   return promise;
 }
 
-async function embedText(modelId: string, texts: string[]): Promise<number[][]> {
+async function embedText(
+  modelId: string,
+  texts: string[],
+  role: EmbedRole = 'passage',
+): Promise<number[][]> {
   const model = await get(modelId);
   if (model.kind === 'feature-extraction') {
-    const out = await model.extract(texts, { pooling: 'mean', normalize: true });
+    // Asymmetric models (BGE/E5) want an instruction prefix on queries vs passages.
+    const prefix = promptFor(modelId, role);
+    const input = prefix ? texts.map((t) => prefix + t) : texts;
+    const out = await model.extract(input, { pooling: 'mean', normalize: true });
     return out.tolist();
   }
   // CLIP text encoder → projected embeddings (normalized to match image space).
@@ -193,6 +200,7 @@ async function handle(
   modelId: string,
   texts?: string[],
   paths?: string[],
+  role?: EmbedRole,
 ): Promise<unknown> {
   switch (type) {
     case 'status':
@@ -201,7 +209,7 @@ async function handle(
       await get(modelId);
       return undefined;
     case 'embed':
-      return embedText(modelId, texts ?? []);
+      return embedText(modelId, texts ?? [], role);
     case 'embedImages':
       return embedImages(modelId, paths ?? []);
     default:
@@ -211,9 +219,11 @@ async function handle(
 
 process.parentPort.on(
   'message',
-  (e: { data: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[] } }) => {
-    const { id, type, modelId, texts, paths } = e.data;
-    handle(type, modelId, texts, paths)
+  (e: {
+    data: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[]; role?: EmbedRole };
+  }) => {
+    const { id, type, modelId, texts, paths, role } = e.data;
+    handle(type, modelId, texts, paths, role)
       .then((data) => post({ id, ok: true, data }))
       .catch((err: NodeJS.ErrnoException) =>
         post({ id, ok: false, error: { code: err.code ?? 'EAIFAILED', message: err.message } }),

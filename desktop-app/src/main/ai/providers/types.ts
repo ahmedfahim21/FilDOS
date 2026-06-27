@@ -9,6 +9,7 @@
  * thrown errors into the `Result<T>` discriminated union, like the FS handlers.
  */
 import type { AiModelStatus } from '@shared/types';
+import type { EmbedRole } from '@shared/aiModels';
 
 export type { AiModelState, AiModelStatus } from '@shared/types';
 
@@ -22,8 +23,9 @@ export interface AiProvider {
   status(modelId: string): Promise<AiModelStatus>;
   /** Ensure a model is present locally. Idempotent; emits progress while fetching. */
   download(modelId: string): Promise<void>;
-  /** Embed each input string into a vector; one Float32Array per input. */
-  embed(modelId: string, texts: string[]): Promise<Float32Array[]>;
+  /** Embed each input string into a vector; one Float32Array per input. The
+   * `role` lets asymmetric retrieval models prefix queries vs. passages. */
+  embed(modelId: string, texts: string[], role?: EmbedRole): Promise<Float32Array[]>;
   /** Embed each image file (by path) into a vector; image-capable models only. */
   embedImages(modelId: string, paths: string[]): Promise<Float32Array[]>;
   /** Optional text generation (not used by the foundation; future hosted seam). */
