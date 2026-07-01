@@ -19,7 +19,9 @@ const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
  * stay on the syntactic ruleset.
  */
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
+  // `website/` is a separate Next.js project with its own ESLint config; it is
+  // not linted from here.
+  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**', 'website/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
