@@ -1,10 +1,9 @@
-import { relative } from 'node:path';
 import type { SemanticHit } from '@shared/types';
 import { relevanceOf } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import type { VectorStore } from './vectorStore';
-import * as service from '../../fs/service';
 import * as aiIndex from '../../db/aiIndex';
+import { enrichHits, type ScoredHit } from '../memory/enrich';
 
 /**
  * Semantic search across both indexed modalities. The query is embedded by each
@@ -68,32 +67,9 @@ export async function semanticSearch(
     image = [];
   }
 
-  // Collapse to the best-scoring chunk per file, dropping sub-threshold matches.
-  const bestPerFile = new Map<string, Scored>();
-  for (const m of [...text, ...image]) {
-    if (m.score <= 0) continue;
-    const cur = bestPerFile.get(m.path);
-    if (!cur || m.score > cur.score) bestPerFile.set(m.path, m);
-  }
-
-  const best = [...bestPerFile.values()].sort((a, b) => b.score - a.score).slice(0, k * 3);
-  const infos = await Promise.all(best.map((m) => service.getInfo(m.path).catch(() => null)));
-
-  // Prune index rows for files that have vanished from disk.
-  const stale = best.filter((_, i) => infos[i] === null).map((m) => m.path);
-  if (stale.length) await aiIndex.remove(stale);
-
-  return best
-    .map((m, i): SemanticHit | null => {
-      const info = infos[i];
-      if (!info) return null;
-      return {
-        ...info,
-        relativePath: opts.rootPath ? relative(opts.rootPath, m.path) : m.path,
-        score: m.score,
-        snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 240),
-      };
-    })
-    .filter((h): h is SemanticHit => h !== null)
-    .slice(0, k);
+  // Collapse to one hit per file, prune vanished files (dropping their index
+  // rows), scope to the root, and rank — the enrichment is shared with the
+  // supermemory backend so both answer searches identically.
+  const scored: ScoredHit[] = [...text, ...image];
+  return enrichHits(scored, { rootPath: opts.rootPath, k, onStale: (paths) => aiIndex.remove(paths) });
 }
