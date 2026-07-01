@@ -1,8 +1,8 @@
 # FilDOS Brand & Design System
 
 The canonical identity system for FilDOS. Apply this whenever building or
-restyling UI in the **desktop app** (`desktop-app/`). The tokens below are
-already wired into `desktop-app/src/renderer/src/styles/global.css` (Tailwind v4
+restyling UI in the **desktop app** (the repo root). The tokens below are
+already wired into `src/renderer/src/styles/global.css` (Tailwind v4
 `@theme` + CSS variables) — use the semantic utilities, don't hard-code hexes.
 
 ## Colour
@@ -51,7 +51,7 @@ otherwise. Implemented as `<Mark>` in `components/Logo.tsx` (draws in
 
 ## Assets
 
-- `desktop-app/src/renderer/src/assets/file-icons/*.svg` — file-type icons
+- `src/renderer/src/assets/file-icons/*.svg` — file-type icons
   (line-style, Azure-tinted), mapped in `lib/fileLogo.ts`.
-- `desktop-app/src/renderer/src/assets/brand/icon-{azure,dark,light}.svg` —
+- `src/renderer/src/assets/brand/icon-{azure,dark,light}.svg` —
   app/window icon source (for packaging; not yet wired into a builder).

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+out/
+*.log
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# website (Next.js) — build output; deps/env are handled by website/.gitignore
+website/.next/
+website/out/
