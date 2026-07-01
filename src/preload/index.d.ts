@@ -3,6 +3,7 @@ import type {
   CloudApi,
   FsApi,
   IndexApi,
+  MemoryApi,
   Prefs,
   RecentsApi,
   TagsApi,
@@ -48,5 +49,6 @@ declare global {
     cloud: CloudApi;
     ai: AiApi;
     index: IndexApi;
+    memory: MemoryApi;
   }
 }

@@ -7,6 +7,7 @@ import type {
   FsApi,
   IndexApi,
   IndexProgress,
+  MemoryApi,
   Prefs,
   RecentsApi,
   TagsApi,
@@ -136,6 +137,13 @@ const indexApi: IndexApi = {
   },
 };
 contextBridge.exposeInMainWorld('index', indexApi);
+
+// Supermemory LLM config (provider/model/key). The key stays in main.
+const memoryApi: MemoryApi = {
+  getLlm: () => ipcRenderer.invoke(Channels.memoryGetLlm),
+  setLlm: (input) => ipcRenderer.invoke(Channels.memorySetLlm, input),
+};
+contextBridge.exposeInMainWorld('memory', memoryApi);
 
 // Expose the platform path separator so the renderer can split breadcrumbs
 // without bundling Node's `path`.

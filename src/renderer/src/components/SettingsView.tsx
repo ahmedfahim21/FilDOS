@@ -8,6 +8,7 @@ import { applyTheme } from '@/lib/theme';
 import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { SupermemoryLlmForm } from './SupermemoryLlmForm';
 
 const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { value: 'system', label: 'System', icon: 'monitor' },
@@ -288,11 +289,13 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               ))}
             </div>
             {!isLocal && (
-              <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
-                Supermemory runs as a bundled on-device daemon that manages its own embeddings
-                and search. It needs a language model (local Ollama or a provider key) configured
-                to start — setup is coming soon.
-              </p>
+              <>
+                <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
+                  Supermemory runs as a bundled on-device daemon that manages its own embeddings and
+                  search. It needs a language model configured to start.
+                </p>
+                <SupermemoryLlmForm />
+              </>
             )}
           </div>
 

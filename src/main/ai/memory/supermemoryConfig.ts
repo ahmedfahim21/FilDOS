@@ -41,3 +41,53 @@ export function resolveLlmEnv(
   const hasProvider = PROVIDER_KEYS.some((key) => env[key]);
   return hasProvider ? env : null;
 }
+
+const DEFAULT_OLLAMA_URL = 'http://localhost:11434/v1';
+
+/** The stored LLM config plus its (main-only) key. */
+export interface StoredLlmConfig {
+  provider: 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'groq';
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+/**
+ * Map a user's LLM choice to the daemon's env. Local Ollama never needs a key
+ * (a dummy `OPENAI_API_KEY=ollama` + base URL); cloud providers require a key
+ * and return null without one, so the caller won't start a daemon that can't
+ * authenticate. Model, when set, is passed as `OPENAI_MODEL` for every provider
+ * (the daemon's convention).
+ */
+export function buildLlmEnv(config: StoredLlmConfig): Record<string, string> | null {
+  const env: Record<string, string> = {};
+  const model = config.model?.trim();
+  const baseUrl = config.baseUrl?.trim();
+  if (model) env.OPENAI_MODEL = model;
+
+  if (config.provider === 'ollama') {
+    env.OPENAI_BASE_URL = baseUrl || DEFAULT_OLLAMA_URL;
+    env.OPENAI_API_KEY = 'ollama'; // any non-empty string for local runners
+    return env;
+  }
+
+  if (!config.apiKey) return null; // cloud provider without a key can't boot
+
+  switch (config.provider) {
+    case 'openai':
+      env.OPENAI_API_KEY = config.apiKey;
+      if (baseUrl) env.OPENAI_BASE_URL = baseUrl;
+      return env;
+    case 'anthropic':
+      env.ANTHROPIC_API_KEY = config.apiKey;
+      return env;
+    case 'gemini':
+      env.GEMINI_API_KEY = config.apiKey;
+      return env;
+    case 'groq':
+      env.GROQ_API_KEY = config.apiKey;
+      return env;
+    default:
+      return null;
+  }
+}

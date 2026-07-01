@@ -16,6 +16,7 @@ import {
   stopIndexBackground,
 } from './ai/index/handlers';
 import {
+  registerMemoryHandlers,
   registerSupermemory,
   startSupermemoryIfSelected,
   stopSupermemory,
@@ -78,6 +79,7 @@ app.whenReady().then(async () => {
   registerAiHandlers();
   registerIndexHandlers(); // registers the local memory backend
   registerSupermemory(); // registers the supermemory backend (daemon stays off)
+  registerMemoryHandlers(); // memory:getLlm / memory:setLlm
   createWindow();
   // Start the supermemory daemon first *iff* it's the active backend, so the
   // indexer drains into a live daemon; both are no-ops unless enabled/selected.

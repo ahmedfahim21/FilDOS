@@ -80,6 +80,28 @@ export interface SemanticHit extends SearchHit {
   snippet: string;
 }
 
+/** The LLM providers supermemory can use (native keys, or local Ollama). */
+export type SupermemoryLlmProvider = 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'groq';
+
+/** Non-secret supermemory LLM settings (the key is stored separately). */
+export interface SupermemoryLlmConfig {
+  provider: SupermemoryLlmProvider;
+  model?: string;
+  baseUrl?: string;
+}
+
+/** What the renderer sees: config without the key, plus whether a key is stored. */
+export interface SupermemoryLlmStatus {
+  config: SupermemoryLlmConfig;
+  hasKey: boolean;
+}
+
+/** Save payload; `apiKey` omitted keeps the stored one, `clearKey` removes it. */
+export interface SupermemoryLlmInput extends SupermemoryLlmConfig {
+  apiKey?: string;
+  clearKey?: boolean;
+}
+
 /** A record of something moved to the Trash, used for best-effort restore. */
 export interface TrashedItem {
   id: string;
@@ -265,6 +287,14 @@ export interface IndexConfig {
   excludes: string[];
   /** Minutes between background rescans of the roots. */
   intervalMinutes: number;
+}
+
+/** The API surface exposed on `window.memory` (supermemory LLM config). */
+export interface MemoryApi {
+  /** Current LLM config (without the key) and whether a key is stored. */
+  getLlm(): Promise<Result<SupermemoryLlmStatus>>;
+  /** Save the LLM config; restarts the daemon if supermemory is active. */
+  setLlm(input: SupermemoryLlmInput): Promise<Result<void>>;
 }
 
 /** The API surface exposed on `window.index` (background indexing control). */

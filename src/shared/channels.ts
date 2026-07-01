@@ -58,6 +58,8 @@ export const Channels = {
   indexListExcludes: 'index:listExcludes',
   indexSetInterval: 'index:setInterval',
   indexSearch: 'index:search',
+  memoryGetLlm: 'memory:getLlm',
+  memorySetLlm: 'memory:setLlm',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
