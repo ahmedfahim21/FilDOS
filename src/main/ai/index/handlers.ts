@@ -10,7 +10,8 @@ import * as aiIndex from '../../db/aiIndex';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
-import { semanticSearch } from './search';
+import { LocalBackend } from '../memory/localBackend';
+import { activeMemoryBackend, registerMemoryBackend } from '../memory/registry';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -86,6 +87,17 @@ const watcher = new IndexWatcher({
   reconcile: () => void indexer.reconcile(),
 });
 
+// The on-device backend behind the memory seam. Registered eagerly so search
+// routes through `activeMemoryBackend()`; the bundled supermemory backend will
+// register alongside it and `prefs.ai.activeBackend` picks which answers.
+registerMemoryBackend(
+  new LocalBackend({
+    provider: () => activeAiProvider(),
+    models: { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
+    vectorStore,
+  }),
+);
+
 /** Register the indexing IPC handlers. Call once after the AI providers exist. */
 export function registerIndexHandlers(): void {
   ipcMain.handle(Channels.indexStart, () =>
@@ -137,18 +149,9 @@ export function registerIndexHandlers(): void {
     Channels.indexSearch,
     (_e, query: string, opts?: { rootPath?: string; k?: number }) =>
       wrap<SemanticHit[]>(async () => {
-        const provider = await activeAiProvider();
-        if (!provider) {
-          throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
-        }
+        const backend = await activeMemoryBackend();
         const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return semanticSearch(
-          provider,
-          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-          vectorStore,
-          query,
-          { rootPath, k: opts?.k },
-        );
+        return backend.search(query, { rootPath, k: opts?.k });
       }),
   );
 }

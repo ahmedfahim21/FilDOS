@@ -156,8 +156,12 @@ export interface Prefs {
   viewMode?: ViewMode;
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
-  /** AI feature settings (enable toggle + provider; the model is chosen automatically). */
-  ai?: { enabled: boolean; activeProvider: string; modelId?: string };
+  /**
+   * AI feature settings (enable toggle + provider; the model is chosen
+   * automatically). `activeBackend` selects the memory/search backend
+   * (`'local'` = on-device pipeline, default; `'supermemory'` = bundled daemon).
+   */
+  ai?: { enabled: boolean; activeProvider: string; modelId?: string; activeBackend?: string };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
     enabled?: boolean;
