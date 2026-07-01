@@ -12,8 +12,10 @@ import { getModelDef, IMAGE_MODEL_ID, INDEX_MODEL_IDS, TEXT_MODEL_ID } from '@sh
 interface AiContextValue {
   /** Whether the user has enabled the AI features. */
   enabled: boolean;
-  /** The selected provider id ('embedded' | 'cloud'). */
+  /** The selected embedding provider id ('embedded' | 'cloud'). */
   activeProvider: string;
+  /** The selected memory backend id ('local' | 'supermemory'). */
+  activeBackend: string;
   /** Live status of the two internal models, keyed by id. */
   statuses: Record<string, AiModelStatus>;
   /** True once the text model is downloaded and ready (search/index can run). */
@@ -22,6 +24,7 @@ interface AiContextValue {
   busy: boolean;
   setEnabled: (value: boolean) => void;
   setProvider: (id: string) => void;
+  setBackend: (id: string) => void;
   /** Download both internal models (text + image). */
   downloadModels: () => Promise<void>;
   /** Download a single model by id (retry button). */
@@ -40,6 +43,7 @@ const AiContext = createContext<AiContextValue | null>(null);
 export function AiProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(false);
   const [activeProvider, setActiveProvider] = useState('embedded');
+  const [activeBackend, setActiveBackend] = useState('local');
   const [statuses, setStatuses] = useState<Record<string, AiModelStatus>>({});
   const [busy, setBusy] = useState(false);
 
@@ -72,6 +76,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
       if (!prefs.ai) return;
       setEnabledState(prefs.ai.enabled);
       setActiveProvider(prefs.ai.activeProvider);
+      setActiveBackend(prefs.ai.activeBackend ?? 'local');
     });
   }, []);
 
@@ -86,25 +91,36 @@ export function AiProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const persist = useCallback((next: { enabled: boolean; activeProvider: string }) => {
-    window.prefs.set({ ai: next }).catch(() => {});
-  }, []);
+  const persist = useCallback(
+    (next: { enabled: boolean; activeProvider: string; activeBackend: string }) => {
+      window.prefs.set({ ai: next }).catch(() => {});
+    },
+    [],
+  );
 
   const setEnabled = useCallback(
     (value: boolean) => {
       setEnabledState(value);
-      persist({ enabled: value, activeProvider });
+      persist({ enabled: value, activeProvider, activeBackend });
       if (value) downloadModels(); // auto-fetch both models on enable
     },
-    [activeProvider, persist, downloadModels],
+    [activeProvider, activeBackend, persist, downloadModels],
   );
 
   const setProvider = useCallback(
     (id: string) => {
       setActiveProvider(id);
-      persist({ enabled, activeProvider: id });
+      persist({ enabled, activeProvider: id, activeBackend });
     },
-    [enabled, persist],
+    [enabled, activeBackend, persist],
+  );
+
+  const setBackend = useCallback(
+    (id: string) => {
+      setActiveBackend(id);
+      persist({ enabled, activeProvider, activeBackend: id });
+    },
+    [enabled, activeProvider, persist],
   );
 
   return (
@@ -112,11 +128,13 @@ export function AiProvider({ children }: { children: ReactNode }) {
       value={{
         enabled,
         activeProvider,
+        activeBackend,
         statuses,
         ready: enabled && statuses[TEXT_MODEL_ID]?.state === 'ready',
         busy,
         setEnabled,
         setProvider,
+        setBackend,
         downloadModels,
         downloadModel,
         refreshStatuses,

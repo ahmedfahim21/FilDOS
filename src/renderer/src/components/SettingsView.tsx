@@ -27,6 +27,18 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'cloud', name: 'Hosted', blurb: 'Coming soon', available: false },
 ];
 
+interface BackendOption {
+  id: string;
+  name: string;
+  blurb: string;
+  available: boolean;
+}
+
+const BACKENDS: BackendOption[] = [
+  { id: 'local', name: 'On-device', blurb: 'FilDOS engine — private, no setup', available: true },
+  { id: 'supermemory', name: 'Supermemory', blurb: 'Bundled local daemon — needs an LLM', available: true },
+];
+
 /** A small Azure on/off switch. */
 function Toggle({
   checked,
@@ -150,8 +162,11 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
     if (value) playToggle(); // confirm with a pip once sounds are back on
   }
 
+  const isLocal = ai.activeBackend === 'local';
   const isCloud = ai.activeProvider === 'cloud';
-  const disabled = !ai.enabled || isCloud;
+  // Provider + managed models only apply to the on-device backend — supermemory
+  // owns its own embeddings.
+  const disabled = !ai.enabled || isCloud || !isLocal;
 
   const ix = indexing.progress;
   const indexRunning = ix?.state === 'scanning' || ix?.state === 'indexing';
@@ -248,10 +263,43 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             <Toggle checked={ai.enabled} onChange={ai.setEnabled} label="Enable AI features" />
           </div>
 
-          {/* Provider selector */}
+          {/* Memory backend selector */}
           <div className={cn('mb-4', !ai.enabled && 'pointer-events-none opacity-50')}>
             <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
-              Provider
+              Memory backend
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {BACKENDS.map((b) => (
+                <button
+                  key={b.id}
+                  disabled={!b.available}
+                  onClick={() => ai.setBackend(b.id)}
+                  className={cn(
+                    'flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors',
+                    ai.activeBackend === b.id
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:bg-accent',
+                    !b.available && 'cursor-not-allowed opacity-50 hover:bg-transparent',
+                  )}
+                >
+                  <span className="text-foreground text-sm">{b.name}</span>
+                  <span className="text-muted-foreground text-[11px]">{b.blurb}</span>
+                </button>
+              ))}
+            </div>
+            {!isLocal && (
+              <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
+                Supermemory runs as a bundled on-device daemon that manages its own embeddings
+                and search. It needs a language model (local Ollama or a provider key) configured
+                to start — setup is coming soon.
+              </p>
+            )}
+          </div>
+
+          {/* Provider selector — on-device backend only */}
+          <div className={cn('mb-4', (!ai.enabled || !isLocal) && 'pointer-events-none opacity-50')}>
+            <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
+              Embedding provider
             </div>
             <div className="grid grid-cols-2 gap-2">
               {PROVIDERS.map((p) => (
