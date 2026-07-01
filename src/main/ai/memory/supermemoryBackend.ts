@@ -15,9 +15,9 @@ import { enrichHits, type ScoredHit } from './enrich';
  * token resolver (the `sm_` bearer stays in the main process), and `fetch` — so
  * tests drive it with a stubbed fetch and no daemon.
  *
- * NOTE: the `/v3/search` request/response shapes below follow the published
- * docs and are pending confirmation against a live daemon (see the deferred
- * spikes in the plan). Adjust the mapping once verified.
+ * The `/v3/search` request/response shapes below were confirmed against a live
+ * daemon (v0.0.3): each result carries a top-level `score`, the file path in
+ * `metadata`, and the matching text in a `chunks[]` array.
  */
 
 type FetchFn = typeof fetch;
@@ -36,12 +36,20 @@ export interface SupermemoryBackendDeps {
   fetch?: FetchFn;
 }
 
-/** One entry of the `/v3/search` `results` array (documented shape). */
+/** A matching chunk within a search result. */
+interface SmChunk {
+  content?: string;
+  isRelevant?: boolean;
+  score?: number;
+}
+
+/** One entry of the `/v3/search` `results` array (confirmed live shape). */
 interface SmResult {
-  similarity?: number;
-  /** Hybrid mode returns either an extracted `memory` or a document `chunk`. */
-  memory?: string;
-  chunk?: string;
+  /** Best-chunk relevance for the document, in [0, 1]. */
+  score?: number;
+  /** The matching chunks; the snippet is drawn from the most relevant one. */
+  chunks?: SmChunk[];
+  /** Echoes the JSON FilDOS supplied at ingest — the real path lives here. */
   metadata?: Record<string, unknown> | null;
 }
 
@@ -83,7 +91,7 @@ export class SupermemoryBackend implements MemoryBackend {
       .map((r): ScoredHit | null => {
         const path = pathFromMetadata(r.metadata);
         if (!path) return null;
-        return { path, score: clamp01(r.similarity ?? 0), text: r.memory ?? r.chunk ?? '' };
+        return { path, score: clamp01(r.score ?? 0), text: bestChunkText(r.chunks) };
       })
       .filter((s): s is ScoredHit => s !== null);
 
@@ -111,6 +119,15 @@ function pathFromMetadata(metadata: Record<string, unknown> | null | undefined):
   if (!metadata) return null;
   const p = metadata.path ?? metadata.filepath;
   return typeof p === 'string' && p.length > 0 ? p : null;
+}
+
+/** The snippet text: the highest-scoring relevant chunk (falling back sensibly). */
+function bestChunkText(chunks: SmChunk[] | undefined): string {
+  if (!chunks?.length) return '';
+  const relevant = chunks.filter((c) => c.isRelevant !== false && c.content);
+  const pool = relevant.length ? relevant : chunks;
+  const best = pool.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a));
+  return best.content ?? '';
 }
 
 function clamp01(n: number): number {

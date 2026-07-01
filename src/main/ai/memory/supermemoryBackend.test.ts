@@ -18,9 +18,9 @@ function backend(fetchFn: typeof fetch, token: string | null = 'sm_test') {
   return new SupermemoryBackend({ baseUrl: 'http://localhost:6767', token: () => token, fetch: fetchFn });
 }
 
-/** A `/v3/search` result carrying FilDOS's stored path in metadata. */
-function result(path: string, similarity: number, text: string) {
-  return { similarity, chunk: text, metadata: { path } };
+/** A `/v3/search` result in the confirmed live shape (score + chunks[] + metadata). */
+function result(path: string, score: number, text: string) {
+  return { score, chunks: [{ content: text, isRelevant: true, score }], metadata: { path } };
 }
 
 describe('SupermemoryBackend.search', () => {
@@ -80,7 +80,7 @@ describe('SupermemoryBackend.search', () => {
       results: [
         result(real, 0.9, 'here'),
         result(join(tmp(), 'ghost.txt'), 0.8, 'gone'), // never written to disk
-        { similarity: 0.7, chunk: 'no metadata', metadata: null }, // no path
+        { score: 0.7, chunks: [{ content: 'no metadata', isRelevant: true }], metadata: null }, // no path
       ],
     });
 
