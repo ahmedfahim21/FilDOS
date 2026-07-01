@@ -89,6 +89,23 @@ describe('SupermemoryBackend.search', () => {
     expect(hits.map((h) => h.path)).toEqual([real]);
   });
 
+  it('resolves a lazy baseUrl and throws when the daemon is not running', async () => {
+    const fetchFn = stubFetch({ results: [] });
+    // baseUrl resolver returns null → daemon down.
+    const down = new SupermemoryBackend({ baseUrl: () => null, token: () => 's', fetch: fetchFn });
+    await expect(down.search('q')).rejects.toMatchObject({ code: 'EUNKNOWN' });
+    expect(fetchFn.mock.calls).toHaveLength(0);
+
+    // baseUrl resolver returns a URL → used for the request.
+    const up = new SupermemoryBackend({
+      baseUrl: () => 'http://127.0.0.1:6800',
+      token: () => 's',
+      fetch: fetchFn,
+    });
+    await up.search('q');
+    expect((fetchFn.mock.calls[0] as [string, RequestInit])[0]).toBe('http://127.0.0.1:6800/v3/search');
+  });
+
   it('returns [] for a blank query without calling the daemon', async () => {
     const fetchFn = stubFetch({ results: [] });
     expect(await backend(fetchFn).search('   ')).toEqual([]);

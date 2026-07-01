@@ -23,8 +23,13 @@ import { enrichHits, type ScoredHit } from './enrich';
 type FetchFn = typeof fetch;
 
 export interface SupermemoryBackendDeps {
-  /** Daemon base URL; defaults to the documented `http://localhost:6767`. */
-  baseUrl?: string;
+  /**
+   * Daemon base URL. May be a resolver, since the daemon picks its port at
+   * start — the `SupermemoryDaemon`'s `baseUrl()` is passed here, returning null
+   * until it's running. A plain string (tests) or omission (defaults to the
+   * documented `http://localhost:6767`) also work.
+   */
+  baseUrl?: string | (() => string | null);
   /** Resolves the `sm_` bearer token (main-process only); null before ready. */
   token: () => string | null;
   /** Injectable fetch (defaults to global `fetch`) — the test seam. */
@@ -47,11 +52,9 @@ interface SmSearchResponse {
 export class SupermemoryBackend implements MemoryBackend {
   readonly id = 'supermemory';
 
-  private readonly baseUrl: string;
   private readonly fetchFn: FetchFn;
 
   constructor(private readonly deps: SupermemoryBackendDeps) {
-    this.baseUrl = (deps.baseUrl ?? 'http://localhost:6767').replace(/\/+$/, '');
     this.fetchFn = deps.fetch ?? fetch;
   }
 
@@ -60,7 +63,7 @@ export class SupermemoryBackend implements MemoryBackend {
     if (!q) return [];
 
     const k = opts?.k ?? 20;
-    const res = await this.fetchFn(`${this.baseUrl}/v3/search`, {
+    const res = await this.fetchFn(`${this.resolveBaseUrl()}/v3/search`, {
       method: 'POST',
       headers: this.headers(),
       // Over-fetch; `enrichHits` collapses to one hit per file and caps at k.
@@ -85,6 +88,14 @@ export class SupermemoryBackend implements MemoryBackend {
       .filter((s): s is ScoredHit => s !== null);
 
     return enrichHits(scored, { rootPath: opts?.rootPath, k: opts?.k });
+  }
+
+  private resolveBaseUrl(): string {
+    const raw = typeof this.deps.baseUrl === 'function' ? this.deps.baseUrl() : this.deps.baseUrl;
+    if (raw === null) {
+      throw Object.assign(new Error('The supermemory daemon is not running.'), { code: 'EUNKNOWN' });
+    }
+    return (raw ?? 'http://localhost:6767').replace(/\/+$/, '');
   }
 
   private headers(): Record<string, string> {
