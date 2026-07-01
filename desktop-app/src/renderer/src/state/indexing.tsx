@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { IndexProgress, Result } from '@shared/types';
+import { playNotify } from '@/lib/sounds';
 
 interface IndexingContextValue {
   /** Live progress from the background indexer (null until first status). */
@@ -44,7 +45,19 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
   }, [refreshExcludes]);
 
   // Live indexing progress from the background worker.
-  useEffect(() => window.index.onProgress(setProgress), []);
+  const wasActive = useRef(false);
+  useEffect(
+    () =>
+      window.index.onProgress((p) => {
+        const active = p.state === 'scanning' || p.state === 'indexing';
+        if (wasActive.current && !active && p.state === 'idle' && p.indexed > 0) {
+          playNotify();
+        }
+        wasActive.current = active;
+        setProgress(p);
+      }),
+    [],
+  );
 
   const start = useCallback(() => window.index.start(), []);
   const pause = useCallback(() => window.index.pause(), []);

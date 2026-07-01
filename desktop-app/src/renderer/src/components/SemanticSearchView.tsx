@@ -114,7 +114,7 @@ export function SemanticSearchView({
                 key={s}
                 onClick={() => setScope(s)}
                 className={cn(
-                  'px-2 py-1',
+                  'px-2 py-1 transition-colors duration-150 ease-snappy active:scale-[0.97]',
                   scope === s ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-accent',
                 )}
               >

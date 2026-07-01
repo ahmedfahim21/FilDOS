@@ -5,6 +5,7 @@ import { useAi } from '@/state/ai';
 import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
 import { applyTheme } from '@/lib/theme';
+import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 
@@ -41,7 +42,11 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        const next = !checked;
+        if (next) playToggle(); // detent only when committing to the active state
+        onChange(next);
+      }}
       className={cn(
         'relative h-5 w-9 shrink-0 rounded-full transition-colors',
         checked ? 'bg-primary' : 'bg-muted',
@@ -121,6 +126,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const [embedding, setEmbedding] = useState(false);
   const [embedResult, setEmbedResult] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('system');
+  const [sounds, setSounds] = useState(soundsEnabled());
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
@@ -136,6 +142,12 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
     setTheme(value);
     applyTheme(value);
     window.prefs.set({ theme: value });
+  }
+
+  function chooseSounds(value: boolean) {
+    setSounds(value);
+    setSoundsEnabled(value);
+    if (value) playToggle(); // confirm with a pip once sounds are back on
   }
 
   const isCloud = ai.activeProvider === 'cloud';
@@ -206,6 +218,16 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                 <span className="text-foreground text-sm">{t.label}</span>
               </button>
             ))}
+          </div>
+
+          <div className="border-border mt-4 flex items-center justify-between gap-3 border-t pt-4">
+            <div className="min-w-0">
+              <div className="text-foreground text-sm">Interface sounds</div>
+              <div className="text-muted-foreground text-[11px]">
+                Soft cues for actions, notifications, and toggles
+              </div>
+            </div>
+            <Toggle checked={sounds} onChange={chooseSounds} label="Enable interface sounds" />
           </div>
         </section>
 

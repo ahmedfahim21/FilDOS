@@ -202,7 +202,7 @@ export function FileList({
 
   return (
     <div
-      className="filelist"
+      className="filelist flex min-h-0 flex-1 flex-col"
       style={gridVars}
       onClick={onBackgroundClick}
       onContextMenu={(e) => {
