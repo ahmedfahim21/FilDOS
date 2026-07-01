@@ -15,6 +15,11 @@ import {
   startIndexBackground,
   stopIndexBackground,
 } from './ai/index/handlers';
+import {
+  registerSupermemory,
+  startSupermemoryIfSelected,
+  stopSupermemory,
+} from './ai/memory/lifecycle';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -60,7 +65,7 @@ async function createWindow(): Promise<void> {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   registerProvider('gdrive', new GDriveProvider());
   registerProvider('dropbox', new DropboxProvider());
@@ -71,9 +76,12 @@ app.whenReady().then(() => {
   registerFsHandlers();
   registerCloudHandlers();
   registerAiHandlers();
-  registerIndexHandlers();
+  registerIndexHandlers(); // registers the local memory backend
+  registerSupermemory(); // registers the supermemory backend (daemon stays off)
   createWindow();
-  // Resume any indexing left over from last session (no-op unless enabled).
+  // Start the supermemory daemon first *iff* it's the active backend, so the
+  // indexer drains into a live daemon; both are no-ops unless enabled/selected.
+  await startSupermemoryIfSelected();
   startIndexBackground();
 
   app.on('activate', () => {
@@ -87,5 +95,6 @@ app.on('window-all-closed', () => {
 
 app.on('quit', () => {
   stopIndexBackground();
+  stopSupermemory();
   closeDb();
 });
