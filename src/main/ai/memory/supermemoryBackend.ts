@@ -1,10 +1,13 @@
 import { promises as fs } from 'node:fs';
-import { basename } from 'node:path';
 import type { IndexState, SemanticHit } from '@shared/types';
 import * as aiIndex from '../../db/aiIndex';
+import { extractText } from '../index/extract';
 import type { MemoryBackend, MemorySearchOpts } from './types';
 import { enrichHits, type ScoredHit } from './enrich';
 import { stableId } from './stableId';
+
+/** Supermemory caps text documents at 1 MB; stay under it. */
+const MAX_CONTENT = 1_000_000;
 
 /** Change-detection fingerprint stored in `index_state.modelId` for supermemory. */
 const FINGERPRINT = 'supermemory';
@@ -118,26 +121,36 @@ export class SupermemoryBackend implements MemoryBackend {
       return;
     }
 
-    // Already uploaded and unchanged — re-run is a no-op (matches local backend).
+    // Already ingested and unchanged — re-run is a no-op (matches local backend).
     const prev = await aiIndex.getState(path);
     if (prev && prev.status !== 'error' && prev.mtime === stat.mtimeMs && prev.size === stat.size && prev.modelId === FINGERPRINT) {
       return;
     }
 
-    // Upload the raw file; supermemory does its own extraction/chunking/embedding.
+    // Extract the text ourselves and post it as `content` — the `/documents/file`
+    // upload endpoint stores the file as a self-referencing URL and fails to
+    // extract it (confirmed live). Non-extractable files (binary/images) are
+    // recorded as skipped so the crawler doesn't retry them each pass.
+    const extracted = await extractText(path);
+    // Supermemory auto-detects the `content` type and rejects anything that
+    // looks like a web document (e.g. an HTML file starting with `<!DOCTYPE`),
+    // so strip markup to plain text for those. Also improves the embeddings.
+    const text = extracted !== null && startsAsMarkup(extracted) ? stripMarkup(extracted) : extracted;
+    if (text === null || text.trim() === '') {
+      await aiIndex.upsertState(stateFor(path, stat, FINGERPRINT, 'skipped'));
+      return;
+    }
+
     // `customId = hash(path)` upserts on re-ingest (confirmed live); the real path
     // rides along in `metadata` so search can map results back to the file.
-    const bytes = await fs.readFile(path);
-    const form = new FormData();
-    form.append('file', new Blob([bytes]), basename(path));
-    form.append('customId', stableId(path));
-    form.append('metadata', JSON.stringify({ path }));
-    form.append('filepath', path);
-
-    const res = await this.fetchFn(`${this.resolveBaseUrl()}/v3/documents/file`, {
+    const res = await this.fetchFn(`${this.resolveBaseUrl()}/v3/documents`, {
       method: 'POST',
-      headers: this.authHeaders(),
-      body: form,
+      headers: this.headers(),
+      body: JSON.stringify({
+        content: text.slice(0, MAX_CONTENT),
+        customId: stableId(path),
+        metadata: { path },
+      }),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
@@ -214,4 +227,25 @@ function bestChunkText(chunks: SmChunk[] | undefined): string {
 
 function clamp01(n: number): number {
   return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
+/** Does the content begin like a markup document (HTML/XML/SVG/Vue/Svelte)? */
+function startsAsMarkup(text: string): boolean {
+  return text.trimStart().startsWith('<');
+}
+
+/** Lightweight HTML/XML → plain text (zero-dep): drop tags, decode basics. */
+function stripMarkup(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#3[49];/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }

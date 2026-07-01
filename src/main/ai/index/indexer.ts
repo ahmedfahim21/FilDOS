@@ -250,7 +250,8 @@ export class Indexer {
         try {
           await this.process(job, backend);
           await jobs.done(job.path);
-        } catch {
+        } catch (err) {
+          console.error(`[indexer] ${job.op} failed for ${job.path}:`, (err as Error).message);
           await jobs.markError(job.path);
           this.errors++;
         }

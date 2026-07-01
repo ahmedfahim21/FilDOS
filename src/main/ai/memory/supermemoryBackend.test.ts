@@ -135,7 +135,7 @@ describe('SupermemoryBackend.search', () => {
 });
 
 describe('SupermemoryBackend.ingest / remove', () => {
-  it('uploads the file to /v3/documents/file with customId + path metadata, and records state', async () => {
+  it('posts extracted text to /v3/documents with customId + path metadata, and records state', async () => {
     const f = join(tmp(), 'notes.txt');
     await fs.writeFile(f, 'some content to ingest');
     const fetchFn = okFetch();
@@ -143,17 +143,34 @@ describe('SupermemoryBackend.ingest / remove', () => {
     await backend(fetchFn).ingest(f);
 
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://localhost:6767/v3/documents/file');
+    expect(url).toBe('http://localhost:6767/v3/documents');
     expect(init.method).toBe('POST');
-    const form = init.body as FormData;
-    expect(form.get('customId')).toBe(stableId(f));
-    expect(form.get('filepath')).toBe(f);
-    expect(JSON.parse(form.get('metadata') as string)).toEqual({ path: f });
-    // multipart: no explicit JSON content-type (fetch sets the boundary itself)
-    expect((init.headers as Record<string, string>)['content-type']).toBeUndefined();
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({ customId: stableId(f), metadata: { path: f } });
+    expect(body.content).toContain('some content to ingest');
     // index_state bookkeeping written for the crawler's change-detection
     expect((await aiIndex.getState(f))?.status).toBe('indexed');
     expect((await aiIndex.getState(f))?.modelId).toBe('supermemory');
+  });
+
+  it('strips markup before posting an HTML document', async () => {
+    const f = join(tmp(), 'page.html');
+    await fs.writeFile(f, '<!DOCTYPE html><html><body><h1>Budget</h1><p>Q3 revenue forecast.</p></body></html>');
+    const fetchFn = okFetch();
+    await backend(fetchFn).ingest(f);
+    const body = JSON.parse((fetchFn.mock.calls[0] as [string, RequestInit])[1].body as string);
+    expect(body.content).not.toContain('<');
+    expect(body.content).toContain('Budget');
+    expect(body.content).toContain('Q3 revenue forecast');
+  });
+
+  it('records non-extractable files as skipped without posting', async () => {
+    const img = join(tmp(), 'pic.png');
+    await fs.writeFile(img, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const fetchFn = okFetch();
+    await backend(fetchFn).ingest(img);
+    expect(fetchFn.mock.calls).toHaveLength(0);
+    expect((await aiIndex.getState(img))?.status).toBe('skipped');
   });
 
   it('is a no-op for an unchanged file', async () => {
@@ -163,7 +180,7 @@ describe('SupermemoryBackend.ingest / remove', () => {
     const b = backend(fetchFn);
     await b.ingest(f);
     await b.ingest(f);
-    expect(fetchFn.mock.calls.filter((c) => String(c[0]).endsWith('/file'))).toHaveLength(1);
+    expect(fetchFn.mock.calls.filter((c) => String(c[0]).endsWith('/v3/documents'))).toHaveLength(1);
   });
 
   it('drops a file that vanished before upload', async () => {
