@@ -63,6 +63,7 @@ export const Channels = {
   memoryOllamaStatus: 'memory:ollamaStatus',
   memoryOllamaStart: 'memory:ollamaStart',
   memoryOllamaPull: 'memory:ollamaPull',
+  memoryDaemonStatus: 'memory:daemonStatus',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
@@ -77,4 +78,6 @@ export const Events = {
   indexProgress: 'index:progress',
   /** Ollama model-pull progress; payload is an OllamaProgress. */
   memoryOllamaProgress: 'memory:ollamaProgress',
+  /** Supermemory daemon lifecycle state; payload is a SupermemoryDaemonStatus. */
+  memoryDaemonStatus: 'memory:daemonStatusChanged',
 } as const;

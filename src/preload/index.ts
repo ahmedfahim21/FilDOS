@@ -10,6 +10,7 @@ import type {
   MemoryApi,
   OllamaProgress,
   Prefs,
+  SupermemoryDaemonStatus,
   RecentsApi,
   TagsApi,
   ViewsApi,
@@ -144,6 +145,12 @@ contextBridge.exposeInMainWorld('index', indexApi);
 const memoryApi: MemoryApi = {
   getLlm: () => ipcRenderer.invoke(Channels.memoryGetLlm),
   setLlm: (input) => ipcRenderer.invoke(Channels.memorySetLlm, input),
+  daemonStatus: () => ipcRenderer.invoke(Channels.memoryDaemonStatus),
+  onDaemonStatus: (cb: (status: SupermemoryDaemonStatus) => void) => {
+    const listener = (_e: IpcRendererEvent, status: SupermemoryDaemonStatus) => cb(status);
+    ipcRenderer.on(Events.memoryDaemonStatus, listener);
+    return () => ipcRenderer.removeListener(Events.memoryDaemonStatus, listener);
+  },
   ollamaStatus: () => ipcRenderer.invoke(Channels.memoryOllamaStatus),
   ollamaStart: () => ipcRenderer.invoke(Channels.memoryOllamaStart),
   ollamaPull: (model) => ipcRenderer.invoke(Channels.memoryOllamaPull, model),

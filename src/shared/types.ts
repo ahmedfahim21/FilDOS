@@ -312,12 +312,25 @@ export interface OllamaProgress {
   error?: string;
 }
 
+/** Lifecycle state of the bundled supermemory daemon. */
+export type SupermemoryDaemonState = 'off' | 'starting' | 'running' | 'error';
+
+export interface SupermemoryDaemonStatus {
+  state: SupermemoryDaemonState;
+  /** Human-readable detail (why it's off/error, or "downloading model…"). */
+  message?: string;
+}
+
 /** The API surface exposed on `window.memory` (supermemory LLM config). */
 export interface MemoryApi {
   /** Current LLM config (without the key) and whether a key is stored. */
   getLlm(): Promise<Result<SupermemoryLlmStatus>>;
   /** Save the LLM config; restarts the daemon if supermemory is active. */
   setLlm(input: SupermemoryLlmInput): Promise<Result<void>>;
+  /** Current daemon lifecycle state. */
+  daemonStatus(): Promise<Result<SupermemoryDaemonStatus>>;
+  /** Subscribe to daemon state changes. Returns an unsubscribe fn. */
+  onDaemonStatus(cb: (status: SupermemoryDaemonStatus) => void): () => void;
   /** Whether local Ollama is installed/running and which models are pulled. */
   ollamaStatus(): Promise<Result<OllamaStatus>>;
   /** Launch `ollama serve` (explicit user action); resolves once up. */

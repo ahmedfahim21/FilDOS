@@ -9,6 +9,7 @@ import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { SupermemoryLlmForm } from './SupermemoryLlmForm';
+import { SupermemoryDaemonBadge } from './SupermemoryDaemonBadge';
 
 const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { value: 'system', label: 'System', icon: 'monitor' },
@@ -290,10 +291,11 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             </div>
             {!isLocal && (
               <>
-                <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
+                <p className="text-muted-foreground mt-2 mb-2 text-[11px] leading-snug">
                   Supermemory runs as a bundled on-device daemon that manages its own embeddings and
                   search. It needs a language model configured to start.
                 </p>
+                <SupermemoryDaemonBadge />
                 <SupermemoryLlmForm />
               </>
             )}

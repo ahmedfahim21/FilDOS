@@ -9,6 +9,8 @@ import type {
   AppError,
   OllamaStatus,
   Result,
+  SupermemoryDaemonState,
+  SupermemoryDaemonStatus,
   SupermemoryLlmInput,
   SupermemoryLlmStatus,
 } from '@shared/types';
@@ -36,6 +38,15 @@ import { ollamaStatus, pullOllamaModel, startOllama } from './ollama';
 const LLM_SECRET = 'supermemory-llm';
 
 let daemon: SupermemoryDaemon | null = null;
+let daemonStatus: SupermemoryDaemonStatus = { state: 'off' };
+
+/** Update the daemon status and push it to every window. */
+function setDaemonState(state: SupermemoryDaemonState, message?: string): void {
+  daemonStatus = { state, message };
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) win.webContents.send(Events.memoryDaemonStatus, daemonStatus);
+  }
+}
 
 /**
  * Locate the `supermemory-server` binary, in priority order:
@@ -112,24 +123,31 @@ export function registerSupermemory(): void {
  */
 export async function startSupermemoryIfSelected(): Promise<void> {
   const prefs = await getPrefs();
-  if (prefs.ai?.activeBackend !== 'supermemory') return;
+  if (prefs.ai?.activeBackend !== 'supermemory') {
+    setDaemonState('off');
+    return;
+  }
 
   const llmEnv = currentLlmEnv();
   if (!llmEnv) {
-    console.warn('[supermemory] no LLM provider configured — not starting the daemon.');
+    setDaemonState('error', 'No language model configured — pick one below.');
     return;
   }
   const binary = resolveBinary();
   if (!binary) {
-    console.warn('[supermemory] server binary not found — not starting the daemon.');
+    setDaemonState('error', 'Supermemory server not installed.');
     return;
   }
 
   try {
     await mkdir(dataDir(), { recursive: true });
     daemon = makeDaemon(binary, llmEnv);
+    setDaemonState('starting', 'Starting… first run downloads a model (~1–2 min).');
     await daemon.start();
+    setDaemonState('running');
   } catch (err) {
+    daemon = null;
+    setDaemonState('error', (err as Error).message);
     console.error('[supermemory] failed to start the daemon:', err);
   }
 }
@@ -138,6 +156,7 @@ export async function startSupermemoryIfSelected(): Promise<void> {
 export function stopSupermemory(): void {
   daemon?.stop();
   daemon = null;
+  setDaemonState('off');
 }
 
 /** Stop then start — used after the LLM config changes (env is read at spawn). */
@@ -179,6 +198,10 @@ export function registerMemoryHandlers(): void {
         void restartSupermemory().catch((err) => console.error('[supermemory] restart failed:', err));
       }
     }),
+  );
+
+  ipcMain.handle(Channels.memoryDaemonStatus, () =>
+    wrap<SupermemoryDaemonStatus>(async () => daemonStatus),
   );
 
   ipcMain.handle(Channels.memoryOllamaStatus, () => wrap<OllamaStatus>(() => ollamaStatus()));
