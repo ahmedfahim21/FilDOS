@@ -1,6 +1,7 @@
 import { spawn as cpSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { Channels, Events } from '@shared/channels';
@@ -36,12 +37,21 @@ const LLM_SECRET = 'supermemory-llm';
 
 let daemon: SupermemoryDaemon | null = null;
 
-/** Bundled binary path (override with FILDOS_SUPERMEMORY_BIN in dev). */
-function binaryPath(): string {
-  return (
-    process.env.FILDOS_SUPERMEMORY_BIN ??
-    join(app.getPath('userData'), 'supermemory', 'bin', 'supermemory-server')
-  );
+/**
+ * Locate the `supermemory-server` binary, in priority order:
+ *  1. `FILDOS_SUPERMEMORY_BIN` override (dev),
+ *  2. the bundled copy under `userData` (production, once packaged),
+ *  3. the official installer location `~/.supermemory/bin` (dev convenience —
+ *     picked up automatically after `npx supermemory local`).
+ * Returns null if none exist.
+ */
+function resolveBinary(): string | null {
+  const candidates = [
+    process.env.FILDOS_SUPERMEMORY_BIN,
+    join(app.getPath('userData'), 'supermemory', 'bin', 'supermemory-server'),
+    join(homedir(), '.supermemory', 'bin', 'supermemory-server'),
+  ].filter((p): p is string => Boolean(p));
+  return candidates.find((p) => existsSync(p)) ?? null;
 }
 
 function dataDir(): string {
@@ -64,11 +74,15 @@ function currentLlmEnv(): Record<string, string> | null {
   return config ? buildLlmEnv(config) : resolveLlmEnv(process.env);
 }
 
-function makeDaemon(llmEnv: Record<string, string>): SupermemoryDaemon {
+function makeDaemon(binaryPath: string, llmEnv: Record<string, string>): SupermemoryDaemon {
   return new SupermemoryDaemon({
-    binaryPath: binaryPath(),
+    binaryPath,
     dataDir: dataDir(),
     llmEnv,
+    // First boot downloads a ~106 MB embedding model before it listens, so give
+    // it a generous window (up to ~10 min on a slow connection).
+    pollIntervalMs: 1000,
+    maxHealthAttempts: 600,
     spawn: (bin, args, env): DaemonProcess =>
       cpSpawn(bin, args, { env: { ...process.env, ...env }, stdio: 'ignore' }),
     // The daemon prints and persists its bearer token here (confirmed live).
@@ -105,14 +119,15 @@ export async function startSupermemoryIfSelected(): Promise<void> {
     console.warn('[supermemory] no LLM provider configured — not starting the daemon.');
     return;
   }
-  if (!existsSync(binaryPath())) {
+  const binary = resolveBinary();
+  if (!binary) {
     console.warn('[supermemory] server binary not found — not starting the daemon.');
     return;
   }
 
   try {
     await mkdir(dataDir(), { recursive: true });
-    daemon = makeDaemon(llmEnv);
+    daemon = makeDaemon(binary, llmEnv);
     await daemon.start();
   } catch (err) {
     console.error('[supermemory] failed to start the daemon:', err);
@@ -157,9 +172,12 @@ export function registerMemoryHandlers(): void {
       };
       setSecret(LLM_SECRET, JSON.stringify(next));
 
-      // Apply immediately if supermemory is the active backend.
+      // Apply if supermemory is active — but in the background: first boot can
+      // take minutes (embedding-model download), and Save shouldn't block on it.
       const prefs = await getPrefs();
-      if (prefs.ai?.activeBackend === 'supermemory') await restartSupermemory();
+      if (prefs.ai?.activeBackend === 'supermemory') {
+        void restartSupermemory().catch((err) => console.error('[supermemory] restart failed:', err));
+      }
     }),
   );
 

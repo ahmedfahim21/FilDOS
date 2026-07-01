@@ -81,9 +81,9 @@ app.whenReady().then(async () => {
   registerSupermemory(); // registers the supermemory backend (daemon stays off)
   registerMemoryHandlers(); // memory:getLlm / memory:setLlm
   createWindow();
-  // Start the supermemory daemon first *iff* it's the active backend, so the
-  // indexer drains into a live daemon; both are no-ops unless enabled/selected.
-  await startSupermemoryIfSelected();
+  // Start the supermemory daemon in the background *iff* it's the active
+  // backend (first boot downloads a model, so don't block startup on it).
+  void startSupermemoryIfSelected();
   startIndexBackground();
 
   app.on('activate', () => {
