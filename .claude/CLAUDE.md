@@ -38,11 +38,11 @@ builds first. On a headless Linux box run it under `xvfb-run`.
 (node vs. browser + React Hooks rules). A git pre-commit hook runs `lint-staged`
 (`eslint --fix` on staged files); the `prepare` script installs it on
 `npm install` via `scripts/install-hooks.mjs`, which resolves the real git hooks
-dir with `git rev-parse` so it works from this subdirectory of the monorepo.
+dir with `git rev-parse` so it works regardless of where the app sits in the repo.
 
 After changes, run `npm run lint`, `npm run typecheck`, `npm test`, and
 `npm run build`; for behavior, `npm run dev` and exercise it by hand. CI
-(`.github/workflows/desktop-app-ci.yml`) runs lint, typecheck+unit, and e2e on
+(`.github/workflows/ci.yml`) runs lint, typecheck+unit, and e2e on
 Ubuntu, macOS, and Windows.
 
 ## Architecture

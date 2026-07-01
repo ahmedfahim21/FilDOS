@@ -1,0 +1,49 @@
+name: Bug report
+description: Report something that is not working as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill out the sections
+        below so we can reproduce and fix it. For security issues, follow
+        SECURITY.md instead of opening a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear description of the bug, including what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that trigger the problem.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. macOS 15.5, Windows 11, Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FilDOS version or commit
+      placeholder: e.g. 0.1.0, or a commit SHA if built from source
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Any relevant console output, error messages, or screenshots.
+    validations:
+      required: false
