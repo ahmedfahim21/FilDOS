@@ -1,39 +1,32 @@
 import { promises as fs } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { IndexProgress, IndexState } from '@shared/types';
-import type { AiProvider } from '../providers/types';
+import type { MemoryBackend } from '../memory/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
-import type { VectorStore } from './vectorStore';
-import { extractText, isExtractable, isImage } from './extract';
-import { chunk } from './chunk';
+import { isExtractable, isImage } from './extract';
 import { isIgnored } from './ignore';
 
 /**
- * The background indexer: crawl the configured roots, extract + chunk text,
- * embed it via the active AiProvider, and persist vectors. It drains the
- * persistent `index_jobs` queue one file at a time, yielding between files so
- * the main process stays responsive (the heavy embedding already runs in the
- * model utilityProcess). A single bad file is marked errored and skipped, never
- * fatal. Dependencies are injected so tests drive it with a fake provider and an
- * in-memory emit, no Electron required.
+ * The background indexer: crawl the configured roots, decide what changed, and
+ * drain the persistent `index_jobs` queue one file at a time — handing each file
+ * to the active `MemoryBackend` (`ingest`/`remove`). It owns the *what/when* of
+ * indexing (crawl, change-detection via `index_state`, the queue); the backend
+ * owns the *how* (embed + store locally, or upload to supermemory). It yields
+ * between files so the main process stays responsive, and a single bad file is
+ * marked errored and skipped, never fatal. Dependencies are injected so tests
+ * drive it with a fake backend and an in-memory emit, no Electron required.
  */
 
 const MAX_DEPTH = 64;
 const EMIT_INTERVAL_MS = 120;
 
 export interface IndexerDeps {
-  /** The active embedding provider, or null when none is configured. */
-  provider: () => Promise<AiProvider | null>;
-  /** Model id for text/document content. */
-  textModel: string;
-  /** Model id for images (CLIP). */
-  imageModel: string;
+  /** The active memory backend, or null when none is configured/ready. */
+  backend: () => Promise<MemoryBackend | null>;
   /** Current roots + exclusions. */
   config: () => Promise<{ roots: string[]; excludes: string[] }>;
-  /** Where embedded chunks are persisted. */
-  vectorStore: VectorStore;
   /** Push a progress snapshot to the renderer (or capture it in tests). */
   emit: (progress: IndexProgress) => void;
   /** Whether to skip a path (defaults to the built-in ignore rules). */
@@ -52,18 +45,11 @@ export class Indexer {
   private paused = false;
   private draining = false;
   private excludes: string[] = [];
-  /** Models confirmed downloaded during the current run (avoids repeat calls). */
-  private readonly ensured = new Set<string>();
   private lastEmit = 0;
   private readonly ignore: (path: string, excludes: readonly string[]) => boolean;
 
   constructor(private readonly deps: IndexerDeps) {
     this.ignore = deps.ignore ?? isIgnored;
-  }
-
-  /** The model that should embed a given file: CLIP for images, else the text model. */
-  private modelFor(path: string): string {
-    return isImage(path) ? this.deps.imageModel : this.deps.textModel;
   }
 
   /** Current progress snapshot. */
@@ -86,7 +72,7 @@ export class Indexer {
 
   /**
    * Background reconcile (the watcher / periodic timer). Stays silent when the
-   * model isn't ready or nothing changed, so a reconcile that finds no work
+   * backend isn't ready or nothing changed, so a reconcile that finds no work
    * never flips the UI idle→scanning→indexing→idle.
    */
   reconcile(): Promise<void> {
@@ -97,15 +83,14 @@ export class Indexer {
     if (this.state === 'scanning' || this.state === 'indexing') return;
     this.paused = false;
 
-    const provider = await this.deps.provider();
-    if (!provider) {
-      if (!silent) this.fail('No AI provider is configured.');
+    const backend = await this.deps.backend();
+    if (!backend) {
+      if (!silent) this.fail('No memory backend is configured.');
       return;
     }
 
     const { roots, excludes } = await this.deps.config();
     this.excludes = excludes;
-    this.ensured.clear();
     this.resetCounters();
     if (!silent) {
       this.state = 'scanning';
@@ -114,7 +99,7 @@ export class Indexer {
 
     for (const root of roots) {
       if (this.paused) break;
-      await this.crawlRoot(root, excludes);
+      await this.crawlRoot(root, excludes, backend);
     }
     this.total = await jobs.countPending();
 
@@ -128,7 +113,7 @@ export class Indexer {
       return;
     }
 
-    await this.drain(provider);
+    await this.drain(backend);
   }
 
   /**
@@ -138,22 +123,14 @@ export class Indexer {
   async resume(): Promise<void> {
     await jobs.resume(); // re-arm transient errors from last session
     if ((await jobs.countPending()) === 0) return;
-    const provider = await this.deps.provider();
-    if (!provider) return;
+    const backend = await this.deps.backend();
+    if (!backend) return;
 
     this.resetCounters();
     this.paused = false;
     this.excludes = (await this.deps.config()).excludes;
-    this.ensured.clear();
     this.total = await jobs.countPending();
-    await this.drain(provider);
-  }
-
-  /** Make sure a model is downloaded before we embed with it (idempotent). */
-  private async ensureModel(provider: AiProvider, modelId: string): Promise<void> {
-    if (this.ensured.has(modelId)) return;
-    await provider.download(modelId);
-    this.ensured.add(modelId);
+    await this.drain(backend);
   }
 
   /** Stop processing; the queue is preserved and a later start() picks it up. */
@@ -197,7 +174,7 @@ export class Indexer {
   }
 
   /** Walk one root: enqueue new/changed files, queue removals for vanished ones. */
-  private async crawlRoot(root: string, excludes: string[]): Promise<void> {
+  private async crawlRoot(root: string, excludes: string[], backend: MemoryBackend): Promise<void> {
     const states = new Map<string, IndexState>();
     for (const s of await aiIndex.statesUnder(root)) states.set(s.path, s);
     const seen = new Set<string>();
@@ -241,7 +218,7 @@ export class Indexer {
           prev.status === 'error' ||
           prev.mtime !== stat.mtimeMs ||
           prev.size !== stat.size ||
-          prev.modelId !== this.modelFor(full)
+          prev.modelId !== backend.fingerprint(full)
         ) {
           changed.push(full);
           await flush();
@@ -260,7 +237,7 @@ export class Indexer {
   }
 
   /** Process the queue until empty or paused. */
-  private async drain(provider: AiProvider): Promise<void> {
+  private async drain(backend: MemoryBackend): Promise<void> {
     if (this.draining) return;
     this.draining = true;
     this.state = 'indexing';
@@ -271,7 +248,7 @@ export class Indexer {
         if (!job) break;
         this.currentFile = job.path;
         try {
-          await this.process(job, provider);
+          await this.process(job, backend);
           await jobs.done(job.path);
         } catch {
           await jobs.markError(job.path);
@@ -290,82 +267,23 @@ export class Indexer {
     this.emit(true);
   }
 
-  /** Index or remove a single file. Throws on failure so drain() can retry. */
-  private async process(job: IndexJob, provider: AiProvider): Promise<void> {
+  /** Hand a single job to the backend. Throws on failure so drain() can retry. */
+  private async process(job: IndexJob, backend: MemoryBackend): Promise<void> {
     const { path } = job;
     if (job.op === 'remove') {
-      await aiIndex.remove([path]);
+      await backend.remove([path]);
       return;
     }
-
-    let stat;
-    try {
-      stat = await fs.stat(path);
-    } catch {
-      await aiIndex.remove([path]); // vanished since enqueue
+    // No longer indexable (excluded since enqueue, or wrong type) — drop it.
+    if (!this.indexable(path) || this.ignore(path, this.excludes)) {
+      await backend.remove([path]);
       return;
     }
-    if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes)) {
-      await aiIndex.remove([path]); // no longer indexable
-      return;
-    }
-
-    const modelId = this.modelFor(path);
-    // Already current under the right model — re-run is a no-op.
-    const prev = await aiIndex.getState(path);
-    if (
-      prev &&
-      prev.status !== 'error' &&
-      prev.mtime === stat.mtimeMs &&
-      prev.size === stat.size &&
-      prev.modelId === modelId
-    ) {
-      return;
-    }
-
-    await this.ensureModel(provider, modelId);
-
-    // Images: one CLIP embedding per file, labelled by its name (the snippet).
-    if (isImage(path)) {
-      const [embedding] = await provider.embedImages(modelId, [path]);
-      await aiIndex.upsertState(this.stateFor(path, stat, modelId, embedding ? 'indexed' : 'skipped'));
-      await this.deps.vectorStore.upsert(
-        path,
-        embedding ? [{ chunkIx: 0, text: basename(path), embedding, modelId }] : [],
-      );
-      return;
-    }
-
-    const text = await extractText(path);
-    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed'));
-
-    const chunks = text === null ? [] : chunk(text);
-    if (chunks.length === 0) {
-      await this.deps.vectorStore.upsert(path, []); // clear any stale chunks
-      return;
-    }
-    const vectors = await provider.embed(
-      modelId,
-      chunks.map((c) => c.text),
-      'passage',
-    );
-    await this.deps.vectorStore.upsert(
-      path,
-      chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
-    );
+    await backend.ingest(path);
   }
 
   /** A file is indexable if its text can be extracted, or it's an image (CLIP). */
   private indexable(path: string): boolean {
     return isExtractable(path) || isImage(path);
-  }
-
-  private stateFor(
-    path: string,
-    stat: { mtimeMs: number; size: number },
-    modelId: string,
-    status: IndexState['status'],
-  ): IndexState {
-    return { path, mtime: stat.mtimeMs, size: stat.size, contentHash: null, modelId, indexedAt: Date.now(), status };
   }
 }

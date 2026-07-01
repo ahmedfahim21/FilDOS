@@ -11,7 +11,17 @@ import {
 } from './registry';
 
 function stub(id: string): MemoryBackend {
-  return { id, async search(): Promise<SemanticHit[]> { return []; } };
+  return {
+    id,
+    async search(): Promise<SemanticHit[]> {
+      return [];
+    },
+    async ingest() {},
+    async remove() {},
+    fingerprint() {
+      return id;
+    },
+  };
 }
 
 beforeEach(() => initDb(':memory:'));

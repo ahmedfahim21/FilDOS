@@ -8,6 +8,7 @@ import { countPending } from '../../db/indexJobs';
 import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
+import { LocalBackend } from '../memory/localBackend';
 import { Indexer } from './indexer';
 import { isUnder } from './ignore';
 
@@ -37,16 +38,18 @@ function fakeProvider(boom?: string) {
   return { provider, calls: () => calls };
 }
 
-/** Build an indexer over the temp dir with the given excludes + provider. */
+/** Build an indexer over the temp dir, draining through the local backend. */
 function makeIndexer(provider: AiProvider, excludes: string[] = [], textModel = 'm1') {
   let last: IndexProgress | null = null;
   let emits = 0;
-  const indexer = new Indexer({
+  const backend = new LocalBackend({
     provider: async () => provider,
-    textModel,
-    imageModel: 'clip',
-    config: async () => ({ roots: [tmp()], excludes }),
+    models: { text: textModel, image: 'clip' },
     vectorStore: new SqliteVectorStore(),
+  });
+  const indexer = new Indexer({
+    backend: async () => backend,
+    config: async () => ({ roots: [tmp()], excludes }),
     emit: (p) => {
       last = p;
       emits++;
@@ -197,15 +200,12 @@ describe('Indexer.clear', () => {
 });
 
 describe('Indexer.start — guards', () => {
-  it('fails gracefully when no provider is configured', async () => {
+  it('fails gracefully when no backend is configured', async () => {
     await write('a.txt', 'hello');
     const seen: IndexProgress[] = [];
     const indexer = new Indexer({
-      provider: async () => null,
-      textModel: 'm1',
-      imageModel: 'clip',
+      backend: async () => null,
       config: async () => ({ roots: [tmp()], excludes: [] }),
-      vectorStore: new SqliteVectorStore(),
       emit: (p) => seen.push(p),
     });
 

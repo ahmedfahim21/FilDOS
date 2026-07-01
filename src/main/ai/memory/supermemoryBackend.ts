@@ -1,6 +1,13 @@
-import type { SemanticHit } from '@shared/types';
+import { promises as fs } from 'node:fs';
+import { basename } from 'node:path';
+import type { IndexState, SemanticHit } from '@shared/types';
+import * as aiIndex from '../../db/aiIndex';
 import type { MemoryBackend, MemorySearchOpts } from './types';
 import { enrichHits, type ScoredHit } from './enrich';
+import { stableId } from './stableId';
+
+/** Change-detection fingerprint stored in `index_state.modelId` for supermemory. */
+const FINGERPRINT = 'supermemory';
 
 /**
  * The bundled self-hosted supermemory daemon behind the `MemoryBackend` seam
@@ -98,6 +105,69 @@ export class SupermemoryBackend implements MemoryBackend {
     return enrichHits(scored, { rootPath: opts?.rootPath, k: opts?.k });
   }
 
+  fingerprint(_path: string): string {
+    return FINGERPRINT; // constant — switching to/from supermemory re-indexes
+  }
+
+  async ingest(path: string): Promise<void> {
+    let stat;
+    try {
+      stat = await fs.stat(path);
+    } catch {
+      await this.remove([path]); // vanished since it was queued
+      return;
+    }
+
+    // Already uploaded and unchanged — re-run is a no-op (matches local backend).
+    const prev = await aiIndex.getState(path);
+    if (prev && prev.status !== 'error' && prev.mtime === stat.mtimeMs && prev.size === stat.size && prev.modelId === FINGERPRINT) {
+      return;
+    }
+
+    // Upload the raw file; supermemory does its own extraction/chunking/embedding.
+    // `customId = hash(path)` upserts on re-ingest (confirmed live); the real path
+    // rides along in `metadata` so search can map results back to the file.
+    const bytes = await fs.readFile(path);
+    const form = new FormData();
+    form.append('file', new Blob([bytes]), basename(path));
+    form.append('customId', stableId(path));
+    form.append('metadata', JSON.stringify({ path }));
+    form.append('filepath', path);
+
+    const res = await this.fetchFn(`${this.resolveBaseUrl()}/v3/documents/file`, {
+      method: 'POST',
+      headers: this.authHeaders(),
+      body: form,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw Object.assign(
+        new Error(`supermemory ingest failed (${res.status})${detail ? `: ${detail}` : ''}`),
+        { code: res.status === 401 ? 'EACCES' : 'EUNKNOWN' },
+      );
+    }
+
+    await aiIndex.upsertState(stateFor(path, stat, FINGERPRINT, 'indexed'));
+  }
+
+  async remove(paths: string[]): Promise<void> {
+    for (const path of paths) {
+      const res = await this.fetchFn(
+        `${this.resolveBaseUrl()}/v3/documents/${encodeURIComponent(stableId(path))}`,
+        { method: 'DELETE', headers: this.authHeaders() },
+      );
+      // 404 = already gone; anything else non-ok is surfaced.
+      if (!res.ok && res.status !== 404) {
+        const detail = await res.text().catch(() => '');
+        throw Object.assign(
+          new Error(`supermemory delete failed (${res.status})${detail ? `: ${detail}` : ''}`),
+          { code: res.status === 401 ? 'EACCES' : 'EUNKNOWN' },
+        );
+      }
+    }
+    if (paths.length) await aiIndex.remove(paths); // drop local bookkeeping
+  }
+
   private resolveBaseUrl(): string {
     const raw = typeof this.deps.baseUrl === 'function' ? this.deps.baseUrl() : this.deps.baseUrl;
     if (raw === null) {
@@ -107,11 +177,23 @@ export class SupermemoryBackend implements MemoryBackend {
   }
 
   private headers(): Record<string, string> {
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    const token = this.deps.token();
-    if (token) headers.authorization = `Bearer ${token}`;
-    return headers;
+    return { 'content-type': 'application/json', ...this.authHeaders() };
   }
+
+  /** Auth only — for multipart uploads, where fetch sets its own content-type. */
+  private authHeaders(): Record<string, string> {
+    const token = this.deps.token();
+    return token ? { authorization: `Bearer ${token}` } : {};
+  }
+}
+
+function stateFor(
+  path: string,
+  stat: { mtimeMs: number; size: number },
+  modelId: string,
+  status: IndexState['status'],
+): IndexState {
+  return { path, mtime: stat.mtimeMs, size: stat.size, contentHash: null, modelId, indexedAt: Date.now(), status };
 }
 
 /** Recover the absolute file path FilDOS stored on the document at ingest. */

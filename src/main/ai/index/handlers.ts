@@ -66,11 +66,16 @@ function broadcast(progress: IndexProgress): void {
 }
 
 const indexer = new Indexer({
-  provider: () => activeAiProvider(),
-  textModel: TEXT_MODEL_ID,
-  imageModel: IMAGE_MODEL_ID,
+  // Drain each file through whichever backend is active; null (no backend
+  // registered for the selected id) pauses indexing rather than crashing.
+  backend: async () => {
+    try {
+      return await activeMemoryBackend();
+    } catch {
+      return null;
+    }
+  },
   config: async () => ({ roots: (await indexConfig()).roots, excludes: await effectiveExcludes() }),
-  vectorStore,
   emit: broadcast,
 });
 

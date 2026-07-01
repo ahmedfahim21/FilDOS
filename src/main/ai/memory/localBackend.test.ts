@@ -90,4 +90,52 @@ describe('LocalBackend', () => {
   it('exposes its registry id', () => {
     expect(backend(fakeProvider([1, 0, 0])).id).toBe('local');
   });
+
+  it('fingerprints text vs image by model id', () => {
+    const b = backend(fakeProvider([1, 0, 0]));
+    expect(b.fingerprint(join(tmp(), 'a.txt'))).toBe('m1');
+    expect(b.fingerprint(join(tmp(), 'a.png'))).toBe('clip');
+  });
+
+  it('ingest embeds a real file, records index_state, and makes it searchable', async () => {
+    const f = join(tmp(), 'doc.txt');
+    await fs.writeFile(f, 'hello world about sailing ships');
+    await backend(fakeProvider([1, 0, 0])).ingest(f);
+
+    expect((await aiIndex.getState(f))?.status).toBe('indexed');
+    const hits = await backend(fakeProvider([1, 0, 0])).search('ships');
+    expect(hits.map((h) => h.path)).toContain(f);
+  });
+
+  it('ingest is a no-op for an unchanged file (does not re-embed)', async () => {
+    const f = join(tmp(), 'doc.txt');
+    await fs.writeFile(f, 'unchanged');
+    let embeds = 0;
+    const provider: AiProvider = {
+      ...fakeProvider([1, 0, 0]),
+      async embed() {
+        embeds++;
+        return [Float32Array.from([1, 0, 0])];
+      },
+    };
+    const b = new LocalBackend({ provider: async () => provider, models: { text: 'm1', image: 'clip' }, vectorStore: store });
+    await b.ingest(f);
+    await b.ingest(f);
+    expect(embeds).toBe(1);
+  });
+
+  it('ingest drops a file that vanished before processing', async () => {
+    const gone = join(tmp(), 'ghost.txt');
+    await backend(fakeProvider([1, 0, 0])).ingest(gone);
+    expect(await aiIndex.getState(gone)).toBeNull();
+  });
+
+  it('remove drops index_state (and chunks cascade)', async () => {
+    const f = join(tmp(), 'doc.txt');
+    await fs.writeFile(f, 'to be removed');
+    const b = backend(fakeProvider([1, 0, 0]));
+    await b.ingest(f);
+    await b.remove([f]);
+    expect(await aiIndex.getState(f)).toBeNull();
+  });
 });

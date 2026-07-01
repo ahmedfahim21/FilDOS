@@ -1,8 +1,11 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../fs/fixtures';
+import { closeDb, initDb } from '../../db';
+import * as aiIndex from '../../db/aiIndex';
 import { SupermemoryBackend } from './supermemoryBackend';
+import { stableId } from './stableId';
 
 const tmp = useTempDir();
 
@@ -21,6 +24,15 @@ function backend(fetchFn: typeof fetch, token: string | null = 'sm_test') {
 /** A `/v3/search` result in the confirmed live shape (score + chunks[] + metadata). */
 function result(path: string, score: number, text: string) {
   return { score, chunks: [{ content: text, isRelevant: true, score }], metadata: { path } };
+}
+
+beforeEach(() => initDb(':memory:'));
+afterEach(() => closeDb());
+
+/** A stub fetch that echoes 200 for uploads/deletes and records calls. */
+function okFetch() {
+  const fn = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response('{}', { status: 200 }));
+  return fn as unknown as typeof fetch & { mock: (typeof fn)['mock'] };
 }
 
 describe('SupermemoryBackend.search', () => {
@@ -119,5 +131,71 @@ describe('SupermemoryBackend.search', () => {
     await expect(backend(stubFetch('boom', 500)).search('q')).rejects.toMatchObject({
       code: 'EUNKNOWN',
     });
+  });
+});
+
+describe('SupermemoryBackend.ingest / remove', () => {
+  it('uploads the file to /v3/documents/file with customId + path metadata, and records state', async () => {
+    const f = join(tmp(), 'notes.txt');
+    await fs.writeFile(f, 'some content to ingest');
+    const fetchFn = okFetch();
+
+    await backend(fetchFn).ingest(f);
+
+    const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:6767/v3/documents/file');
+    expect(init.method).toBe('POST');
+    const form = init.body as FormData;
+    expect(form.get('customId')).toBe(stableId(f));
+    expect(form.get('filepath')).toBe(f);
+    expect(JSON.parse(form.get('metadata') as string)).toEqual({ path: f });
+    // multipart: no explicit JSON content-type (fetch sets the boundary itself)
+    expect((init.headers as Record<string, string>)['content-type']).toBeUndefined();
+    // index_state bookkeeping written for the crawler's change-detection
+    expect((await aiIndex.getState(f))?.status).toBe('indexed');
+    expect((await aiIndex.getState(f))?.modelId).toBe('supermemory');
+  });
+
+  it('is a no-op for an unchanged file', async () => {
+    const f = join(tmp(), 'notes.txt');
+    await fs.writeFile(f, 'x');
+    const fetchFn = okFetch();
+    const b = backend(fetchFn);
+    await b.ingest(f);
+    await b.ingest(f);
+    expect(fetchFn.mock.calls.filter((c) => String(c[0]).endsWith('/file'))).toHaveLength(1);
+  });
+
+  it('drops a file that vanished before upload', async () => {
+    const gone = join(tmp(), 'ghost.txt');
+    const fetchFn = okFetch();
+    await backend(fetchFn).ingest(gone);
+    expect(await aiIndex.getState(gone)).toBeNull();
+  });
+
+  it('remove DELETEs by customId and clears local state', async () => {
+    const f = join(tmp(), 'notes.txt');
+    await fs.writeFile(f, 'y');
+    const fetchFn = okFetch();
+    const b = backend(fetchFn);
+    await b.ingest(f);
+    await b.remove([f]);
+
+    const del = fetchFn.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'DELETE');
+    expect(String(del?.[0])).toBe(`http://localhost:6767/v3/documents/${encodeURIComponent(stableId(f))}`);
+    expect(await aiIndex.getState(f)).toBeNull();
+  });
+
+  it('treats a 404 on delete as already-gone', async () => {
+    const f = join(tmp(), 'notes.txt');
+    await fs.writeFile(f, 'z');
+    await aiIndex.upsertState({ path: f, mtime: 1, size: 1, contentHash: null, modelId: 'supermemory', indexedAt: 1, status: 'indexed' });
+    const fetchFn = vi.fn(async () => new Response('missing', { status: 404 })) as unknown as typeof fetch;
+    await expect(backend(fetchFn).remove([f])).resolves.toBeUndefined();
+    expect(await aiIndex.getState(f)).toBeNull();
+  });
+
+  it('fingerprint is the constant supermemory marker', () => {
+    expect(backend(okFetch()).fingerprint('/any/path.txt')).toBe('supermemory');
   });
 });

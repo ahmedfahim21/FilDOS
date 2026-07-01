@@ -24,6 +24,25 @@ export interface MemoryBackend {
    * scopes results to a subtree; `k` caps the number of hits.
    */
   search(query: string, opts?: MemorySearchOpts): Promise<SemanticHit[]>;
+
+  /**
+   * Make one file searchable (extract/embed/store, or upload to the daemon) and
+   * record its `index_state` bookkeeping. Idempotent — a file that is already
+   * current under this backend is a no-op. Throws on failure so the indexer can
+   * mark the job errored and move on.
+   */
+  ingest(path: string): Promise<void>;
+
+  /** Drop files from the index (and the backend's own store). */
+  remove(paths: string[]): Promise<void>;
+
+  /**
+   * The backend's identity for a file, stored in `index_state.modelId` and used
+   * by the crawler for change-detection. Changing backend (or, for local, the
+   * per-file model) changes the fingerprint, so switching re-indexes. Cheap and
+   * synchronous — the crawler calls it per file.
+   */
+  fingerprint(path: string): string;
 }
 
 export interface MemorySearchOpts {
