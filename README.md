@@ -58,6 +58,10 @@ website/        The marketing site (Next.js)
   Node 22 / Electron ≥ 35)
 - npm
 
+**Platforms:** macOS and Linux. A Windows build is deferred until there is real
+demand — the code stays cross-platform, but Windows is not currently built or
+tested in CI.
+
 ### Run the desktop app
 
 ```bash

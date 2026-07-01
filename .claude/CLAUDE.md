@@ -18,7 +18,7 @@ npm run build        # production build into out/
 npm start            # preview a production build
 npm run typecheck    # tsc for both node (main/preload) and web (renderer) projects
 npm run lint         # eslint (flat config, eslint.config.mjs)
-npm test             # vitest run — unit + integration tests (CI runs this on all 3 OSes)
+npm test             # vitest run — unit + integration tests (CI runs this on macOS + Linux)
 npm run test:watch   # vitest in watch mode
 npm run test:e2e     # build, then Playwright smoke test against the packaged app
 ```
@@ -43,7 +43,7 @@ dir with `git rev-parse` so it works regardless of where the app sits in the rep
 After changes, run `npm run lint`, `npm run typecheck`, `npm test`, and
 `npm run build`; for behavior, `npm run dev` and exercise it by hand. CI
 (`.github/workflows/ci.yml`) runs lint, typecheck+unit, and e2e on
-Ubuntu, macOS, and Windows.
+Ubuntu and macOS; cross-platform code paths are kept, but Windows is not built or tested.
 
 ## Architecture
 
