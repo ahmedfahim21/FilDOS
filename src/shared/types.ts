@@ -289,12 +289,43 @@ export interface IndexConfig {
   intervalMinutes: number;
 }
 
+/** Local Ollama availability (used when it's supermemory's chosen LLM). */
+export interface OllamaStatus {
+  /** The `ollama` binary is present on this machine. */
+  installed: boolean;
+  /** Ollama is serving on its API port. */
+  running: boolean;
+  /** Names of the models already pulled. */
+  models: string[];
+}
+
+/** Streaming progress while pulling an Ollama model. */
+export interface OllamaProgress {
+  model: string;
+  /** Ollama's phase, e.g. "pulling manifest", "downloading", "success". */
+  status: string;
+  completed?: number;
+  total?: number;
+  /** 0–100 when the total size is known. */
+  percent?: number;
+  done?: boolean;
+  error?: string;
+}
+
 /** The API surface exposed on `window.memory` (supermemory LLM config). */
 export interface MemoryApi {
   /** Current LLM config (without the key) and whether a key is stored. */
   getLlm(): Promise<Result<SupermemoryLlmStatus>>;
   /** Save the LLM config; restarts the daemon if supermemory is active. */
   setLlm(input: SupermemoryLlmInput): Promise<Result<void>>;
+  /** Whether local Ollama is installed/running and which models are pulled. */
+  ollamaStatus(): Promise<Result<OllamaStatus>>;
+  /** Launch `ollama serve` (explicit user action); resolves once up. */
+  ollamaStart(): Promise<Result<OllamaStatus>>;
+  /** Pull a model; progress streams via `onOllamaProgress`. */
+  ollamaPull(model: string): Promise<Result<void>>;
+  /** Subscribe to model-pull progress. Returns an unsubscribe fn. */
+  onOllamaProgress(cb: (progress: OllamaProgress) => void): () => void;
 }
 
 /** The API surface exposed on `window.index` (background indexing control). */

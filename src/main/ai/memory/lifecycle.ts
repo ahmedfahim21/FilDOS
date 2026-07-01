@@ -2,15 +2,22 @@ import { spawn as cpSpawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { app, ipcMain } from 'electron';
-import { Channels } from '@shared/channels';
-import type { AppError, Result, SupermemoryLlmInput, SupermemoryLlmStatus } from '@shared/types';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { Channels, Events } from '@shared/channels';
+import type {
+  AppError,
+  OllamaStatus,
+  Result,
+  SupermemoryLlmInput,
+  SupermemoryLlmStatus,
+} from '@shared/types';
 import { getPrefs } from '../../prefs';
 import { getSecret, setSecret } from '../../db/secrets';
 import { registerMemoryBackend } from './registry';
 import { SupermemoryBackend } from './supermemoryBackend';
 import { SupermemoryDaemon, type DaemonProcess } from './supermemoryDaemon';
 import { buildLlmEnv, resolveLlmEnv, type StoredLlmConfig } from './supermemoryConfig';
+import { ollamaStatus, pullOllamaModel, startOllama } from './ollama';
 
 /**
  * Electron glue that owns the bundled supermemory daemon, registers the
@@ -154,6 +161,20 @@ export function registerMemoryHandlers(): void {
       const prefs = await getPrefs();
       if (prefs.ai?.activeBackend === 'supermemory') await restartSupermemory();
     }),
+  );
+
+  ipcMain.handle(Channels.memoryOllamaStatus, () => wrap<OllamaStatus>(() => ollamaStatus()));
+
+  ipcMain.handle(Channels.memoryOllamaStart, () => wrap<OllamaStatus>(() => startOllama()));
+
+  ipcMain.handle(Channels.memoryOllamaPull, (_e, model: string) =>
+    wrap<void>(() =>
+      pullOllamaModel(model, (progress) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.webContents.isDestroyed()) win.webContents.send(Events.memoryOllamaProgress, progress);
+        }
+      }),
+    ),
   );
 }
 

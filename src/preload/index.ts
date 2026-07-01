@@ -8,6 +8,7 @@ import type {
   IndexApi,
   IndexProgress,
   MemoryApi,
+  OllamaProgress,
   Prefs,
   RecentsApi,
   TagsApi,
@@ -138,10 +139,19 @@ const indexApi: IndexApi = {
 };
 contextBridge.exposeInMainWorld('index', indexApi);
 
-// Supermemory LLM config (provider/model/key). The key stays in main.
+// Supermemory LLM config (provider/model/key) + local Ollama helpers. The key
+// stays in main; Ollama pull progress streams over an event.
 const memoryApi: MemoryApi = {
   getLlm: () => ipcRenderer.invoke(Channels.memoryGetLlm),
   setLlm: (input) => ipcRenderer.invoke(Channels.memorySetLlm, input),
+  ollamaStatus: () => ipcRenderer.invoke(Channels.memoryOllamaStatus),
+  ollamaStart: () => ipcRenderer.invoke(Channels.memoryOllamaStart),
+  ollamaPull: (model) => ipcRenderer.invoke(Channels.memoryOllamaPull, model),
+  onOllamaProgress: (cb: (progress: OllamaProgress) => void) => {
+    const listener = (_e: IpcRendererEvent, progress: OllamaProgress) => cb(progress);
+    ipcRenderer.on(Events.memoryOllamaProgress, listener);
+    return () => ipcRenderer.removeListener(Events.memoryOllamaProgress, listener);
+  },
 };
 contextBridge.exposeInMainWorld('memory', memoryApi);
 

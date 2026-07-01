@@ -60,6 +60,9 @@ export const Channels = {
   indexSearch: 'index:search',
   memoryGetLlm: 'memory:getLlm',
   memorySetLlm: 'memory:setLlm',
+  memoryOllamaStatus: 'memory:ollamaStatus',
+  memoryOllamaStart: 'memory:ollamaStart',
+  memoryOllamaPull: 'memory:ollamaPull',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
@@ -72,4 +75,6 @@ export const Events = {
   aiModelProgress: 'ai:modelProgress',
   /** Background indexing progress; payload is an IndexProgress. */
   indexProgress: 'index:progress',
+  /** Ollama model-pull progress; payload is an OllamaProgress. */
+  memoryOllamaProgress: 'memory:ollamaProgress',
 } as const;
