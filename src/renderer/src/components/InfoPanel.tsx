@@ -10,7 +10,7 @@ import { TagDot } from './TagDots';
 
 const ROW = 'mb-2.5';
 const ROW_LABEL =
-  'text-muted-foreground mb-0.5 text-3xs font-semibold tracking-[0.07em] uppercase';
+  'text-muted-foreground mb-0.5 text-3xs font-semibold tracking-wider uppercase';
 const ROW_VALUE = 'wrap-break-word select-text';
 
 export function InfoPanel({
@@ -69,7 +69,7 @@ export function InfoPanel({
         <Button
           variant="ghost"
           size="icon"
-          className="size-7"
+          className="size-8"
           onClick={onClose}
           aria-label="Close info"
         >

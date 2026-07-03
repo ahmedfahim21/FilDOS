@@ -42,7 +42,7 @@ export function Mark({ className }: { className?: string }) {
 export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={cn('inline-flex items-baseline leading-none', className)}>
-      <span className="font-sans font-light -tracking-[0.03em]">Fil</span>
+      <span className="font-sans font-light tracking-tight">Fil</span>
       <span className="font-mono font-normal">DOS</span>
     </span>
   );

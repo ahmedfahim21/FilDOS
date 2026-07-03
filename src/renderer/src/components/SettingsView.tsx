@@ -250,7 +250,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Provider selector */}
           <div className={cn('mb-4', !ai.enabled && 'pointer-events-none opacity-50')}>
-            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-wider uppercase">
               Provider
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -276,7 +276,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Models — managed automatically (no user choice). */}
           <div className={cn('mb-3', disabled && 'pointer-events-none opacity-50')}>
-            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-wider uppercase">
               Models
             </div>
             {isCloud ? (
@@ -417,7 +417,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Exclusions */}
           <div className="mb-3">
-            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-wider uppercase">
               Excluded from indexing
             </div>
             {indexing.excludes.length === 0 ? (

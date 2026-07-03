@@ -164,12 +164,16 @@ body {
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 400;
-  /* Inter: alternate a/g (cv03/cv04) + clear lowercase l (cv11) + tabular digits */
-  font-feature-settings: 'cv03', 'cv04', 'cv11', 'tnum';
+  /* Inter: keep contextual alternates (calt) + alternate a/g/l glyphs + tabular digits */
+  font-feature-settings: 'calt', 'cv03', 'cv04', 'cv11', 'tnum';
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  text-wrap: pretty;
   color: var(--foreground);
   background: var(--background);
   user-select: none;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button {

@@ -69,7 +69,7 @@ export function FileList({
       {COLUMNS.map((col) => (
         <div key={col.key} className="relative flex items-center overflow-hidden">
           <button
-            className="text-muted-foreground hover:text-foreground flex flex-1 items-center gap-1 overflow-hidden border-0 bg-transparent px-2.5 py-2 text-left text-2xs font-semibold uppercase tracking-[0.05em]"
+            className="text-muted-foreground hover:text-foreground flex flex-1 items-center gap-1 overflow-hidden border-0 bg-transparent px-2.5 py-2 text-left text-2xs font-semibold uppercase tracking-wider"
             onClick={(e) => {
               e.stopPropagation();
               setSort(col.key);
