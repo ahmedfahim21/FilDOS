@@ -80,11 +80,11 @@ function ModelRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-foreground truncate text-sm">{def?.label ?? id}</span>
-          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
+          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-3xs">
             {def?.modality === 'image' ? 'Images' : 'Text & documents'}
           </span>
         </div>
-        <div className="text-muted-foreground text-[11px]">
+        <div className="text-muted-foreground text-2xs">
           {state === 'ready'
             ? `Ready · ${status?.dim ?? def?.dim ?? ''}-d`
             : state === 'downloading'
@@ -199,7 +199,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             </span>
             <div>
               <div className="text-foreground text-sm font-medium">Appearance</div>
-              <div className="text-muted-foreground text-[11px]">Theme for the app interface</div>
+              <div className="text-muted-foreground text-2xs">Theme for the app interface</div>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -223,7 +223,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
           <div className="border-border mt-4 flex items-center justify-between gap-3 border-t pt-4">
             <div className="min-w-0">
               <div className="text-foreground text-sm">Interface sounds</div>
-              <div className="text-muted-foreground text-[11px]">
+              <div className="text-muted-foreground text-2xs">
                 Soft cues for actions, notifications, and toggles
               </div>
             </div>
@@ -240,7 +240,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               </span>
               <div>
                 <div className="text-foreground text-sm font-medium">AI features</div>
-                <div className="text-muted-foreground text-[11px]">
+                <div className="text-muted-foreground text-2xs">
                   Semantic search and smart organization (foundation)
                 </div>
               </div>
@@ -250,7 +250,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Provider selector */}
           <div className={cn('mb-4', !ai.enabled && 'pointer-events-none opacity-50')}>
-            <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
               Provider
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -268,7 +268,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   )}
                 >
                   <span className="text-foreground text-sm">{p.name}</span>
-                  <span className="text-muted-foreground text-[11px]">{p.blurb}</span>
+                  <span className="text-muted-foreground text-2xs">{p.blurb}</span>
                 </button>
               ))}
             </div>
@@ -276,11 +276,11 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Models — managed automatically (no user choice). */}
           <div className={cn('mb-3', disabled && 'pointer-events-none opacity-50')}>
-            <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
               Models
             </div>
             {isCloud ? (
-              <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-[11px]">
+              <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
                 Switch to On-device to use models.
               </p>
             ) : (
@@ -298,7 +298,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                     }
                   />
                 ))}
-                <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
+                <p className="text-muted-foreground mt-1 text-2xs leading-snug">
                   FilDOS picks the right model per file automatically — a text model for documents
                   and CLIP for images. Both download when AI is enabled.
                 </p>
@@ -317,12 +317,12 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                 {embedding ? 'Embedding…' : 'Test embed'}
               </button>
               {embedResult && (
-                <code className="text-muted-foreground truncate font-mono text-[11px]">
+                <code className="text-muted-foreground truncate font-mono text-2xs">
                   {embedResult}
                 </code>
               )}
             </div>
-            <p className="text-muted-foreground mt-2 text-[11px] leading-snug">
+            <p className="text-muted-foreground mt-2 text-2xs leading-snug">
               Embeds a sample string with the text model to verify it end-to-end. The first run
               downloads the model if needed.
             </p>
@@ -343,7 +343,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               </span>
               <div>
                 <div className="text-foreground text-sm font-medium">Indexing</div>
-                <div className="text-muted-foreground text-[11px]">
+                <div className="text-muted-foreground text-2xs">
                   Builds the search index from your files in the background
                 </div>
               </div>
@@ -374,7 +374,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             <div className="flex items-center justify-between gap-3">
               <span className="text-foreground text-sm">{indexLabel}</span>
               {!!ix?.errors && (
-                <span className="text-muted-foreground text-[11px]">{ix.errors} skipped</span>
+                <span className="text-muted-foreground text-2xs">{ix.errors} skipped</span>
               )}
             </div>
             {indexRunning && (
@@ -386,7 +386,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   />
                 </div>
                 {ix?.currentFile && (
-                  <div className="text-muted-foreground mt-1.5 truncate font-mono text-[10px]">
+                  <div className="text-muted-foreground mt-1.5 truncate font-mono text-3xs">
                     {ix.currentFile}
                   </div>
                 )}
@@ -398,7 +398,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
           <div className="border-border mb-4 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
             <div className="min-w-0">
               <div className="text-foreground text-sm">Rescan every</div>
-              <div className="text-muted-foreground text-[11px]">
+              <div className="text-muted-foreground text-2xs">
                 How often the background scan checks for new or changed files
               </div>
             </div>
@@ -417,11 +417,11 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {/* Exclusions */}
           <div className="mb-3">
-            <div className="text-muted-foreground mb-2 text-[11px] tracking-[0.06em] uppercase">
+            <div className="text-muted-foreground mb-2 text-2xs tracking-[0.06em] uppercase">
               Excluded from indexing
             </div>
             {indexing.excludes.length === 0 ? (
-              <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-[11px]">
+              <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
                 Nothing excluded. Right-click a file or folder to exclude it.
               </p>
             ) : (
@@ -431,7 +431,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                     key={path}
                     className="border-border flex items-center gap-3 rounded-lg border px-3 py-2"
                   >
-                    <code className="text-foreground min-w-0 flex-1 truncate font-mono text-[11px]">
+                    <code className="text-foreground min-w-0 flex-1 truncate font-mono text-2xs">
                       {path}
                     </code>
                     <button
@@ -449,7 +449,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           <button
             onClick={() => void indexing.clear()}
-            className="text-muted-foreground hover:text-foreground text-[11px] underline-offset-2 hover:underline"
+            className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
           >
             Clear index
           </button>

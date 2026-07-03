@@ -46,13 +46,18 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* FilDOS type system: Space Grotesk for UI/display, Space Mono for the
+  /* FilDOS type system: Inter for UI/display, Space Mono for the
    * wordmark, file paths, CIDs and other technical/code text. */
-  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
   
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-fluid: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Extended text-size scale below Tailwind's built-in text-xs (12px / 0.75rem). */
+  --text-4xs: 0.5rem;    /* 8px  — sort arrows, decorators */
+  --text-3xs: 0.625rem;  /* 10px — micro (capacity bars, badge counts) */
+  --text-2xs: 0.6875rem; /* 11px — structural labels, column headers, status bar */
 
   /* Raw brand neutrals (FilDOS Brand Guidelines) for direct use where a
    * semantic token doesn't map: bg-ink, text-mist, bg-cloud. */
@@ -158,6 +163,9 @@ body,
 body {
   font-family: var(--font-sans);
   font-size: 13px;
+  font-weight: 400;
+  /* Inter: alternate a/g (cv03/cv04) + clear lowercase l (cv11) + tabular digits */
+  font-feature-settings: 'cv03', 'cv04', 'cv11', 'tnum';
   color: var(--foreground);
   background: var(--background);
   user-select: none;

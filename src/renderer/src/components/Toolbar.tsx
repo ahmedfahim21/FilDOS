@@ -89,7 +89,7 @@ export function Toolbar({
           />
           <button
             className={cn(
-              'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
+              'shrink-0 rounded px-1.5 py-0.75 text-2xs',
               searchRecursive
                 ? 'bg-foreground/[0.09] text-foreground font-medium'
                 : 'bg-accent text-muted-foreground',

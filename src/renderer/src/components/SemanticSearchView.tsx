@@ -108,7 +108,7 @@ export function SemanticSearchView({
               }}
             />
           </div>
-          <div className="border-border flex shrink-0 overflow-hidden rounded-md border text-[11px]">
+          <div className="border-border flex shrink-0 overflow-hidden rounded-md border text-2xs">
             {(['folder', 'all'] as Scope[]).map((s) => (
               <button
                 key={s}
@@ -156,9 +156,9 @@ export function SemanticSearchView({
                   {hit.name}
                 </div>
                 {hit.snippet && (
-                  <div className="text-muted-foreground truncate text-[11px]">{hit.snippet}</div>
+                  <div className="text-muted-foreground truncate text-2xs">{hit.snippet}</div>
                 )}
-                <div className="text-muted-foreground truncate text-[10px]">{hit.relativePath}</div>
+                <div className="text-muted-foreground truncate text-3xs">{hit.relativePath}</div>
               </div>
               <div
                 className="bg-muted h-1.5 w-12 shrink-0 overflow-hidden rounded-full"

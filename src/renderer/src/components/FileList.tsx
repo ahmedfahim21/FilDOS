@@ -23,7 +23,7 @@ const COLUMNS: { key: SortKey; label: string }[] = [
 ];
 
 const cellClass =
-  'overflow-hidden px-2.5 text-ellipsis whitespace-nowrap text-muted-foreground';
+  'overflow-hidden px-2.5 text-xs text-ellipsis whitespace-nowrap text-muted-foreground';
 
 const STATE =
   'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
@@ -69,7 +69,7 @@ export function FileList({
       {COLUMNS.map((col) => (
         <div key={col.key} className="relative flex items-center overflow-hidden">
           <button
-            className="text-muted-foreground hover:text-foreground flex flex-1 items-center gap-1 overflow-hidden border-0 bg-transparent px-2.5 py-2 text-left text-xs font-semibold"
+            className="text-muted-foreground hover:text-foreground flex flex-1 items-center gap-1 overflow-hidden border-0 bg-transparent px-2.5 py-2 text-left text-2xs font-semibold uppercase tracking-[0.05em]"
             onClick={(e) => {
               e.stopPropagation();
               setSort(col.key);
@@ -77,7 +77,7 @@ export function FileList({
           >
             {col.label}
             {sort.key === col.key && (
-              <span className="text-[8px]">{sort.dir === 'asc' ? '▲' : '▼'}</span>
+              <span className="text-4xs">{sort.dir === 'asc' ? '▲' : '▼'}</span>
             )}
           </button>
           {col.key !== 'name' && <ColumnResizer column={col.key as keyof ColumnWidths} />}
@@ -163,7 +163,7 @@ export function FileList({
                   onContextMenu(entry, e.clientX, e.clientY);
                 }}
               >
-                <div className="text-foreground flex items-center gap-2 overflow-hidden px-2.5">
+                <div className="text-foreground flex items-center gap-2 overflow-hidden px-2.5 font-medium">
                   <img
                     src={fileLogo(entry)}
                     alt=""

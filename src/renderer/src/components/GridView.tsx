@@ -246,7 +246,7 @@ function GridTile({
         />
       ) : (
         <div
-          className="line-clamp-2 w-full text-center text-xs leading-tight wrap-break-word"
+          className="line-clamp-2 w-full text-center text-xs font-medium leading-tight wrap-break-word"
           title={entry.name}
         >
           <TagDots tags={tags} max={3} dotSize={7} className="mr-1" />

@@ -43,12 +43,15 @@ colour utilities (e.g. `fill-mint`, `text-grape`, `bg-mango`).
 
 ## Type
 
-- **Space Grotesk** — UI · interface · display. Weights: Light 300, Regular 400,
-  Medium 500. Backs `font-sans` (the default body font).
+- **Inter** — UI · interface · display. Variable font (all weights in one file).
+  Backs `font-sans` (the default body font). Loaded via
+  `@fontsource-variable/inter` (`'Inter Variable'`).
 - **Space Mono** — wordmark · code · technical. Weights 400 / 700. Backs
   `font-mono`; use it for file paths, CIDs, hashes, metadata keys, CLI text.
-- Self-hosted via `@fontsource/*` (imported in `main.tsx`) — no CDN, CSP-safe.
-- Don't change font weights or introduce other typefaces.
+- Self-hosted via `@fontsource*` packages (imported in `main.tsx`) — no CDN,
+  CSP-safe.
+- Wordmark: "Fil" uses `font-sans font-light` (Inter 300); "DOS" uses
+  `font-mono font-normal` (Space Mono 400).
 
 ## Mark
 

@@ -41,7 +41,7 @@ export function TagDots({
         <TagDot key={t.id} color={t.color} size={dotSize} />
       ))}
       {tags.length > max && (
-        <span className="text-muted-foreground text-[10px]">
+        <span className="text-muted-foreground text-3xs">
           +{tags.length - max}
         </span>
       )}

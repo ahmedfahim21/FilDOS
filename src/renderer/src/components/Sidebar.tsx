@@ -102,7 +102,7 @@ export function Sidebar({
     else refreshDrives();
   }
 
-  const title = 'text-muted-foreground px-2 pb-2 text-[11px] tracking-[0.06em] uppercase';
+  const title = 'text-muted-foreground px-2 pb-2 text-3xs font-semibold tracking-[0.08em] uppercase';
 
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
@@ -197,7 +197,7 @@ export function Sidebar({
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <div className="text-muted-foreground mt-0.5 text-[10px]">
+                      <div className="text-muted-foreground mt-0.5 text-3xs">
                         {formatBytes(used)} of {formatBytes(drive.total)}
                       </div>
                     </div>
@@ -225,7 +225,7 @@ export function Sidebar({
                 <Icon name="cloud" size={16} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm">{account.label}</div>
-                  <div className="text-muted-foreground truncate text-[10px]">
+                  <div className="text-muted-foreground truncate text-3xs">
                     {PROVIDER_NAMES[account.provider] ?? account.provider}
                   </div>
                 </div>
@@ -278,7 +278,7 @@ export function Sidebar({
                   {tag.name}
                 </span>
                 {tag.count > 0 && (
-                  <span className="text-muted-foreground shrink-0 text-[11px]">
+                  <span className="text-muted-foreground shrink-0 text-2xs">
                     {tag.count}
                   </span>
                 )}
