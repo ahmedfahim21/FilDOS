@@ -479,80 +479,87 @@ function Browser({ initialView }: { initialView: ViewState }) {
   }
 
   return (
-    <div className="flex h-full flex-col" data-testid="app">
-      <Toolbar
-        onNewFolder={() => setDialog({ kind: 'new-folder' })}
-        onNewFile={() => setDialog({ kind: 'new-file' })}
-        pageTitle={pageTitle ?? undefined}
-        remote={isRemote(nav.currentPath)}
+    <div className="flex h-full" data-testid="app">
+      {/* Sidebar spans the full window height so the traffic-light spacer
+          at its top sits flush with the top-left corner of the window. */}
+      <Sidebar
+        tags={tagState.tags}
+        activePage={nav.page}
+        cloudKey={sidebarCloudKey}
+        onDropPath={(path, e) => handleDrop(path, e)}
+        onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
+        onOpenRecents={() => nav.openPage({ kind: 'recents' })}
+        onOpenTrash={() => nav.openPage({ kind: 'trash' })}
+        onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
+        onOpenSettings={() => nav.openPage({ kind: 'settings' })}
+        onDropOnTag={handleDropOnTag}
       />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar
-          tags={tagState.tags}
-          activePage={nav.page}
-          cloudKey={sidebarCloudKey}
-          onDropPath={(path, e) => handleDrop(path, e)}
-          onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
-          onOpenRecents={() => nav.openPage({ kind: 'recents' })}
-          onOpenTrash={() => nav.openPage({ kind: 'trash' })}
-          onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
-          onOpenSettings={() => nav.openPage({ kind: 'settings' })}
-          onDropOnTag={handleDropOnTag}
+
+      {/* Right column: toolbar → content → status bar */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Toolbar
+          onNewFolder={() => setDialog({ kind: 'new-folder' })}
+          onNewFile={() => setDialog({ kind: 'new-file' })}
+          pageTitle={pageTitle ?? undefined}
+          remote={isRemote(nav.currentPath)}
         />
-        <main className="bg-background flex min-w-0 flex-1 flex-col">
-          {nav.page?.kind === 'recents' ? (
-            <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
-          ) : nav.page?.kind === 'trash' ? (
-            <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
-          ) : nav.page?.kind === 'cloud-connect' ? (
-            <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
-          ) : nav.page?.kind === 'settings' ? (
-            <SettingsView onBack={nav.back} />
-          ) : nav.page?.kind === 'semantic-search' ? (
-            <SemanticSearchView
-              rootPath={nav.page.rootPath}
-              onBack={nav.back}
-              onNavigate={nav.navigate}
-              onInfo={(p) => setInfoPath(p)}
-            />
-          ) : nav.page?.kind === 'tag' ? (
-            pageTag && (
-              <TagFilesView
-                tag={pageTag}
+
+        <div className="flex min-h-0 flex-1">
+          <main className="bg-background flex min-w-0 flex-1 flex-col">
+            {nav.page?.kind === 'recents' ? (
+              <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
+            ) : nav.page?.kind === 'trash' ? (
+              <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
+            ) : nav.page?.kind === 'cloud-connect' ? (
+              <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
+            ) : nav.page?.kind === 'settings' ? (
+              <SettingsView onBack={nav.back} />
+            ) : nav.page?.kind === 'semantic-search' ? (
+              <SemanticSearchView
+                rootPath={nav.page.rootPath}
                 onBack={nav.back}
                 onNavigate={nav.navigate}
-                onRenameTag={(id, name) => tagState.rename(id, name)}
-                onDeleteTag={(id) => {
-                  nav.back();
-                  tagState.remove(id);
-                }}
-                onChanged={tagState.refresh}
+                onInfo={(p) => setInfoPath(p)}
               />
-            )
-          ) : nav.viewMode === 'grid' ? (
-            <GridView {...viewProps} />
-          ) : (
-            <FileList {...viewProps} />
+            ) : nav.page?.kind === 'tag' ? (
+              pageTag && (
+                <TagFilesView
+                  tag={pageTag}
+                  onBack={nav.back}
+                  onNavigate={nav.navigate}
+                  onRenameTag={(id, name) => tagState.rename(id, name)}
+                  onDeleteTag={(id) => {
+                    nav.back();
+                    tagState.remove(id);
+                  }}
+                  onChanged={tagState.refresh}
+                />
+              )
+            ) : nav.viewMode === 'grid' ? (
+              <GridView {...viewProps} />
+            ) : (
+              <FileList {...viewProps} />
+            )}
+          </main>
+          {!nav.page && infoPath && (
+            <InfoPanel
+              path={infoPath}
+              tags={tagState.tags}
+              getTags={tagState.getTags}
+              onToggleTag={(path, tag, apply) => toggleTagOnPaths([path], tag, apply)}
+              onClose={() => setInfoPath(null)}
+            />
           )}
-        </main>
-        {!nav.page && infoPath && (
-          <InfoPanel
-            path={infoPath}
-            tags={tagState.tags}
-            getTags={tagState.getTags}
-            onToggleTag={(path, tag, apply) => toggleTagOnPaths([path], tag, apply)}
-            onClose={() => setInfoPath(null)}
-          />
-        )}
-      </div>
+        </div>
 
-      <StatusBar
-        shown={visible.length}
-        hidden={entries.length - visible.length}
-        selectedCount={selectedEntries.length}
-        selectedSize={selectedSize}
-        label={pageLabel}
-      />
+        <StatusBar
+          shown={visible.length}
+          hidden={entries.length - visible.length}
+          selectedCount={selectedEntries.length}
+          selectedSize={selectedSize}
+          label={pageLabel}
+        />
+      </div>
 
       {menu && (menu.mode === 'background' || selectedEntries.length > 0) && (
         <ContextMenu

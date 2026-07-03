@@ -27,7 +27,7 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'cloud', name: 'Hosted', blurb: 'Coming soon', available: false },
 ];
 
-/** A small Azure on/off switch. */
+/** A small on/off switch (Ink/white primary track). */
 function Toggle({
   checked,
   onChange,
@@ -96,21 +96,21 @@ function ModelRow({
         {state === 'downloading' && (
           <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
             <div
-              className="bg-primary h-full rounded-full transition-all"
+              className="bg-foreground/50 h-full rounded-full transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
         )}
       </div>
       {state === 'ready' ? (
-        <span className="text-primary shrink-0">
+        <span className="text-mint shrink-0">
           <Icon name="check" size={16} />
         </span>
       ) : (
         <button
           onClick={onDownload}
           disabled={state === 'downloading'}
-          className="border-primary text-primary hover:bg-primary hover:text-white shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-wait disabled:opacity-60"
+          className="border-border text-foreground hover:bg-foreground/[0.08] shrink-0 rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-wait disabled:opacity-60"
         >
           {state === 'downloading' ? 'Downloading…' : state === 'error' ? 'Retry' : 'Download'}
         </button>
@@ -361,7 +361,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   onClick={() => void indexing.start()}
                   disabled={!ai.ready}
                   title={!ai.ready ? 'Download the model first' : undefined}
-                  className="border-primary text-primary hover:bg-primary hover:text-white rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-border text-foreground hover:bg-foreground/[0.08] rounded-lg border px-3 py-1.5 text-sm transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Start
                 </button>
@@ -381,7 +381,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               <>
                 <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
                   <div
-                    className="bg-primary h-full rounded-full transition-all"
+                    className="bg-foreground/50 h-full rounded-full transition-all"
                     style={{ width: `${indexPct}%` }}
                   />
                 </div>

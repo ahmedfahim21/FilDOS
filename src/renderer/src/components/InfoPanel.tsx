@@ -175,7 +175,7 @@ function TagsRow({
           <select
             className={cn(
               chip,
-              'text-muted-foreground hover:border-primary hover:text-foreground cursor-pointer appearance-none',
+              'text-muted-foreground hover:border-foreground/40 hover:text-foreground cursor-pointer appearance-none',
             )}
             value=""
             onChange={(e) => {

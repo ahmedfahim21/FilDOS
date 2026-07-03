@@ -115,7 +115,7 @@ export function SemanticSearchView({
                 onClick={() => setScope(s)}
                 className={cn(
                   'px-2 py-1 transition-colors duration-150 ease-snappy active:scale-[0.97]',
-                  scope === s ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-accent',
+                  scope === s ? 'bg-foreground/[0.09] text-foreground font-medium' : 'text-muted-foreground hover:bg-accent',
                 )}
               >
                 {s === 'folder' ? 'This folder' : 'Everywhere'}
@@ -165,7 +165,7 @@ export function SemanticSearchView({
                 title={`Relevance relative to the top match · cosine ${hit.score.toFixed(2)}`}
               >
                 <div
-                  className="bg-primary h-full"
+                  className="bg-mint h-full"
                   style={{ width: `${Math.round((hit.score / topScore) * 100)}%` }}
                 />
               </div>

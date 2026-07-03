@@ -97,5 +97,5 @@ export function PageRowDate({ children }: { children: ReactNode }) {
 
 /** Leading entry glyph, brand-colored like the file rows. */
 export function PageRowIcon({ children }: { children: ReactNode }) {
-  return <span className={cn('text-primary shrink-0')}>{children}</span>;
+  return <span className={cn('text-muted-foreground shrink-0')}>{children}</span>;
 }

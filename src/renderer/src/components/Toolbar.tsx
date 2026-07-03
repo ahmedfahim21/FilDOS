@@ -91,7 +91,7 @@ export function Toolbar({
             className={cn(
               'shrink-0 rounded px-1.5 py-0.75 text-[11px]',
               searchRecursive
-                ? 'bg-primary text-white'
+                ? 'bg-foreground/[0.09] text-foreground font-medium'
                 : 'bg-accent text-muted-foreground',
             )}
             onClick={() => setSearchRecursive(!searchRecursive)}
@@ -117,18 +117,18 @@ export function Toolbar({
       {!pageTitle && (
       <div className="flex gap-1 [-webkit-app-region:no-drag]">
         <Button
-          variant={viewMode === 'list' ? 'default' : 'ghost'}
+          variant="ghost"
           size="icon"
-          className="size-8"
+          className={cn('size-8', viewMode === 'list' && 'bg-foreground/[0.09] hover:bg-foreground/[0.09]')}
           onClick={() => setViewMode('list')}
           title="List view"
         >
           <Icon name="list" />
         </Button>
         <Button
-          variant={viewMode === 'grid' ? 'default' : 'ghost'}
+          variant="ghost"
           size="icon"
-          className="size-8"
+          className={cn('size-8', viewMode === 'grid' && 'bg-foreground/[0.09] hover:bg-foreground/[0.09]')}
           onClick={() => setViewMode('grid')}
           title="Grid view"
         >

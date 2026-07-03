@@ -150,7 +150,7 @@ function ProviderCard({
             'flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
             connecting
               ? 'border-border text-muted-foreground cursor-wait'
-              : 'border-primary text-primary hover:bg-primary hover:text-white active:opacity-90',
+              : 'border-border text-foreground hover:bg-foreground/[0.08] active:opacity-90',
           )}
           onClick={onConnect}
           disabled={connecting || !provider.available}

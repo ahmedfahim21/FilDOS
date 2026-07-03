@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 /** Inline name editor used for rename. Commits on Enter/blur, cancels on Escape. */
 export function RenameInput({
   initial,
-  className = 'min-w-0 flex-1 select-text rounded-sm border border-primary bg-background px-1 py-px text-foreground outline-none',
+  className = 'min-w-0 flex-1 select-text rounded-sm border border-foreground/30 bg-background px-1 py-px text-foreground outline-none',
   onCommit,
   onCancel,
 }: {

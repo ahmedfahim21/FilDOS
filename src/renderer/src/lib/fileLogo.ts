@@ -10,14 +10,14 @@ import diskImage from '@/assets/file-icons/disk-image.svg';
 import docker from '@/assets/file-icons/docker.svg';
 import document from '@/assets/file-icons/document.svg';
 import ebook from '@/assets/file-icons/ebook.svg';
-import env from '@/assets/file-icons/env.svg';
+import env from '@/assets/file-icons/env-secrets.svg';
 import executable from '@/assets/file-icons/executable.svg';
 import folder from '@/assets/file-icons/folder.svg';
 import font from '@/assets/file-icons/font.svg';
 import git from '@/assets/file-icons/git.svg';
 import image from '@/assets/file-icons/image.svg';
 import langC from '@/assets/file-icons/lang-c.svg';
-import langCpp from '@/assets/file-icons/lang-cpp.svg';
+import langCpp from '@/assets/file-icons/lang-cplusplus.svg';
 import langCsharp from '@/assets/file-icons/lang-csharp.svg';
 import langCss from '@/assets/file-icons/lang-css.svg';
 import langDart from '@/assets/file-icons/lang-dart.svg';
@@ -66,7 +66,8 @@ import video from '@/assets/file-icons/video.svg';
 
 /**
  * Maps a lowercase file extension to one of the FilDOS file-type icons
- * (line-style, Azure-tinted, matching the node-grid mark motif). A few
+ * (a shared folded-sheet silhouette; the corner tag and glyph take each
+ * type's own accent colour — see .claude/brand-guidelines.md). A few
  * extensionless files (Dockerfile, .gitignore, …) are recognised by name in
  * {@link BY_NAME} before the extension lookup.
  */

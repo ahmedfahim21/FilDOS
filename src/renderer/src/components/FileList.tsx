@@ -114,10 +114,10 @@ export function FileList({
                 className={cn(
                   GRID,
                   'group border-b border-transparent hover:bg-accent',
-                  selected && 'bg-primary/15 hover:bg-primary/15',
+                  selected && 'bg-foreground/[0.08] hover:bg-foreground/[0.08]',
                   entry.isHidden && 'opacity-55',
                   dropTarget === entry.path &&
-                    'bg-accent ring-2 ring-inset ring-primary',
+                    'bg-accent ring-2 ring-inset ring-foreground/30',
                 )}
                 style={{
                   position: 'absolute',

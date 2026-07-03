@@ -88,7 +88,7 @@ export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
     return (
       <input
         ref={inputRef}
-        className="border-primary bg-background text-foreground flex-1 select-text rounded-md border px-2 py-1.25 outline-none [-webkit-app-region:no-drag]"
+        className="border-foreground/30 bg-background text-foreground flex-1 select-text rounded-md border px-2 py-1.25 outline-none [-webkit-app-region:no-drag]"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => setEditing(false)}
