@@ -1,4 +1,4 @@
-import { Grid2x2, Grid3x3, LayoutGrid, type LucideIcon } from 'lucide-react';
+import { Grid02Icon, GridIcon, LayoutGridIcon } from 'hugeicons-react';
 import type { IconSize } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { useAi } from '@/state/ai';
@@ -11,13 +11,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { Icon } from './Icon';
+import { type HugeIcon, Icon } from './Icon';
 import { AddressBar } from './AddressBar';
 
-const ICON_SIZES: { size: IconSize; label: string; Glyph: LucideIcon }[] = [
-  { size: 'small', label: 'Small', Glyph: Grid3x3 },
-  { size: 'medium', label: 'Medium', Glyph: LayoutGrid },
-  { size: 'large', label: 'Large', Glyph: Grid2x2 },
+const ICON_SIZES: { size: IconSize; label: string; Glyph: HugeIcon }[] = [
+  { size: 'small', label: 'Small', Glyph: GridIcon },
+  { size: 'medium', label: 'Medium', Glyph: LayoutGridIcon },
+  { size: 'large', label: 'Large', Glyph: Grid02Icon },
 ];
 
 export function Toolbar({
@@ -146,7 +146,7 @@ export function Toolbar({
                 {(() => {
                   const Current =
                     ICON_SIZES.find((o) => o.size === iconSize)?.Glyph ??
-                    LayoutGrid;
+                    LayoutGridIcon;
                   return <Current />;
                 })()}
               </Button>
