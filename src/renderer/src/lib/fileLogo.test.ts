@@ -18,9 +18,14 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
 }
 
 describe('fileLogo', () => {
-  it('returns the folder icon for directories', () => {
-    const icon = fileLogo(makeEntry({ isDirectory: true, ext: '' }));
-    expect(icon).toContain('folder');
+  it('returns a scoop-coloured folder icon for directories', () => {
+    const icon = fileLogo(makeEntry({ isDirectory: true, name: 'Documents', ext: '' }));
+    expect(icon).toContain('folder-');
+    // Same name must always resolve to the same variant.
+    expect(icon).toBe(fileLogo(makeEntry({ isDirectory: true, name: 'Documents', ext: '' })));
+    // Different names can produce different variants.
+    const other = fileLogo(makeEntry({ isDirectory: true, name: 'Downloads', ext: '' }));
+    expect(other).toContain('folder-');
   });
 
   it('maps known extensions to their type icon', () => {

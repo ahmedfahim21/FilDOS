@@ -12,7 +12,12 @@ import document from '@/assets/file-icons/document.svg';
 import ebook from '@/assets/file-icons/ebook.svg';
 import env from '@/assets/file-icons/env-secrets.svg';
 import executable from '@/assets/file-icons/executable.svg';
-import folder from '@/assets/file-icons/folder.svg';
+import folderStrawberry from '@/assets/file-icons/folder-strawberry.svg';
+import folderBubblegum from '@/assets/file-icons/folder-bubblegum.svg';
+import folderMango from '@/assets/file-icons/folder-mango.svg';
+import folderBlueberry from '@/assets/file-icons/folder-blueberry.svg';
+import folderMint from '@/assets/file-icons/folder-mint.svg';
+import folderGrape from '@/assets/file-icons/folder-grape.svg';
 import font from '@/assets/file-icons/font.svg';
 import git from '@/assets/file-icons/git.svg';
 import image from '@/assets/file-icons/image.svg';
@@ -330,12 +335,30 @@ const BY_NAME: Record<string, string> = {
   'license.txt': certificate,
 };
 
+const FOLDER_SCOOPS = [
+  folderStrawberry,
+  folderBubblegum,
+  folderMango,
+  folderBlueberry,
+  folderMint,
+  folderGrape,
+] as const;
+
+/** djb2 hash of folder name → deterministic scoop index (0-5). */
+function hashFolderScoop(name: string): number {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) {
+    h = (((h << 5) + h) ^ name.charCodeAt(i)) >>> 0;
+  }
+  return h % FOLDER_SCOOPS.length;
+}
+
 /**
  * The custom type-logo image URL to show for an entry that has no live
  * thumbnail preview (folders, and any file we can't or haven't rendered).
  */
 export function fileLogo(entry: Entry): string {
-  if (entry.isDirectory) return folder;
+  if (entry.isDirectory) return FOLDER_SCOOPS[hashFolderScoop(entry.name)];
   const name = entry.name.toLowerCase();
   // `.env.local`, `.env.production`, … all share the env icon.
   if (name === '.env' || name.startsWith('.env.')) return env;

@@ -25,6 +25,7 @@ import {
   LinkSquare01Icon,
   ListViewIcon,
   Moon01Icon,
+  More01Icon,
   PencilEdit01Icon,
   PlusSignIcon,
   Refresh01Icon,
@@ -80,7 +81,8 @@ type IconName =
   | 'moon'
   | 'monitor'
   | 'alert-circle'
-  | 'check-circle';
+  | 'check-circle'
+  | 'more';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
 const ICONS: Record<IconName, HugeIcon> = {
@@ -122,6 +124,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   monitor: ComputerIcon,
   'alert-circle': AlertCircleIcon,
   'check-circle': CheckmarkCircle01Icon,
+  more: More01Icon,
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
