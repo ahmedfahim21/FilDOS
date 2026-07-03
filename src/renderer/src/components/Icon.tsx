@@ -127,7 +127,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   more: More01Icon,
 };
 
-export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const Glyph = ICONS[name];
   return <Glyph size={size} aria-hidden="true" />;
 }

@@ -505,7 +505,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
         />
 
         <div className="flex min-h-0 flex-1">
-          <main className="bg-background flex min-w-0 flex-1 flex-col">
+          <main aria-label="File browser" className="bg-background flex min-w-0 flex-1 flex-col">
             {nav.page?.kind === 'recents' ? (
               <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
             ) : nav.page?.kind === 'trash' ? (
