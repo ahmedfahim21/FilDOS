@@ -3,7 +3,9 @@
 
 /*
  * Design tokens shared with the web app: the shadcn/ui token vocabulary plus
- * the FilDOS brand palette (#0295f6 primary, blue-tinted dark surfaces).
+ * the FilDOS brand palette. The foundation is black-and-white (Ink primary,
+ * neutral surfaces); the six "scoop" accents carry all colour, never body
+ * text or chrome (see .claude/brand-guidelines.md).
  * `@theme inline` points Tailwind color utilities at these variables, so the
  * `.dark` override below drives light/dark for every utility AND for shadcn
  * components (which read the same tokens). A `.dark` class on <html> is toggled
@@ -44,92 +46,113 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* FilDOS type system: Space Grotesk for UI/display, Space Mono for the
+  /* FilDOS type system: Inter for UI/display, Space Mono for the
    * wordmark, file paths, CIDs and other technical/code text. */
-  --font-sans: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
+  /* --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace; */
   
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-fluid: cubic-bezier(0.77, 0, 0.175, 1);
 
-  /* Raw brand palette (FilDOS Brand Guidelines) for direct use where a token
-   * doesn't map: bg-azure, text-mist, etc. */
-  --color-azure: #0295f6;
-  --color-ink: #0c1322;
-  --color-mist: #7c87a6;
-  --color-cloud: #f0f1f5;
+  /* Extended text-size scale below Tailwind's built-in text-xs (12px / 0.75rem). */
+  --text-4xs: 0.5rem;    /* 8px  — sort arrows, decorators */
+  --text-3xs: 0.625rem;  /* 10px — micro (capacity bars, badge counts) */
+  --text-2xs: 0.6875rem; /* 11px — structural labels, column headers, status bar */
+
+  /* Raw brand neutrals (FilDOS Brand Guidelines) for direct use where a
+   * semantic token doesn't map: bg-ink, text-mist, bg-cloud. */
+  --color-ink: #0f1117;
+  --color-mist: #8a8f9c;
+  --color-cloud: #f5f5f7;
+
+  /* The six scoops — accent only (tag, dot, chip, corner), never a large fill
+   * or body text. Exposed as fill-/text-/bg- utilities. Mint additionally
+   * marks all AI highlights (sparkles, "thinking", matched-text). */
+  --color-strawberry: #f26d6d;
+  --color-bubblegum: #f286b4;
+  --color-mango: #f9a85c;
+  --color-blueberry: #6e9bee;
+  --color-mint: #4fc9b8;
+  --color-grape: #a585e0;
 }
 
 :root {
   --radius: 0.625rem;
   color-scheme: light;
 
-  /* Light mode: White canvas, Cloud surfaces, Ink text, Mist secondary. */
+  /* Light mode: White canvas, Cloud surfaces, Ink text/primary, Mist secondary. */
   --background: #ffffff;
   --foreground: #0f1117;
   --card: #ffffff;
   --card-foreground: #0f1117;
   --popover: #ffffff;
   --popover-foreground: #0f1117;
-  --primary: #0295f6;
+  --primary: #0f1117;
   --primary-foreground: #ffffff;
-  --secondary: #f0f1f5;
+  --secondary: #f5f5f7;
   --secondary-foreground: #0f1117;
-  --muted: #f0f1f5;
-  --muted-foreground: #7c87a6;
-  --accent: #f0f1f5;
+  --muted: #f5f5f7;
+  --muted-foreground: #8a8f9c;
+  --accent: #f5f5f7;
   --accent-foreground: #0f1117;
   --destructive: #dc2626;
   --success: #16a34a;
-  --border: #e8eaf0;
-  --input: #e8eaf0;
-  --ring: #0295f6;
+  --border: #e7e7ea;
+  --input: #e7e7ea;
+  --ring: #0f1117;
   --sidebar: #ffffff;
   --sidebar-foreground: #0f1117;
-  --sidebar-primary: #0295f6;
+  --sidebar-primary: #0f1117;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f1f5;
+  --sidebar-accent: #f5f5f7;
   --sidebar-accent-foreground: #0f1117;
-  --sidebar-border: #e8eaf0;
-  --sidebar-ring: #0295f6;
+  --sidebar-border: #e7e7ea;
+  --sidebar-ring: #0f1117;
 }
 
 .dark {
-  /* Dark mode: Ink app shell, lifted Ink cards, light (#eef2fb) text, Mist
-   * secondary, Azure accents — per the brand "Sidebar · dark" context. */
+  /* Dark mode: neutral Ink app shell, lifted Ink cards, light (#eef2fb) text,
+   * Mist secondary, near-white primary — a black-and-white foundation. */
   color-scheme: dark;
-  --background: #0c1322;
+  --background: #0f1117;
   --foreground: #eef2fb;
-  --card: #131c30;
+  --card: #16181f;
   --card-foreground: #eef2fb;
-  --popover: #131c30;
+  --popover: #16181f;
   --popover-foreground: #eef2fb;
-  --primary: #0295f6;
-  --primary-foreground: #ffffff;
-  --secondary: #1c2740;
+  --primary: #eef2fb;
+  --primary-foreground: #0f1117;
+  --secondary: #1d2029;
   --secondary-foreground: #eef2fb;
-  --muted: #1c2740;
-  --muted-foreground: #7c87a6;
-  --accent: #1c2740;
+  --muted: #1d2029;
+  --muted-foreground: #8a8f9c;
+  --accent: #1d2029;
   --accent-foreground: #eef2fb;
   --destructive: #f87171;
   --success: #4ade80;
-  --border: #24304d;
-  --input: #24304d;
-  --ring: #0295f6;
-  --sidebar: #0c1322;
+  --border: #262932;
+  --input: #262932;
+  --ring: #eef2fb;
+  --sidebar: #0f1117;
   --sidebar-foreground: #eef2fb;
-  --sidebar-primary: #0295f6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1c2740;
+  --sidebar-primary: #eef2fb;
+  --sidebar-primary-foreground: #0f1117;
+  --sidebar-accent: #1d2029;
   --sidebar-accent-foreground: #eef2fb;
-  --sidebar-border: #24304d;
-  --sidebar-ring: #0295f6;
+  --sidebar-border: #262932;
+  --sidebar-ring: #eef2fb;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /* Keep resets in base so Tailwind utility classes (e.g. text-primary-foreground)
+     can override them — unlayered CSS wins over all @layer blocks in Tailwind v4. */
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
   }
 }
 
@@ -147,15 +170,16 @@ body,
 body {
   font-family: var(--font-sans);
   font-size: 13px;
+  font-weight: 400;
+  /* Inter: keep contextual alternates (calt) + alternate a/g/l glyphs + tabular digits */
+  font-feature-settings: 'calt', 'cv03', 'cv04', 'cv11', 'tnum';
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  text-wrap: pretty;
   color: var(--foreground);
   background: var(--background);
   user-select: none;
   -webkit-font-smoothing: antialiased;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
+  -moz-osx-font-smoothing: grayscale;
 }
 

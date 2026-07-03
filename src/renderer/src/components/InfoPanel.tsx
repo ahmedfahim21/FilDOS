@@ -10,7 +10,7 @@ import { TagDot } from './TagDots';
 
 const ROW = 'mb-2.5';
 const ROW_LABEL =
-  'text-muted-foreground mb-0.5 text-[11px] tracking-[0.05em] uppercase';
+  'text-muted-foreground mb-0.5 text-3xs font-semibold tracking-wider uppercase';
 const ROW_VALUE = 'wrap-break-word select-text';
 
 export function InfoPanel({
@@ -64,12 +64,12 @@ export function InfoPanel({
 
   return (
     <aside className="border-border bg-card flex w-70 shrink-0 flex-col overflow-y-auto border-l">
-      <div className="border-border flex items-center justify-between border-b px-3 py-2.5 font-semibold">
+      <div className="border-border flex items-center justify-between border-b px-3 py-2.5 text-sm font-semibold">
         <span>Info</span>
         <Button
           variant="ghost"
           size="icon"
-          className="size-7"
+          className="size-8"
           onClick={onClose}
           aria-label="Close info"
         >
@@ -92,7 +92,7 @@ export function InfoPanel({
               <img src={fileLogo(info)} alt="" width={40} height={40} />
             )}
             <div
-              className="text-center font-semibold select-text wrap-break-word"
+              className="text-center text-sm font-semibold select-text wrap-break-word"
               title={info.name}
             >
               {info.name}
@@ -152,7 +152,7 @@ function TagsRow({
   if (attached.length === 0 && addable.length === 0) return null;
 
   const chip =
-    'inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-[11px]';
+    'inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-2xs';
 
   return (
     <div className={ROW}>
@@ -175,7 +175,7 @@ function TagsRow({
           <select
             className={cn(
               chip,
-              'text-muted-foreground hover:border-primary hover:text-foreground cursor-pointer appearance-none',
+              'text-muted-foreground hover:border-foreground/40 hover:text-foreground cursor-pointer appearance-none',
             )}
             value=""
             onChange={(e) => {

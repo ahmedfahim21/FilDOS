@@ -99,7 +99,7 @@ function ProviderCard({
             href={provider.url}
             target="_blank"
             rel="noreferrer"
-            className="text-primary truncate text-[11px] hover:underline"
+            className="text-primary truncate text-2xs hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {provider.url.replace(/^https?:\/\//, '')}
@@ -116,7 +116,7 @@ function ProviderCard({
               className="bg-primary/10 group flex items-center gap-2 rounded-md px-2.5 py-1.5"
             >
               <Icon name="check" size={12} />
-              <span className="text-foreground min-w-0 flex-1 truncate text-[11px]">
+              <span className="text-foreground min-w-0 flex-1 truncate text-2xs">
                 {account.label}
               </span>
               <button
@@ -134,11 +134,11 @@ function ProviderCard({
       <div className="flex-1" />
 
       {/* Error message */}
-      {error && <p className="text-destructive mb-3 text-[11px] leading-snug">{error}</p>}
+      {error && <p className="text-destructive mb-3 text-2xs leading-snug">{error}</p>}
 
       {/* Connecting hint */}
       {connecting && (
-        <p className="text-muted-foreground mb-2 text-center text-[11px]">
+        <p className="text-muted-foreground mb-2 text-center text-2xs">
           Complete sign-in in your browser
         </p>
       )}
@@ -150,7 +150,7 @@ function ProviderCard({
             'flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all',
             connecting
               ? 'border-border text-muted-foreground cursor-wait'
-              : 'border-primary text-primary hover:bg-primary hover:text-white active:opacity-90',
+              : 'border-border text-foreground hover:bg-foreground/[0.08] active:opacity-90',
           )}
           onClick={onConnect}
           disabled={connecting || !provider.available}

@@ -108,14 +108,14 @@ export function SemanticSearchView({
               }}
             />
           </div>
-          <div className="border-border flex shrink-0 overflow-hidden rounded-md border text-[11px]">
+          <div className="border-border flex shrink-0 overflow-hidden rounded-md border text-2xs">
             {(['folder', 'all'] as Scope[]).map((s) => (
               <button
                 key={s}
                 onClick={() => setScope(s)}
                 className={cn(
                   'px-2 py-1 transition-colors duration-150 ease-snappy active:scale-[0.97]',
-                  scope === s ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-accent',
+                  scope === s ? 'bg-foreground/[0.09] text-foreground font-medium' : 'text-muted-foreground hover:bg-accent',
                 )}
               >
                 {s === 'folder' ? 'This folder' : 'Everywhere'}
@@ -156,16 +156,16 @@ export function SemanticSearchView({
                   {hit.name}
                 </div>
                 {hit.snippet && (
-                  <div className="text-muted-foreground truncate text-[11px]">{hit.snippet}</div>
+                  <div className="text-muted-foreground truncate text-2xs">{hit.snippet}</div>
                 )}
-                <div className="text-muted-foreground truncate text-[10px]">{hit.relativePath}</div>
+                <div className="text-muted-foreground truncate text-3xs">{hit.relativePath}</div>
               </div>
               <div
                 className="bg-muted h-1.5 w-12 shrink-0 overflow-hidden rounded-full"
                 title={`Relevance relative to the top match · cosine ${hit.score.toFixed(2)}`}
               >
                 <div
-                  className="bg-primary h-full"
+                  className="bg-mint h-full"
                   style={{ width: `${Math.round((hit.score / topScore) * 100)}%` }}
                 />
               </div>

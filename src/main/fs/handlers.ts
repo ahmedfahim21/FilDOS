@@ -1,4 +1,4 @@
-import { app, ipcMain, nativeImage, shell } from 'electron';
+import { app, ipcMain, nativeImage, nativeTheme, shell } from 'electron';
 import { basename, join, sep } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -248,7 +248,12 @@ export function registerFsHandlers(): void {
   });
 
   ipcMain.handle(Channels.prefsGet, () => getPrefs());
-  ipcMain.handle(Channels.prefsSet, (_e, patch: Prefs) => setPrefs(patch));
+  ipcMain.handle(Channels.prefsSet, (_e, patch: Prefs) => {
+    // Keep the native window appearance (traffic lights, scrollbars, etc.) in
+    // sync with the app theme so they render correctly in mixed system/app modes.
+    if (patch.theme) nativeTheme.themeSource = patch.theme;
+    return setPrefs(patch);
+  });
 
   // --- Tags (validatePath lets remote URIs pass through) ---
   ipcMain.handle(Channels.tagsList, () => wrap(async () => tags.listTags()));

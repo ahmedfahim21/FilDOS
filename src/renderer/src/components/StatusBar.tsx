@@ -14,7 +14,7 @@ export function StatusBar({ shown, hidden, selectedCount, selectedSize, label }:
   return (
     <footer
       data-testid="statusbar"
-      className="border-border bg-card text-muted-foreground flex shrink-0 items-center justify-between gap-4 border-t px-3 py-1 text-xs"
+      className="border-border bg-card text-muted-foreground flex shrink-0 items-center justify-between gap-4 border-t px-3 py-1 text-2xs"
     >
       <span>
         {label ?? (

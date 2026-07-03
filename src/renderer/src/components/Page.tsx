@@ -82,7 +82,7 @@ export function PageRowInfo({
       <div className="overflow-hidden text-ellipsis whitespace-nowrap" title={title}>
         {name}
       </div>
-      <div className="text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap text-[11px]">
+      <div className="text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap text-2xs">
         {meta}
       </div>
     </div>
@@ -91,11 +91,11 @@ export function PageRowInfo({
 
 export function PageRowDate({ children }: { children: ReactNode }) {
   return (
-    <div className="text-muted-foreground shrink-0 text-[11px]">{children}</div>
+    <div className="text-muted-foreground shrink-0 text-2xs">{children}</div>
   );
 }
 
 /** Leading entry glyph, brand-colored like the file rows. */
 export function PageRowIcon({ children }: { children: ReactNode }) {
-  return <span className={cn('text-primary shrink-0')}>{children}</span>;
+  return <span className={cn('text-muted-foreground shrink-0')}>{children}</span>;
 }

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFsHandlers } from './fs/handlers';
 import { registerCloudHandlers } from './cloud/handlers';
@@ -21,7 +21,11 @@ import { getPrefs, setPrefs } from './prefs';
 async function createWindow(): Promise<void> {
   const prefs = await getPrefs();
   const bounds = prefs.windowBounds;
+  // Sync native appearance before the window opens so traffic lights match the
+  // app's stored theme choice rather than the system default.
+  if (prefs.theme) nativeTheme.themeSource = prefs.theme;
 
+  const isMac = process.platform === 'darwin';
   const win = new BrowserWindow({
     width: bounds?.width ?? 1200,
     height: bounds?.height ?? 800,
@@ -31,7 +35,11 @@ async function createWindow(): Promise<void> {
     minHeight: 480,
     show: false,
     title: 'FilDOS',
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#0f1117',
+    // On macOS: hide the system title bar and position native traffic lights
+    // inside the sidebar's drag-zone spacer (h-10 = 40px, lights centred at y=20).
+    titleBarStyle: isMac ? 'hidden' : 'default',
+    ...(isMac ? { trafficLightPosition: { x: 14, y: 14 } } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

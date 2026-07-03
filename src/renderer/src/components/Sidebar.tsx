@@ -19,8 +19,8 @@ const PROVIDER_NAMES: Record<string, string> = {
 const itemClass = (active = false, drop = false) =>
   cn(
     'flex w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-foreground [&_svg]:text-muted-foreground hover:bg-accent',
-    active && 'bg-primary text-white hover:bg-primary [&_svg]:text-white',
-    drop && 'bg-accent ring-2 ring-inset ring-primary',
+    active && 'bg-foreground/[0.09] font-medium [&_svg]:text-foreground hover:bg-foreground/[0.09]',
+    drop && 'bg-accent ring-2 ring-inset ring-foreground/30',
   );
 
 function formatBytes(bytes: number): string {
@@ -102,11 +102,14 @@ export function Sidebar({
     else refreshDrives();
   }
 
-  const title = 'text-muted-foreground px-2 pb-2 text-[11px] tracking-[0.06em] uppercase';
+  const title = 'text-muted-foreground px-2 pb-2 text-3xs font-semibold tracking-wider uppercase';
 
   return (
     <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
-      <Logo className="px-2 pt-1 pb-4 text-lg" />
+      {/* Traffic-light drag zone: native close/min/max sit here on macOS.
+          Height matches trafficLightPosition.y + button radius so nothing overlaps. */}
+      <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
+      <Logo className="px-2 pb-4 text-lg" />
 
       <div className={title}>Quick Access</div>
       <nav>
@@ -149,8 +152,8 @@ export function Sidebar({
                   key={drive.path}
                   className={cn(
                     'group relative flex w-full flex-col rounded-md border-0 bg-transparent px-2 py-1.5 text-left hover:bg-accent',
-                    isActive && 'bg-primary/15 ring-1 ring-inset ring-primary/40 hover:bg-primary/15',
-                    dropTarget === drive.path && 'bg-accent ring-2 ring-inset ring-primary',
+                    isActive && 'bg-foreground/[0.09] ring-1 ring-inset ring-foreground/20 hover:bg-foreground/[0.09]',
+                    dropTarget === drive.path && 'bg-accent ring-2 ring-inset ring-foreground/30',
                   )}
                   onClick={() => navigate(drive.path)}
                   title={drive.path}
@@ -172,7 +175,7 @@ export function Sidebar({
                     {drive.removable && (
                       <button
                         className={cn(
-                          'text-muted-foreground rounded p-0.5 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100',
+                          'text-muted-foreground grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100',
                           ejectingPath === drive.path && 'cursor-wait opacity-100',
                         )}
                         title={`Eject ${drive.name}`}
@@ -189,12 +192,12 @@ export function Sidebar({
                         <div
                           className={cn(
                             'h-full rounded-full transition-all',
-                            pct >= 90 ? 'bg-destructive/70' : 'bg-primary/50',
+                            pct >= 90 ? 'bg-destructive/70' : 'bg-foreground/30',
                           )}
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                      <div className="text-muted-foreground mt-0.5 text-[10px]">
+                      <div className="text-muted-foreground mt-0.5 text-3xs">
                         {formatBytes(used)} of {formatBytes(drive.total)}
                       </div>
                     </div>
@@ -222,13 +225,13 @@ export function Sidebar({
                 <Icon name="cloud" size={16} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm">{account.label}</div>
-                  <div className="text-muted-foreground truncate text-[10px]">
+                  <div className="text-muted-foreground truncate text-3xs">
                     {PROVIDER_NAMES[account.provider] ?? account.provider}
                   </div>
                 </div>
               </button>
               <button
-                className="text-muted-foreground absolute right-1 rounded p-0.5 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                className="text-muted-foreground absolute right-1 grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                 title={`Disconnect ${account.label}`}
                 onClick={() => setPendingDisconnect(account)}
               >
@@ -275,7 +278,7 @@ export function Sidebar({
                   {tag.name}
                 </span>
                 {tag.count > 0 && (
-                  <span className="text-muted-foreground shrink-0 text-[11px]">
+                  <span className="text-muted-foreground shrink-0 text-2xs">
                     {tag.count}
                   </span>
                 )}

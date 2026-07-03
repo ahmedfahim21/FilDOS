@@ -55,7 +55,7 @@
     "vitest": "^2.1.9"
   },
   "dependencies": {
-    "@fontsource/space-grotesk": "^5.2.10",
+    "@fontsource-variable/inter": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
     "@huggingface/transformers": "^4.2.0",
     "@radix-ui/react-dialog": "^1.1.16",
@@ -67,6 +67,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "hugeicons-react": "^0.4.0",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^6.0.227",

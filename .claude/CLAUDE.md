@@ -6,9 +6,9 @@ until the file-manager foundation is complete. Phase 1 (core file manager) and
 Phase 2 (feature parity + performance) are done; the AI phase is next.
 
 **Design system:** colours, typography, the mark and the wordmark follow
-`.claude/brand-guidelines.md` (Azure/Ink/Mist/Cloud palette, Space Grotesk +
-Space Mono, the `<Logo>`/`<Mark>`/`<Wordmark>` components). Read it before any UI
-or styling work.
+`.claude/brand-guidelines.md` (black-and-white Ink/Mist/Cloud foundation + six
+"scoop" accents, Space Grotesk + Space Mono, the `<Logo>`/`<Mark>`/`<Wordmark>`
+components). Read it before any UI or styling work.
 
 ## Commands
 

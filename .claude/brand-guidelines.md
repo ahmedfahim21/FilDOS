@@ -2,56 +2,90 @@
 
 The canonical identity system for FilDOS. Apply this whenever building or
 restyling UI in the **desktop app** (the repo root). The tokens below are
-already wired into `src/renderer/src/styles/global.css` (Tailwind v4
-`@theme` + CSS variables) — use the semantic utilities, don't hard-code hexes.
+wired into `src/renderer/src/styles/global.css` (Tailwind v4 `@theme` +
+CSS variables) — use the semantic utilities, don't hard-code hexes. The six
+scoops are exposed as `strawberry`/`bubblegum`/`mango`/`blueberry`/`mint`/`grape`
+colour utilities (e.g. `fill-mint`, `text-grape`, `bg-mango`).
 
 ## Colour
 
 | Token | Hex | Role |
 |-------|-----|------|
-| **Azure** | `#0295f6` | Primary brand. CTAs, active/selected states, focus rings, the mark. |
-| **Ink** | `#0c1322` | Dark-mode app shell / deep backgrounds. (`#0f1117` = ink text on light.) |
-| **Mist** | `#7c87a6` | Secondary text, UI chrome, placeholders → `text-muted-foreground`. |
-| **Cloud** | `#f0f1f5` | Light-mode surfaces, hover states, inputs → `bg-muted` / `bg-accent`. |
+| **Ink** | `#0f1117` | Primary. Text, wordmark, dark-mode app shell, deep backgrounds. |
+| **Mist** | `#8a8f9c` | Secondary text, UI chrome, placeholders → `text-muted-foreground`. |
+| **Cloud** | `#f5f5f7` | Light-mode surfaces, hover states, inputs → `bg-muted` / `bg-accent`. |
 | **White** | `#ffffff` | Light-mode canvas: cards, modals, content surfaces. |
 | Light text on dark | `#eef2fb` | `foreground` in dark mode. |
 
-- Use the semantic shadcn tokens (`bg-primary`, `text-muted-foreground`,
-  `bg-card`, `border-border`, …) which map to the palette in both themes.
-- Raw brand utilities also exist: `bg-azure`, `text-azure`, `text-mist`,
-  `bg-cloud`, `bg-ink`.
-- **Selection** is a translucent Azure wash (`bg-primary/15`), never solid
-  Azure — solid fill hides the Azure-tinted file icons.
+**Six scoops — accent only, never body text/chrome:**
+
+| Name | Hex |
+|------|-----|
+| Strawberry | `#F26D6D` |
+| Bubblegum | `#F286B4` |
+| Mango | `#F9A85C` |
+| Blueberry | `#6E9BEE` |
+| Mint | `#4FC9B8` |
+| Grape | `#A585E0` |
+
+- Azure (`#0295f6`) is retired. The foundation is black-and-white; the six
+  scoops carry all colour, always as an accent (tag, dot, chip, corner), never
+  as a large fill or as body text.
+- Map one scoop to one meaning consistently app-wide, e.g. Smart Collections
+  (Tax & finance→Mint, Receipts→Mango, Screenshots→Blueberry) and Tags
+  (Work→Blueberry, Personal→Grape, Important→Strawberry). Reuse these
+  assignments rather than inventing new ones per screen.
+- **Selection** is a translucent Ink/white wash (`bg-primary/15`) by default;
+  inside a categorized list (collections, tags), tint the row with that item's
+  own scoop instead.
+- AI-specific highlights (sparkle icons, "thinking" states, matched-text
+  emphasis) consistently use **Mint**.
 
 ## Type
 
-- **Space Grotesk** — UI · interface · display. Weights: Light 300, Regular 400,
-  Medium 500. Backs `font-sans` (the default body font).
+- **Inter** — UI · interface · display. Variable font (all weights in one file).
+  Backs `font-sans` (the default body font). Loaded via
+  `@fontsource-variable/inter` (`'Inter Variable'`).
 - **Space Mono** — wordmark · code · technical. Weights 400 / 700. Backs
   `font-mono`; use it for file paths, CIDs, hashes, metadata keys, CLI text.
-- Self-hosted via `@fontsource/*` (imported in `main.tsx`) — no CDN, CSP-safe.
-- Don't change font weights or introduce other typefaces.
+- Self-hosted via `@fontsource*` packages (imported in `main.tsx`) — no CDN,
+  CSP-safe.
+- Wordmark: "Fil" uses `font-sans font-light` (Inter 300); "DOS" uses
+  `font-mono font-normal` (Space Mono 400).
 
 ## Mark
 
-A 3×3 node grid: 6 active nodes form a reversed "F", 3 ghost (dimmed) nodes hold
-the grid. Minimum size 14px. Only ever Azure, White, or Ink — never recolour it
-otherwise. Implemented as `<Mark>` in `components/Logo.tsx` (draws in
-`currentColor`; ghost nodes at ~0.22 opacity).
+A 3×3 grid of rounded-square tiles (not circles): 6 active tiles form a
+reversed "F", 3 ghost tiles (neutral, low-opacity) hold the grid. Each active
+tile takes one of the six scoops, always in the same warm→cool position order
+(Strawberry, Bubblegum, Mango / Blueberry, Mint / Grape). Minimum size 14px.
+Ghost tiles are Ink at 8% opacity on light, White at 16% on dark — never
+recoloured. `<Mark>` in `components/Logo.tsx` renders `<rect>` tiles per-position
+with a fixed scoop map (`fill-*` utilities; ghosts use `fill-foreground` at low
+opacity). The OAuth `callbackPage.ts` inlines the same tile mark.
 
 ## Wordmark
 
 "Fil" + "DOS", implemented as `<Wordmark>` / `<Logo>` in `components/Logo.tsx`:
 
-- **Fil** — Space Grotesk 300, follows the current text colour (Filecoin
-  protocol layer).
-- **DOS** — Space Mono 400, **always Azure** (terminal / OS heritage).
-- Keep "Fil" light and "DOS" mono; on dark surfaces DOS stays Azure, Fil stays
-  light. Use `<Logo>` (mark + wordmark) for the default horizontal lockup.
+- **Fil** — Space Grotesk 300, follows the current text colour.
+- **DOS** — Space Mono 400, **also follows the current text colour** (Ink on
+  light, white on dark). DOS is no longer hard-coded Azure — the wordmark
+  stays fully neutral now; colour lives only in the mark.
+- Use `<Logo>` (mark + wordmark) for the default horizontal lockup.
 
-## Assets
+## File-type icons
 
-- `src/renderer/src/assets/file-icons/*.svg` — file-type icons
-  (line-style, Azure-tinted), mapped in `lib/fileLogo.ts`.
-- `src/renderer/src/assets/brand/icon-{azure,dark,light}.svg` —
-  app/window icon source (for packaging; not yet wired into a builder).
+- `src/renderer/src/assets/file-icons/*.svg` — same folded-sheet silhouette
+  for every type; the folded corner tag now matches **each icon's own accent
+  colour** (not a fixed brand blue).
+- Generic content types are assigned scoops by family: media (Strawberry/
+  Bubblegum), documents/text (Blueberry), data (Mint), containers/archives
+  (Mango), system/misc (Grape).
+- File types with an established external brand colour (PDF, Git, Docker) and
+  all programming-language chips keep their own conventional colour — do not
+  scoop-ify those.
+- `src/renderer/src/assets/brand/fildos-mark-tiles.svg` — the standalone scoop
+  mark; `fildos-appicon-ink.svg` — the app/window icon (mark on an Ink tile,
+  for packaging; not yet wired into a builder). The retired `icon-azure/dark/
+  light.svg` sources are removed.

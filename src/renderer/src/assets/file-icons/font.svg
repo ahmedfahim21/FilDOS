@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">
-  <path d="M16.5 5 H35 L43 13 V48.5 A2.5 2.5 0 0 1 40.5 51 H16.5 A2.5 2.5 0 0 1 14 48.5 V7.5 A2.5 2.5 0 0 1 16.5 5 Z" fill="#b5685f" fill-opacity="0.10" stroke="#b5685f" stroke-opacity="0.32" stroke-width="1.3"></path>
-  <path d="M35 5 V10.5 A2.5 2.5 0 0 0 37.5 13 H43 Z" fill="#0295f6" fill-opacity="0.85"></path>
-  <text x="28.5" y="40" text-anchor="middle" font-family="sans-serif" font-weight="500" font-size="21" fill="#b5685f">Aa</text>
+  <path d="M16.5 5 H35 L43 13 V48.5 A2.5 2.5 0 0 1 40.5 51 H16.5 A2.5 2.5 0 0 1 14 48.5 V7.5 A2.5 2.5 0 0 1 16.5 5 Z" fill="#6E9BEE" fill-opacity="0.10" stroke="#6E9BEE" stroke-opacity="0.32" stroke-width="1.3"></path>
+  <path d="M35 5 V10.5 A2.5 2.5 0 0 0 37.5 13 H43 Z" fill="#6E9BEE" fill-opacity="0.95"></path>
+  <text x="28.5" y="40" text-anchor="middle" font-family="&#39;Space Grotesk&#39;,sans-serif" font-weight="500" font-size="21" fill="#6E9BEE">Aa</text>
 </svg>
