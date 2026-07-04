@@ -14,6 +14,7 @@ const state = (path: string, over: Partial<IndexState> = {}): IndexState => ({
   size: 10,
   contentHash: 'h',
   modelId: 'm1',
+  indexVersion: 1,
   indexedAt: 1,
   status: 'indexed',
   ...over,

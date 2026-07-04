@@ -36,6 +36,7 @@ const state = (path: string): IndexState => ({
   size: 1,
   contentHash: null,
   modelId: 'm1',
+  indexVersion: 1,
   indexedAt: 1,
   status: 'indexed',
 });

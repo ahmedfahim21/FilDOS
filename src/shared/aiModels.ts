@@ -62,11 +62,26 @@ export const AI_MODELS: AiModelDef[] = [
     dim: 384,
     kind: 'feature-extraction',
     sizeMb: 33,
+    description: 'Compact English text model — fast, low RAM.',
+    prompts: {
+      query: 'Represent this sentence for searching relevant passages: ',
+      passage: '',
+    },
+    relevance: { floor: 0.35, ceil: 0.8 },
+  },
+  {
+    id: 'Xenova/bge-base-en-v1.5',
+    label: 'BGE Base',
+    modality: 'text',
+    dim: 768,
+    kind: 'feature-extraction',
+    sizeMb: 110,
     description: 'Higher-quality English embeddings for documents and notes.',
     prompts: {
       query: 'Represent this sentence for searching relevant passages: ',
       passage: '',
     },
+    // Calibrated provisionally from bge-small's range; refine with eval/recall@k.
     relevance: { floor: 0.35, ceil: 0.8 },
   },
   {
@@ -107,7 +122,7 @@ export const AI_MODELS: AiModelDef[] = [
  * records which one produced it, so search compares like with like and can blend
  * both modalities.
  */
-export const TEXT_MODEL_ID = 'Xenova/bge-small-en-v1.5';
+export const TEXT_MODEL_ID = 'Xenova/bge-base-en-v1.5';
 export const IMAGE_MODEL_ID = 'Xenova/clip-vit-base-patch32';
 export const INDEX_MODEL_IDS = [TEXT_MODEL_ID, IMAGE_MODEL_ID] as const;
 
