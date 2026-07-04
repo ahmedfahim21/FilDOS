@@ -1,0 +1,72 @@
+---
+title: Quickstart
+description: Download FilDOS and get it running in under two minutes.
+---
+
+## Download
+
+Grab the latest release from GitHub:
+
+<Card title="FilDOS Releases" icon="github" href="https://github.com/ahmedfahim21/FilDOS/releases">
+  Download the latest `.dmg` (macOS) or `.exe` installer (Windows).
+</Card>
+
+<Note>
+  macOS: right-click → **Open** on first launch to bypass the Gatekeeper prompt
+  (the app is not yet notarized).
+</Note>
+
+## Build from source
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ahmedfahim21/FilDOS.git
+    cd FilDOS
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    Requires **Node 22+** (the built-in `node:sqlite` module is used for the database).
+
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Run in development mode">
+    ```bash
+    npm run dev
+    ```
+
+    This starts electron-vite with HMR for the renderer. Main and preload processes
+    rebuild on change.
+  </Step>
+  <Step title="Build for production">
+    ```bash
+    npm run build
+    npm start   # preview the production build
+    ```
+  </Step>
+</Steps>
+
+## Verify your setup
+
+Run the test suite to confirm everything is wired up correctly:
+
+```bash
+npm test            # unit + integration (Vitest)
+npm run typecheck   # TypeScript (both main and renderer projects)
+npm run lint        # ESLint flat config
+```
+
+All three should exit with no errors on a clean clone.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="File Management" icon="folder" href="/features/file-management">
+    Keyboard shortcuts, drag-and-drop, and the undo stack.
+  </Card>
+  <Card title="AI Search" icon="sparkles" href="/features/ai-search">
+    Download a model and start indexing your files.
+  </Card>
+</CardGroup>

@@ -1,0 +1,45 @@
+---
+title: AI Search
+description: On-device semantic search — find files by meaning, not just filename.
+---
+
+<Note>This page is a work in progress.</Note>
+
+## How it works
+
+FilDOS indexes your files in the background using **sentence-transformer models**
+running entirely on-device via WASM. No data ever leaves your machine.
+
+The pipeline:
+
+1. **Extract** — text is pulled from plain text, code, Markdown, CSV, JSON, and similar files. Binary files and files over the size cap are skipped.
+2. **Chunk** — long documents are split into ~512-token windows with overlap so context isn't lost at boundaries.
+3. **Embed** — each chunk is passed through the active model to produce a vector.
+4. **Store** — vectors are stored as Float32 BLOBs in SQLite and searched with brute-force cosine similarity.
+
+## Choosing a model
+
+Open **Settings → AI** to pick an embedding model and download it. Models are cached in `userData/models` and loaded only once per session.
+
+| Model | Dim | Best for |
+|-------|-----|----------|
+| MiniLM L6 v2 | 384 | Fast, general text |
+| BGE Small v1.5 | 384 | Strong retrieval quality |
+| GTE Small | 384 | Multilingual queries |
+| CLIP ViT-B/32 | 512 | Text **and** images in one space |
+
+## Indexing
+
+The indexer runs in the background and crawls your home directory by default. It skips:
+
+- Dotfiles and hidden directories
+- `node_modules`, build outputs, caches
+- Files you've explicitly excluded via the context menu (**Exclude from AI index**)
+
+Progress is visible in **Settings → Indexing**. You can pause, resume, or clear the index at any time.
+
+## Search
+
+Type a natural-language query in the search bar and press `↵`. FilDOS runs a
+**hybrid search** — keyword matching fused with semantic vector retrieval — so you
+get precise results for filenames and fuzzy results for content.

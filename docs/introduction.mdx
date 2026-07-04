@@ -1,0 +1,56 @@
+---
+title: Introduction
+description: FilDOS is an AI-native file browser for macOS and Windows.
+---
+
+## What is FilDOS?
+
+FilDOS is a **keyboard-first, AI-native file browser** built on Electron. It replaces
+Finder and Explorer with a fast, programmer-friendly interface — then adds a layer of
+on-device AI that lets you find files by meaning, not just name.
+
+<CardGroup cols={2}>
+  <Card title="File Management" icon="folder" href="/features/file-management">
+    Copy, move, rename, duplicate, and trash files with full undo support and live
+    filesystem watching.
+  </Card>
+  <Card title="Tags" icon="tag" href="/features/tags">
+    Colour-coded tags that follow files through renames and moves, with a tag-files
+    view and sidebar integration.
+  </Card>
+  <Card title="AI Search" icon="sparkles" href="/features/ai-search">
+    On-device semantic search powered by sentence-transformer embeddings — no data
+    leaves your machine.
+  </Card>
+  <Card title="Recents" icon="clock" href="/features/file-management">
+    A persistent recents list that survives across sessions and updates automatically
+    as files move.
+  </Card>
+</CardGroup>
+
+## Design principles
+
+**Offline-first.** Every feature works without a network connection. AI embeddings
+run entirely on-device via WASM — no API keys, no telemetry.
+
+**Fast by default.** The file list is virtualised, thumbnails are cached, and the
+background indexer yields between files so the UI never stutters.
+
+**Secure by construction.** The renderer process runs in a sandboxed `contextIsolation`
+environment. It never touches the disk directly — every operation goes through a typed
+IPC contract.
+
+**Result-typed IPC.** Every filesystem call returns
+`{ ok: true; data: T } | { ok: false; error: { code, message } }`. Expected failures
+(permission denied, file not found) surface as friendly toasts, never uncaught exceptions.
+
+## Technology
+
+| Layer | Tech |
+|-------|------|
+| Shell | Electron 35+ |
+| Renderer | React 18, TypeScript, Tailwind v4 |
+| Build | electron-vite, Vite |
+| Database | `node:sqlite` (built-in) + Drizzle ORM |
+| AI embeddings | `@huggingface/transformers` on WASM |
+| Tests | Vitest (unit + integration), Playwright (e2e) |

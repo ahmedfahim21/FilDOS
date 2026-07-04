@@ -1,0 +1,39 @@
+---
+title: File Management
+description: Copy, move, rename, trash, and undo — all from the keyboard.
+---
+
+<Note>This page is a work in progress.</Note>
+
+## Operations
+
+FilDOS supports the full set of file operations you'd expect from a native file manager:
+
+| Action | Keyboard |
+|--------|----------|
+| New folder | `⌘ N` |
+| Rename | `↵` or `F2` |
+| Copy | `⌘ C` |
+| Cut | `⌘ X` |
+| Paste | `⌘ V` |
+| Duplicate | `⌘ D` |
+| Trash | `⌘ ⌫` |
+| Undo | `⌘ Z` |
+
+## Undo
+
+Every mutation — copy, move, rename, duplicate — pushes an inverse operation onto
+the undo stack. `⌘ Z` replays it. Delete (trash) is intentionally excluded: recover
+deleted files from the OS Trash (Finder / Recycle Bin).
+
+## Live updates
+
+The file list subscribes to a non-recursive `fs.watch` on the current directory.
+Changes made by other apps (Terminal, Finder) appear in under a second, debounced
+to avoid redundant reloads.
+
+## Drag and drop
+
+- **Internal** (within FilDOS): move by default, hold `⌥` / `Alt` to copy.
+- **Drag out** to Finder or Explorer: copies the file(s) to the drop target.
+- **Drag in** from Finder or Explorer: moves or copies into the current directory.

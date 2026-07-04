@@ -1,0 +1,38 @@
+---
+title: Tags
+description: Colour-coded tags stored in SQLite — they follow files through renames and moves.
+---
+
+<Note>This page is a work in progress.</Note>
+
+## Overview
+
+Tags are stored in the local SQLite database (`userData/fildos.db`), not in the
+filesystem. Each tag has a name and one of the six brand accent colours:
+
+| Colour | Hex |
+|--------|-----|
+| Strawberry | `#F26D6D` |
+| Bubblegum | `#F286B4` |
+| Mango | `#F9A85C` |
+| Blueberry | `#6E9BEE` |
+| Mint | `#4FC9B8` |
+| Grape | `#A585E0` |
+
+## Applying tags
+
+Right-click any file or folder and choose **Tags** from the context menu, or use
+the **Info panel** (`⌘ I`) to manage tags for the selection.
+
+Tag dots appear on the right side of every row in the file list.
+
+## Tag Files view
+
+Click a tag in the sidebar to open the **Tag Files** view — a filtered list of
+every file carrying that tag, regardless of where it lives on disk.
+
+## Persistence through moves and renames
+
+When you rename or move a file inside FilDOS, the database path references are
+updated atomically via `remapPaths`. Tags, recents, and folder view preferences
+all follow the file to its new location.
