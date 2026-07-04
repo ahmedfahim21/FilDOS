@@ -137,7 +137,7 @@ function ProviderRow({
                 <span className="bg-mint size-1.5 shrink-0 rounded-full" />
                 <span className="text-foreground min-w-0 flex-1 truncate text-2xs">{account.label}</span>
                 <button
-                  className="text-muted-foreground hover:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover/acc:opacity-100"
+                  className="text-muted-foreground hover:text-foreground focus-visible:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover/acc:opacity-100 focus-visible:opacity-100"
                   title={`Disconnect ${account.label}`}
                   onClick={() => onDisconnect(account.id)}
                 >

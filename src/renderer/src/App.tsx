@@ -683,9 +683,16 @@ function Browser({ initialView }: { initialView: ViewState }) {
         <ConfirmDialog
           title="Delete"
           message={
-            dialog.entries.length === 1
-              ? `Delete “${baseName(dialog.entries[0].path)}”? It will be moved to your system Trash.`
-              : `Delete ${dialog.entries.length} items? They will be moved to your system Trash.`
+            (() => {
+              const n = dialog.entries.length;
+              const what = n === 1 ? `“${baseName(dialog.entries[0].path)}”` : `${n} items`;
+              // Cloud entries go to the provider's trash (some backends delete
+              // permanently); local entries go to the recoverable OS Trash.
+              const fate = dialog.entries.some((e) => isRemote(e.path))
+                ? 'This can’t be undone from FilDOS.'
+                : `${n === 1 ? 'It' : 'They'} will be moved to your system Trash.`;
+              return `Delete ${what}? ${fate}`;
+            })()
           }
           confirmLabel="Delete"
           danger

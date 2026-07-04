@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import type { Entry } from '@shared/types';
 import { isRemote, parseRemote } from '@shared/remote';
 import { getProvider } from '../cloud/registry';
@@ -129,13 +129,18 @@ async function copyEntry(srcPath: string, destDir: string, depth = 0): Promise<E
   return statAny(newDir);
 }
 
-/** Remove a source entry after a verified move (OS/cloud trash for safety on remote). */
+/**
+ * Remove a source entry after a verified move. Both realms go to a recoverable
+ * trash (OS Trash for local via shell.trashItem, the provider's trash for
+ * remote) to match the app's "delete never hard-deletes" model, so a wrong move
+ * can still be undone from the system/provider trash.
+ */
 async function removeSource(srcPath: string): Promise<void> {
   if (isRemote(srcPath)) {
     const t = resolveRemote(srcPath);
     await t.provider.trash(t.accountId, [t.path]);
   } else {
-    await fs.rm(service.assertValidPath(srcPath), { recursive: true, force: true });
+    await shell.trashItem(service.assertValidPath(srcPath));
   }
 }
 

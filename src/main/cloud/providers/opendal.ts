@@ -130,6 +130,9 @@ export class OpenDalProvider implements Provider {
     const op = await this.op(accountId);
     const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
     const dest = parent ? `${parent}/${newName}` : newName;
+    if (dest !== path && (await this.exists(op, dest))) {
+      throw Object.assign(new Error('A file with that name already exists.'), { code: 'EEXIST' });
+    }
     await this.relocate(op, path, dest);
     return this.getInfo(accountId, dest);
   }
@@ -138,7 +141,7 @@ export class OpenDalProvider implements Provider {
     const op = await this.op(accountId);
     const out: Entry[] = [];
     for (const p of paths) {
-      const dest = destPath ? `${destPath}/${basename(p)}` : basename(p);
+      const dest = await this.uniqueKey(op, destPath ? `${destPath}/${basename(p)}` : basename(p));
       await this.relocate(op, p, dest);
       out.push(await this.getInfo(accountId, dest));
     }
@@ -149,13 +152,8 @@ export class OpenDalProvider implements Provider {
     const op = await this.op(accountId);
     const out: Entry[] = [];
     for (const p of paths) {
-      const dest = destPath ? `${destPath}/${basename(p)}` : basename(p);
-      if (op.capability().copy) {
-        await op.copy(p, dest);
-      } else {
-        // Fall back to read+write (files only; object stores have no dir copy).
-        await op.write(dest, await op.read(p));
-      }
+      const dest = await this.uniqueKey(op, destPath ? `${destPath}/${basename(p)}` : basename(p));
+      await this.copyPath(op, p, dest);
       out.push(await this.getInfo(accountId, dest));
     }
     return out;
@@ -163,8 +161,8 @@ export class OpenDalProvider implements Provider {
 
   async trash(accountId: string, paths: string[]): Promise<void> {
     const op = await this.op(accountId);
-    // No OS trash for object stores — this is a permanent delete.
-    for (const p of paths) await op.delete(p);
+    // No OS trash for object stores — a permanent, recursive delete.
+    for (const p of paths) await this.removePath(op, p);
   }
 
   async download(accountId: string, remotePath: string, localDest: string): Promise<string> {
@@ -178,7 +176,8 @@ export class OpenDalProvider implements Provider {
   async upload(accountId: string, localPath: string, remoteDest: string): Promise<Entry> {
     const op = await this.op(accountId);
     const name = basename(localPath);
-    const dest = remoteDest ? `${remoteDest}/${name}` : name;
+    // Avoid overwriting an existing object — honour the FsApi " copy" contract.
+    const dest = await this.uniqueKey(op, remoteDest ? `${remoteDest}/${name}` : name);
     await op.write(dest, await readFile(localPath));
     return this.getInfo(accountId, dest);
   }
@@ -187,13 +186,92 @@ export class OpenDalProvider implements Provider {
     return null;
   }
 
-  /** Rename if the backend supports it, else copy-then-delete. */
-  private async relocate(op: Operator, from: string, to: string): Promise<void> {
-    if (op.capability().rename) {
-      await op.rename(from, to);
-    } else {
-      await op.write(to, await op.read(from));
-      await op.delete(from);
+  /** Whether a file or directory already exists at `key`. */
+  private async exists(op: Operator, key: string): Promise<boolean> {
+    try {
+      await op.stat(key);
+      return true;
+    } catch {
+      /* not a file key — probe the directory key */
     }
+    try {
+      await op.stat(this.dirKey(key));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** True if `path` is a directory (key prefix) rather than a single object. */
+  private async isDir(op: Operator, path: string): Promise<boolean> {
+    try {
+      if ((await op.stat(path)).isDirectory()) return true;
+    } catch {
+      /* not a file key — probe the directory key */
+    }
+    try {
+      await op.stat(this.dirKey(path));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** A non-colliding key, inserting " copy" before the extension like the local FS. */
+  private async uniqueKey(op: Operator, key: string): Promise<string> {
+    if (!(await this.exists(op, key))) return key;
+    const slash = key.lastIndexOf('/');
+    const dir = slash === -1 ? '' : key.slice(0, slash + 1);
+    const name = slash === -1 ? key : key.slice(slash + 1);
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `${dir}${stem}${i === 1 ? ' copy' : ` copy ${i}`}${ext}`;
+      if (!(await this.exists(op, candidate))) return candidate;
+    }
+    throw Object.assign(new Error('A file with that name already exists.'), { code: 'EEXIST' });
+  }
+
+  /** Copy a single object (server-side when supported, else read+write). */
+  private async copyOne(op: Operator, from: string, to: string): Promise<void> {
+    if (op.capability().copy) await op.copy(from, to);
+    else await op.write(to, await op.read(from));
+  }
+
+  /**
+   * Copy a file or a directory. Object stores model directories as key
+   * prefixes, so a folder copy recreates the prefix and copies every object
+   * under it (op.copy/read+write is per-object).
+   */
+  private async copyPath(op: Operator, from: string, to: string): Promise<void> {
+    if (!(await this.isDir(op, from))) {
+      await this.copyOne(op, from, to);
+      return;
+    }
+    await op.createDir(this.dirKey(to));
+    const base = this.dirKey(from);
+    for (const e of await op.list(base, { recursive: true })) {
+      const rel = e.path().slice(base.length);
+      if (!rel) continue; // the listed directory itself
+      const target = `${to}/${this.stripSlash(rel)}`;
+      if (e.metadata().isDirectory()) await op.createDir(this.dirKey(target));
+      else await this.copyOne(op, e.path(), target);
+    }
+  }
+
+  /** Recursively delete a file or a directory prefix. */
+  private async removePath(op: Operator, path: string): Promise<void> {
+    await op.removeAll((await this.isDir(op, path)) ? this.dirKey(path) : path);
+  }
+
+  /** Relocate a file (server-side rename when possible) or a directory (copy + remove). */
+  private async relocate(op: Operator, from: string, to: string): Promise<void> {
+    if (op.capability().rename && !(await this.isDir(op, from))) {
+      await op.rename(from, to);
+      return;
+    }
+    await this.copyPath(op, from, to);
+    await this.removePath(op, from);
   }
 }

@@ -95,6 +95,10 @@ export function ConfirmDialog({
 }: {
   title: string;
   message: string;
+  /**
+   * Label for the confirm button. Name the action (and the object where it
+   * helps) rather than using a bare "OK"/"Confirm" — e.g. "Delete", "Disconnect".
+   */
   confirmLabel: string;
   danger?: boolean;
   onCancel: () => void;

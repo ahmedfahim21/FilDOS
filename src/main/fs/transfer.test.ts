@@ -3,8 +3,11 @@ import * as os from 'node:os';
 import { basename, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// transfer.ts pulls in `app` (for the cloud→cloud temp bounce); stub it.
-vi.mock('electron', () => ({ app: { getPath: () => os.tmpdir() } }));
+// transfer.ts pulls in `app` (temp bounce) and `shell` (trash local move source).
+vi.mock('electron', () => ({
+  app: { getPath: () => os.tmpdir() },
+  shell: { trashItem: (p: string) => fs.rm(p, { recursive: true, force: true }) },
+}));
 
 import type { Entry, FileInfo } from '@shared/types';
 import { formatRemote } from '@shared/remote';
