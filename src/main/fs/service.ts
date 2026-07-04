@@ -54,7 +54,7 @@ function isHiddenName(name: string): boolean {
  * Find a non-colliding destination path inside `destDir` for `name`, inserting
  * " copy", " copy 2", … before the extension as needed.
  */
-async function uniqueDestination(destDir: string, name: string): Promise<string> {
+export async function uniqueDestination(destDir: string, name: string): Promise<string> {
   const ext = extname(name);
   const stem = ext ? name.slice(0, -ext.length) : name;
 
