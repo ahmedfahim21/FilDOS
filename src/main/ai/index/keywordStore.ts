@@ -1,5 +1,5 @@
 import MiniSearch from 'minisearch';
-import { basename, sep } from 'node:path';
+import { basename } from 'node:path';
 
 /**
  * In-memory BM25 keyword index over the indexed file chunks. Complements the
@@ -102,8 +102,14 @@ export class MiniSearchKeywordStore implements KeywordStore {
     }) as unknown as SR[];
 
     const { underPath } = opts;
+    // Check both separators so the filter works on Windows (\) and POSIX (/) paths.
     const results = underPath
-      ? raw.filter((r) => r.path === underPath || r.path.startsWith(underPath + sep))
+      ? raw.filter(
+          (r) =>
+            r.path === underPath ||
+            r.path.startsWith(underPath + '/') ||
+            r.path.startsWith(underPath + '\\'),
+        )
       : raw;
 
     return results.slice(0, k).map((r) => ({
