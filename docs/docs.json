@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "FilDOS",
   "colors": {
-    "primary": "#4FC9B8",
-    "light": "#4FC9B8",
-    "dark": "#4FC9B8"
+    "primary": "#6e9bee",
+    "light": "#6e9bee",
+    "dark": "#6e9bee"
   },
   "favicon": "/logo/mark-light.svg",
   "navigation": {
@@ -36,7 +36,8 @@
     "color": {
       "light": "#ffffff",
       "dark": "#0f1117"
-    }
+    },
+    "decoration": "windows"
   },
   "navbar": {
     "links": [
@@ -62,6 +63,14 @@
     },
     "body": {
       "family": "Inter"
+    }
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "errors": {
+    "404": {
+      "redirect": true
     }
   }
 }
