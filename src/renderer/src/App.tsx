@@ -22,7 +22,15 @@ import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
 import { baseName, parentOf } from '@/lib/path';
-import { isRemote } from '@shared/remote';
+import { isRemote, parseRemote } from '@shared/remote';
+import { OPENDAL_BACKENDS } from '@shared/opendalBackends';
+
+/** Providers whose accounts are re-authed by re-running an OAuth flow. */
+const OAUTH_PROVIDERS = new Set([
+  'gdrive',
+  'dropbox',
+  ...OPENDAL_BACKENDS.filter((b) => b.auth === 'oauth').map((b) => b.id),
+]);
 import { Sidebar } from '@/components/Sidebar';
 import { Toolbar } from '@/components/Toolbar';
 import { FileList } from '@/components/FileList';
@@ -32,7 +40,6 @@ import { ContextMenu, type ContextMenuState } from '@/components/ContextMenu';
 import { ConfirmDialog, PromptDialog } from '@/components/Dialog';
 import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
-import { TrashView } from '@/components/TrashView';
 import { RecentsView } from '@/components/RecentsView';
 import { SemanticSearchView } from '@/components/SemanticSearchView';
 import { TagFilesView } from '@/components/TagFilesView';
@@ -46,7 +53,7 @@ type DialogState =
   | { kind: 'new-folder' }
   | { kind: 'new-file' }
   | { kind: 'new-tag'; paths: string[] }
-  | { kind: 'trash'; entries: Entry[] }
+  | { kind: 'delete'; entries: Entry[] }
   | null;
 
 /** True when focus is in a text field, so we don't hijack typing shortcuts. */
@@ -225,6 +232,26 @@ function Browser({ initialView }: { initialView: ViewState }) {
     }
   }, [undo, nav, notify, notifyError]);
 
+  // The OAuth provider of the current remote folder, if any (else null).
+  const reconnectProvider = (() => {
+    const ref = parseRemote(nav.currentPath);
+    return ref && OAUTH_PROVIDERS.has(ref.provider) ? ref.provider : null;
+  })();
+
+  // Re-run the OAuth flow for the current remote account, then reload the
+  // folder. Surfaced as a "Reconnect" button when a cloud folder fails to open
+  // with an auth error (e.g. an expired/revoked refresh token).
+  const handleReconnect = useCallback(async () => {
+    if (!reconnectProvider) return;
+    const result = await window.cloud.connect(reconnectProvider);
+    if (result.ok) {
+      notify('success', `Reconnected ${result.data.label}`);
+      nav.refresh();
+    } else {
+      notifyError(result.error);
+    }
+  }, [reconnectProvider, nav, notify, notifyError]);
+
   // --- Tags ---
   const isTagOnSelection = useCallback(
     (tagId: number) =>
@@ -309,7 +336,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
   // Global keyboard map.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // While a metadata page (Recents/Trash/tag) is shown the file browser is
+      // While a metadata page (Recents/tag) is shown the file browser is
       // hidden, so its selection-driven shortcuts must stay inert.
       if (isEditingTarget(e.target) || dialog || nav.page) return;
       const mod = e.metaKey || e.ctrlKey;
@@ -356,7 +383,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
         }
         if (key === 'Backspace' && selectedEntries.length) {
           e.preventDefault();
-          setDialog({ kind: 'trash', entries: selectedEntries });
+          setDialog({ kind: 'delete', entries: selectedEntries });
           return;
         }
       }
@@ -378,7 +405,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           nav.up();
           break;
         case 'Delete':
-          if (selectedEntries.length) setDialog({ kind: 'trash', entries: selectedEntries });
+          if (selectedEntries.length) setDialog({ kind: 'delete', entries: selectedEntries });
           break;
         case 'F2':
           if (selectedEntries.length === 1) startRename(selectedEntries[0]);
@@ -404,6 +431,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
     entries: visible,
     loading,
     error,
+    // Offer reconnect only for OAuth cloud accounts, where re-auth is one click.
+    onReconnect: reconnectProvider ? handleReconnect : undefined,
     selection,
     renamingPath,
     getTags: tagState.getTags,
@@ -441,13 +470,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Recents';
-  } else if (page?.kind === 'trash') {
-    pageTitle = (
-      <>
-        <Icon name="trash" size={15} /> Trash
-      </>
-    );
-    pageLabel = 'Trash';
   } else if (page?.kind === 'cloud-connect') {
     pageTitle = (
       <>
@@ -489,7 +511,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
         onDropPath={(path, e) => handleDrop(path, e)}
         onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
         onOpenRecents={() => nav.openPage({ kind: 'recents' })}
-        onOpenTrash={() => nav.openPage({ kind: 'trash' })}
         onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
         onOpenSettings={() => nav.openPage({ kind: 'settings' })}
         onDropOnTag={handleDropOnTag}
@@ -508,8 +529,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
           <main aria-label="File browser" className="bg-background flex min-w-0 flex-1 flex-col">
             {nav.page?.kind === 'recents' ? (
               <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
-            ) : nav.page?.kind === 'trash' ? (
-              <TrashView onBack={nav.back} onChanged={() => nav.refresh()} />
             ) : nav.page?.kind === 'cloud-connect' ? (
               <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
             ) : nav.page?.kind === 'settings' ? (
@@ -575,7 +594,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onPaste={() => actions.paste()}
           onDuplicate={() => actions.duplicate(selectedEntries[0])}
           onRename={() => startRename(selectedEntries[0])}
-          onTrash={() => setDialog({ kind: 'trash', entries: selectedEntries })}
+          onTrash={() => setDialog({ kind: 'delete', entries: selectedEntries })}
           onInfo={() => setInfoPath(selectedEntries[0].path)}
           indexExcluded={allIndexExcluded}
           onToggleIndexExclude={
@@ -660,15 +679,15 @@ function Browser({ initialView }: { initialView: ViewState }) {
         />
       )}
 
-      {dialog?.kind === 'trash' && (
+      {dialog?.kind === 'delete' && (
         <ConfirmDialog
-          title="Move to Trash"
+          title="Delete"
           message={
             dialog.entries.length === 1
-              ? `Move “${baseName(dialog.entries[0].path)}” to the Trash?`
-              : `Move ${dialog.entries.length} items to the Trash?`
+              ? `Delete “${baseName(dialog.entries[0].path)}”? It will be moved to your system Trash.`
+              : `Delete ${dialog.entries.length} items? They will be moved to your system Trash.`
           }
-          confirmLabel="Move to Trash"
+          confirmLabel="Delete"
           danger
           onCancel={() => setDialog(null)}
           onConfirm={() => trash(dialog.entries)}
