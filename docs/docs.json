@@ -1,0 +1,67 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "FilDOS",
+  "colors": {
+    "primary": "#4FC9B8",
+    "light": "#4FC9B8",
+    "dark": "#4FC9B8"
+  },
+  "favicon": "/logo/mark-light.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Features",
+        "pages": [
+          "features/file-management",
+          "features/tags",
+          "features/ai-search"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/mark-light.svg",
+    "dark": "/logo/mark-dark.svg",
+    "href": "https://github.com/ahmedfahim21/FilDOS"
+  },
+  "background": {
+    "color": {
+      "light": "#ffffff",
+      "dark": "#0f1117"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/ahmedfahim21/FilDOS"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://github.com/ahmedfahim21/FilDOS/releases"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ahmedfahim21/FilDOS"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Inter"
+    },
+    "body": {
+      "family": "Inter"
+    }
+  }
+}
