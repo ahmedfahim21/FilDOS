@@ -7,16 +7,10 @@ import type { AppError, Entry, FolderView, Result } from '@shared/types';
 import { isRemote, parseRemote } from '@shared/remote';
 import { getProvider } from '../cloud/registry';
 import * as service from './service';
+import { copyAcross, moveAcross } from './transfer';
 import { quickAccess } from './quickAccess';
 import { closeWatch, setWatch } from './watch';
 import { thumbnail } from './thumbnails';
-import {
-  emptyTracked,
-  listTrashed,
-  openOsTrash,
-  restoreTrashed,
-  trashItems,
-} from './trashTracker';
 import { getPrefs, setPrefs } from '../prefs';
 import type { Prefs } from '@shared/types';
 import { remapPaths } from '../db';
@@ -50,6 +44,20 @@ function notSupported(op: string): NodeJS.ErrnoException {
   const err = new Error(`${op} is not supported for cloud storage.`) as NodeJS.ErrnoException;
   err.code = 'EINVAL';
   return err;
+}
+
+/**
+ * True when every source and the destination live in the same cloud realm
+ * (same provider + account), so the provider's own server-side copy/move can
+ * handle it. Anything else crossing a boundary goes through the orchestrator.
+ */
+function sameRemoteRealm(paths: string[], destDir: string): boolean {
+  const dst = parseRemote(destDir);
+  if (!dst) return false;
+  return paths.every((p) => {
+    const s = parseRemote(p);
+    return !!s && s.provider === dst.provider && s.accountId === dst.accountId;
+  });
 }
 
 /** Run an async operation and wrap it in the Result discriminated union. */
@@ -124,42 +132,42 @@ export function registerFsHandlers(): void {
   });
 
   ipcMain.handle(Channels.copy, (_e, paths: string[], destDir: string) => {
-    const hasRemoteSrc = paths.some(isRemote);
-    const hasRemoteDest = isRemote(destDir);
-    if (hasRemoteSrc !== hasRemoteDest)
-      return wrap(async () => { throw notSupported('Copying between local and cloud storage'); });
-    if (hasRemoteSrc) {
-      const srcRef = parseRemote(paths[0]);
-      const dstRef = parseRemote(destDir);
-      if (!srcRef || !dstRef || srcRef.provider !== dstRef.provider || srcRef.accountId !== dstRef.accountId)
-        return wrap(async () => { throw notSupported('Copying between different cloud accounts'); });
+    const srcRemote = paths.some(isRemote);
+    const dstRemote = isRemote(destDir);
+    // All-local: fast local path.
+    if (!srcRemote && !dstRemote)
+      return wrap(() => service.copy(paths.map(assertValidPath), assertValidPath(destDir)));
+    // Same cloud account on both ends: efficient server-side copy.
+    if (srcRemote && dstRemote && sameRemoteRealm(paths, destDir))
       return remoteOp(paths[0], (p, ref) =>
-        p.copy(ref.accountId, paths.map((x) => parseRemote(x)!.path), dstRef.path),
+        p.copy(ref.accountId, paths.map((x) => parseRemote(x)!.path), parseRemote(destDir)!.path),
       );
-    }
-    return wrap(() => service.copy(paths.map(assertValidPath), assertValidPath(destDir)));
+    // Crosses a realm/account boundary: stream through the orchestrator.
+    return wrap(() => copyAcross(paths, destDir));
   });
 
   ipcMain.handle(Channels.move, (_e, paths: string[], destDir: string) => {
-    const hasRemoteSrc = paths.some(isRemote);
-    const hasRemoteDest = isRemote(destDir);
-    if (hasRemoteSrc !== hasRemoteDest)
-      return wrap(async () => { throw notSupported('Moving between local and cloud storage'); });
-    if (hasRemoteSrc) {
-      const srcRef = parseRemote(paths[0]);
-      const dstRef = parseRemote(destDir);
-      if (!srcRef || !dstRef || srcRef.provider !== dstRef.provider || srcRef.accountId !== dstRef.accountId)
-        return wrap(async () => { throw notSupported('Moving between different cloud accounts'); });
+    const srcRemote = paths.some(isRemote);
+    const dstRemote = isRemote(destDir);
+    // All-local: fast local path.
+    if (!srcRemote && !dstRemote)
+      return wrap(async () => {
+        const sources = paths.map(assertValidPath);
+        const moved = await service.move(sources, assertValidPath(destDir));
+        moved.forEach((entry, i) => remapPaths(sources[i], entry.path, sep));
+        return moved;
+      });
+    // Same cloud account on both ends: efficient server-side move.
+    if (srcRemote && dstRemote && sameRemoteRealm(paths, destDir))
       return remoteOp(paths[0], async (p, ref) => {
-        const moved = await p.move(ref.accountId, paths.map((x) => parseRemote(x)!.path), dstRef.path);
+        const moved = await p.move(ref.accountId, paths.map((x) => parseRemote(x)!.path), parseRemote(destDir)!.path);
         moved.forEach((entry, i) => remapPaths(paths[i], entry.path, '/'));
         return moved;
       });
-    }
+    // Crosses a realm/account boundary: copy-then-remove via the orchestrator.
     return wrap(async () => {
-      const sources = paths.map(assertValidPath);
-      const moved = await service.move(sources, assertValidPath(destDir));
-      moved.forEach((entry, i) => remapPaths(sources[i], entry.path, sep));
+      const moved = await moveAcross(paths, destDir);
+      moved.forEach((entry, i) => remapPaths(paths[i], entry.path, isRemote(paths[i]) ? '/' : sep));
       return moved;
     });
   });
@@ -169,6 +177,8 @@ export function registerFsHandlers(): void {
     return wrap(() => service.duplicate(assertValidPath(path)));
   });
 
+  // Delete: send to the OS Trash/Recycle Bin (recoverable from Finder/Explorer).
+  // FilDOS keeps no trash of its own — there is no in-app restore or undo.
   ipcMain.handle(Channels.trash, (_e, paths: string[]) => {
     if (paths.some(isRemote)) {
       return remoteOp(paths[0], (p, ref) =>
@@ -177,25 +187,14 @@ export function registerFsHandlers(): void {
     }
     return wrap(async () => {
       const valid = paths.map(assertValidPath);
-      const items = await trashItems(valid);
-      // Drop AI-index rows for the trashed files and any indexed descendants.
       for (const p of valid) {
+        await shell.trashItem(p);
+        // Drop AI-index rows for the deleted file and any indexed descendants.
         const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
         if (under.length) await aiIndex.remove(under);
       }
-      return items;
     });
   });
-
-  ipcMain.handle(Channels.listTrashed, () => wrap(() => listTrashed()));
-
-  ipcMain.handle(Channels.restoreTrashed, (_e, ids: string[]) =>
-    wrap(() => restoreTrashed(ids)),
-  );
-
-  ipcMain.handle(Channels.emptyTrash, () => wrap(() => emptyTracked()));
-
-  ipcMain.handle(Channels.openOsTrash, () => wrap(() => openOsTrash()));
 
   ipcMain.handle(Channels.open, (_e, path: string) => {
     if (isRemote(path)) {

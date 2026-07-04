@@ -1,11 +1,13 @@
 import 'dotenv/config';
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, safeStorage, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFsHandlers } from './fs/handlers';
 import { registerCloudHandlers } from './cloud/handlers';
 import { registerProvider } from './cloud/registry';
 import { GDriveProvider } from './cloud/providers/gdrive';
 import { DropboxProvider } from './cloud/providers/dropbox';
+import { OpenDalProvider } from './cloud/providers/opendal';
+import { OPENDAL_BACKENDS } from '@shared/opendalBackends';
 import { registerAiHandlers } from './ai/handlers';
 import { registerAiProvider } from './ai/registry';
 import { EmbeddedAiProvider } from './ai/providers/embedded';
@@ -70,8 +72,20 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
+  // Cloud credentials are encrypted with the OS keyring (safeStorage). Warn once
+  // if it's unavailable (typically a Linux box with no unlocked keyring) so the
+  // reason connect fails is visible in logs; the connect flow surfaces it too.
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.warn(
+      '[fildos] OS secure storage (keyring) unavailable — cloud accounts cannot be connected until a keyring is available.',
+    );
+  }
   registerProvider('gdrive', new GDriveProvider());
   registerProvider('dropbox', new DropboxProvider());
+  // One OpenDAL-backed provider per available backend (S3, IPFS, OneDrive, …).
+  for (const backend of OPENDAL_BACKENDS) {
+    if (backend.available) registerProvider(backend.id, new OpenDalProvider(backend));
+  }
   // The embedded AI worker can't call app.getPath; hand it the model cache dir.
   process.env.FILDOS_MODELS_DIR = join(app.getPath('userData'), 'models');
   registerAiProvider('embedded', new EmbeddedAiProvider());

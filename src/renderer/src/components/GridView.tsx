@@ -29,6 +29,7 @@ export function GridView({
   entries,
   loading,
   error,
+  onReconnect,
   selection,
   renamingPath,
   getTags,
@@ -83,6 +84,14 @@ export function GridView({
       <div className={STATE}>
         <strong className="text-foreground">Can’t open this folder</strong>
         <span>{error.message}</span>
+        {error.code === 'EAUTH' && onReconnect && (
+          <button
+            className="border-border text-foreground hover:bg-foreground/[0.08] mt-3 rounded-lg border px-3 py-1.5 text-sm font-medium"
+            onClick={onReconnect}
+          >
+            Reconnect
+          </button>
+        )}
       </div>
     );
   }

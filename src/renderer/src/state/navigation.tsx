@@ -27,13 +27,12 @@ export interface ViewState {
 
 /**
  * A history entry is either a folder or one of the metadata pages (Recents /
- * Trash / a tag's files). Pages live in the same history as folders so the
- * toolbar Back/Forward arrows traverse both.
+ * a tag's files). Pages live in the same history as folders so the toolbar
+ * Back/Forward arrows traverse both.
  */
 export type NavLocation =
   | { kind: 'folder'; path: string }
   | { kind: 'recents' }
-  | { kind: 'trash' }
   | { kind: 'tag'; tagId: number }
   | { kind: 'cloud-connect' }
   | { kind: 'settings' }

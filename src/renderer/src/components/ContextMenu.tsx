@@ -156,7 +156,7 @@ export function ContextMenu(props: ContextMenuProps) {
               <Icon name="rename" /> Rename
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onSelect={props.onTrash}>
-              <Icon name="trash" /> Move to Trash{count > 1 ? ` (${count})` : ''}
+              <Icon name="trash" /> Delete{count > 1 ? ` (${count})` : ''}
             </DropdownMenuItem>
             {props.onToggleIndexExclude && (
               <DropdownMenuItem onSelect={props.onToggleIndexExclude}>
