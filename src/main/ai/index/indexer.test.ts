@@ -11,7 +11,39 @@ import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
 import { isUnder } from './ignore';
 
+import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
+import { isStale } from './indexer';
+
+// ---------------------------------------------------------------------------
+// isStale — truth table
+// ---------------------------------------------------------------------------
+
+const STAT = { mtimeMs: 1000, size: 512 };
+const BASE: IndexState = {
+  path: '/f',
+  mtime: 1000,
+  size: 512,
+  contentHash: null,
+  modelId: 'm1',
+  indexedAt: 0,
+  status: 'indexed',
+};
+
+describe('isStale', () => {
+  it('stale when no prior state', () => expect(isStale(null, STAT, 'm1')).toBe(true));
+  it('stale when prior state is undefined', () => expect(isStale(undefined, STAT, 'm1')).toBe(true));
+  it('stale when prior status is error', () =>
+    expect(isStale({ ...BASE, status: 'error' }, STAT, 'm1')).toBe(true));
+  it('stale when mtime changed', () =>
+    expect(isStale(BASE, { mtimeMs: 9999, size: 512 }, 'm1')).toBe(true));
+  it('stale when size changed', () =>
+    expect(isStale(BASE, { mtimeMs: 1000, size: 9999 }, 'm1')).toBe(true));
+  it('stale when modelId changed', () => expect(isStale(BASE, STAT, 'm2')).toBe(true));
+  it('fresh when all fields match', () => expect(isStale(BASE, STAT, 'm1')).toBe(false));
+  it('fresh even when prior status is skipped', () =>
+    expect(isStale({ ...BASE, status: 'skipped' }, STAT, 'm1')).toBe(false));
+});
 
 const tmp = useTempDir();
 

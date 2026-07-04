@@ -23,6 +23,21 @@ import { isIgnored } from './ignore';
 const MAX_DEPTH = 64;
 const EMIT_INTERVAL_MS = 120;
 
+/**
+ * True when a file needs to be re-embedded: no prior state, previous run
+ * errored, or mtime/size/model changed. Single source of truth — both the
+ * crawl phase (bulk-compare against the states Map) and the process phase
+ * (double-check just before embedding) use this function.
+ */
+export function isStale(
+  prev: IndexState | null | undefined,
+  stat: { mtimeMs: number; size: number },
+  modelId: string,
+): boolean {
+  if (!prev || prev.status === 'error') return true;
+  return prev.mtime !== stat.mtimeMs || prev.size !== stat.size || prev.modelId !== modelId;
+}
+
 export interface IndexerDeps {
   /** The active embedding provider, or null when none is configured. */
   provider: () => Promise<AiProvider | null>;
@@ -235,14 +250,7 @@ export class Indexer {
         } catch {
           continue;
         }
-        const prev = states.get(full);
-        if (
-          !prev ||
-          prev.status === 'error' ||
-          prev.mtime !== stat.mtimeMs ||
-          prev.size !== stat.size ||
-          prev.modelId !== this.modelFor(full)
-        ) {
+        if (isStale(states.get(full), stat, this.modelFor(full))) {
           changed.push(full);
           await flush();
         }
@@ -313,15 +321,7 @@ export class Indexer {
     const modelId = this.modelFor(path);
     // Already current under the right model — re-run is a no-op.
     const prev = await aiIndex.getState(path);
-    if (
-      prev &&
-      prev.status !== 'error' &&
-      prev.mtime === stat.mtimeMs &&
-      prev.size === stat.size &&
-      prev.modelId === modelId
-    ) {
-      return;
-    }
+    if (!isStale(prev, stat, modelId)) return;
 
     await this.ensureModel(provider, modelId);
 
