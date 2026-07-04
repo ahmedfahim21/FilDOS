@@ -118,12 +118,15 @@ function rrfFuse(
     .map(({ path, score, text }) => ({ path, score, text }));
 }
 
+/** How many text-lane candidates to pass through the cross-encoder. */
+const RERANK_N = 50;
+
 export async function semanticSearch(
   provider: AiProvider,
   models: SearchModels,
   vectorStore: VectorStore,
   query: string,
-  opts: { rootPath?: string; k?: number; keywordStore?: KeywordStore } = {},
+  opts: { rootPath?: string; k?: number; keywordStore?: KeywordStore; rerankerModelId?: string } = {},
 ): Promise<SemanticHit[]> {
   const q = query.trim();
   if (!q) return [];
@@ -134,7 +137,26 @@ export async function semanticSearch(
   // Text lane: fuse vector + BM25 via RRF when a keyword store is available.
   const vecText = await searchOne(provider, models.text, vectorStore, q, opts.rootPath, fetchK);
   const bm25Hits = opts.keywordStore?.search(q, { underPath: opts.rootPath, k: fetchK });
-  const textHits = bm25Hits ? rrfFuse(vecText, bm25Hits, fetchK) : bestPerFile(vecText, fetchK);
+  let textHits = bm25Hits ? rrfFuse(vecText, bm25Hits, fetchK) : bestPerFile(vecText, fetchK);
+
+  // Cross-encoder reranking of text-lane top-N. Only activates when the model
+  // was already downloaded (we never trigger a download on the query path).
+  if (opts.rerankerModelId && provider.rerank && textHits.length > 0) {
+    try {
+      const st = await provider.status(opts.rerankerModelId);
+      if (st.state === 'ready') {
+        const toRerank = textHits.slice(0, RERANK_N);
+        const scores = await provider.rerank(opts.rerankerModelId, q, toRerank.map((h) => h.text));
+        const reranked = toRerank
+          .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
+          .sort(([, a], [, b]) => b - a)
+          .map(([h]) => h);
+        textHits = [...reranked, ...textHits.slice(RERANK_N)];
+      }
+    } catch {
+      // Non-fatal: cross-encoder unavailable or errored; keep RRF order.
+    }
+  }
 
   // Image lane: vector-only — CLIP maps text and images into one space natively.
   let imageHits: Scored[] = [];

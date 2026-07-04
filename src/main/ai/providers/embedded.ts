@@ -99,4 +99,8 @@ export class EmbeddedAiProvider implements AiProvider {
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {
     return this.request<number[]>('countTokens', { modelId, texts });
   }
+
+  async rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
+    return this.request<number[]>('rerank', { modelId, query, passages });
+  }
 }

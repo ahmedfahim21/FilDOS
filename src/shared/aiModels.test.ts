@@ -11,10 +11,12 @@ describe('AI model catalog', () => {
     expect(getModelDef(DEFAULT_MODEL_ID)).toBeDefined();
   });
 
-  it('declares a positive dimension and a load kind for every model', () => {
+  it('declares a valid kind for every model, and positive dim for embedding models', () => {
+    const KINDS = ['feature-extraction', 'clip', 'reranker'] as const;
     for (const m of AI_MODELS) {
-      expect(m.dim).toBeGreaterThan(0);
-      expect(['feature-extraction', 'clip']).toContain(m.kind);
+      expect(KINDS).toContain(m.kind);
+      // Rerankers produce scores, not embeddings — dim is 0 by convention.
+      if (m.kind !== 'reranker') expect(m.dim).toBeGreaterThan(0);
     }
   });
 

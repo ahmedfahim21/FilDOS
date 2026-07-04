@@ -34,6 +34,13 @@ export interface AiProvider {
    * code or non-Latin text never silently exceeds the model's token limit.
    */
   countTokens?(modelId: string, texts: string[]): Promise<number[]>;
+  /**
+   * Cross-encoder reranking: score each (query, passage) pair. Higher score =
+   * more relevant. Only supported by providers with a reranker model loaded;
+   * callers must check `provider.status(modelId)` before calling to avoid
+   * triggering a download on the query path.
+   */
+  rerank?(modelId: string, query: string, passages: string[]): Promise<number[]>;
   /** Optional text generation (not used by the foundation; future hosted seam). */
   generate?(prompt: string): Promise<string>;
   /** Optional subscription to download/state progress; returns an unsubscribe fn. */

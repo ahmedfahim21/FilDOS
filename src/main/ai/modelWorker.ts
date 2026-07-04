@@ -43,9 +43,20 @@ type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boole
 };
 type Process = (image: unknown) => Promise<unknown>;
 
+/**
+ * Cross-encoder text-classification pipeline. Each call receives one or more
+ * `{text, text_pair}` objects and returns `{label, score}` per input.
+ * `topk: null` returns ALL labels; we use `topk: 1` for the top score only.
+ */
+type ClassifierFn = (
+  inputs: { text: string; text_pair: string }[],
+  opts?: { topk: number | null },
+) => Promise<Array<{ label: string; score: number }>>;
+
 type Loaded =
   | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
-  | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall };
+  | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall }
+  | { kind: 'reranker'; classify: ClassifierFn };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
 const loaders = new Map<string, Promise<Loaded>>();
@@ -141,6 +152,13 @@ function get(modelId: string): Promise<Loaded> {
         opts,
       )) as unknown as ModelCall;
       loaded = { kind: 'clip', tokenize, textModel, process, visionModel };
+    } else if (def.kind === 'reranker') {
+      const classify = (await t.pipeline(
+        'text-classification',
+        modelId,
+        opts,
+      )) as unknown as ClassifierFn;
+      loaded = { kind: 'reranker', classify };
     } else {
       // Load the tokenizer separately so countTokens can run without inference.
       // AutoTokenizer.from_pretrained reads the same cached vocab files as the
@@ -181,6 +199,9 @@ async function embedText(
     const out = await model.extract(input, { pooling: 'mean', normalize: true });
     return out.tolist();
   }
+  if (model.kind !== 'clip') {
+    throw Object.assign(new Error('This model cannot embed text.'), { code: 'EUNSUPPORTED' });
+  }
   // CLIP text encoder → projected embeddings (normalized to match image space).
   const inputs = model.tokenize(texts, { padding: true, truncation: true });
   const out = await model.textModel(inputs);
@@ -208,6 +229,29 @@ async function countTokensForModel(modelId: string, texts: string[]): Promise<nu
   return texts.map((t) => Math.ceil(t.length / 4));
 }
 
+/**
+ * Cross-encoder reranking: score each (query, passage) pair and return one
+ * relevance score per passage. The ms-marco family returns a logit/probability
+ * where higher = more relevant; callers sort descending to reorder candidates.
+ */
+async function rerankText(modelId: string, query: string, passages: string[]): Promise<number[]> {
+  const model = await get(modelId);
+  if (model.kind !== 'reranker') {
+    throw Object.assign(new Error('This model cannot rerank; it was not loaded as a cross-encoder.'), {
+      code: 'EUNSUPPORTED',
+    });
+  }
+  const inputs = passages.map((p) => ({ text: query, text_pair: p }));
+  // `topk: 1` returns the top-scored label only — one {label, score} per input.
+  const results = (await model.classify(inputs, { topk: 1 })) as unknown as Array<
+    { label: string; score: number } | Array<{ label: string; score: number }>
+  >;
+  return results.map((r) => {
+    const item = Array.isArray(r) ? r[0] : r;
+    return item?.score ?? 0;
+  });
+}
+
 async function embedImages(modelId: string, paths: string[]): Promise<number[][]> {
   const model = await get(modelId);
   if (model.kind !== 'clip') {
@@ -230,6 +274,8 @@ async function handle(
   texts?: string[],
   paths?: string[],
   role?: EmbedRole,
+  query?: string,
+  passages?: string[],
 ): Promise<unknown> {
   switch (type) {
     case 'status':
@@ -243,6 +289,8 @@ async function handle(
       return embedImages(modelId, paths ?? []);
     case 'countTokens':
       return countTokensForModel(modelId, texts ?? []);
+    case 'rerank':
+      return rerankText(modelId, query ?? '', passages ?? []);
     default:
       throw Object.assign(new Error(`Unknown AI request: ${type}`), { code: 'EINVAL' });
   }
@@ -251,10 +299,19 @@ async function handle(
 process.parentPort.on(
   'message',
   (e: {
-    data: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[]; role?: EmbedRole };
+    data: {
+      id: number;
+      type: string;
+      modelId: string;
+      texts?: string[];
+      paths?: string[];
+      role?: EmbedRole;
+      query?: string;
+      passages?: string[];
+    };
   }) => {
-    const { id, type, modelId, texts, paths, role } = e.data;
-    handle(type, modelId, texts, paths, role)
+    const { id, type, modelId, texts, paths, role, query, passages } = e.data;
+    handle(type, modelId, texts, paths, role, query, passages)
       .then((data) => post({ id, ok: true, data }))
       .catch((err: NodeJS.ErrnoException) =>
         post({ id, ok: false, error: { code: err.code ?? 'EAIFAILED', message: err.message } }),

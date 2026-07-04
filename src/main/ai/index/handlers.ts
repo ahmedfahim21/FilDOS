@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { IMAGE_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import { IMAGE_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
@@ -153,7 +153,7 @@ export function registerIndexHandlers(): void {
           { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
           vectorStore,
           query,
-          { rootPath, k: opts?.k, keywordStore },
+          { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
         );
       }),
   );
