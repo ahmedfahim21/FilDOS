@@ -108,6 +108,18 @@ export async function statesUnder(underPath?: string): Promise<IndexState[]> {
 }
 
 /**
+ * All indexed chunks, without their embedding BLOBs — used to rebuild the
+ * in-memory BM25 store at startup. Omitting the BLOB makes the query cheap
+ * regardless of how many files are indexed.
+ */
+export async function allChunks(): Promise<{ path: string; chunkIx: number; text: string }[]> {
+  return db()
+    .select({ path: fileChunks.path, chunkIx: fileChunks.chunkIx, text: fileChunks.text })
+    .from(fileChunks)
+    .orderBy(asc(fileChunks.path), asc(fileChunks.chunkIx));
+}
+
+/**
  * Pull embedded chunks for brute-force vector search, optionally narrowed to a
  * subtree (`underPath`) and/or a file extension (`ext`, without the dot). Rows
  * without an embedding are skipped — there's nothing to compare them against.

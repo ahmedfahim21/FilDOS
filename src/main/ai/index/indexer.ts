@@ -7,6 +7,7 @@ import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
+import type { KeywordStore } from './keywordStore';
 import { extractText, isExtractable, isImage } from './extract';
 import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import { isIgnored } from './ignore';
@@ -97,6 +98,11 @@ export interface IndexerDeps {
    * dense code or non-Latin text stays within the model's actual token limit.
    */
   countTokens?: (modelId: string, texts: string[]) => Promise<number[]>;
+  /**
+   * In-memory BM25 index kept in sync alongside the vector store. Optional
+   * so tests that don't care about keyword search don't need to supply it.
+   */
+  keywordStore?: KeywordStore;
   /** Whether to skip a path (defaults to the built-in ignore rules). */
   ignore?: (path: string, excludes: readonly string[]) => boolean;
 }
@@ -227,6 +233,7 @@ export class Indexer {
     this.paused = true;
     await aiIndex.clearAll();
     await jobs.clearJobs();
+    this.deps.keywordStore?.clear();
     this.resetCounters();
     this.state = 'idle';
     this.emit(true);
@@ -349,6 +356,7 @@ export class Indexer {
     const { path } = job;
     if (job.op === 'remove') {
       await aiIndex.remove([path]);
+      this.deps.keywordStore?.remove([path]);
       return;
     }
 
@@ -357,10 +365,12 @@ export class Indexer {
       stat = await fs.stat(path);
     } catch {
       await aiIndex.remove([path]); // vanished since enqueue
+      this.deps.keywordStore?.remove([path]);
       return;
     }
     if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes)) {
       await aiIndex.remove([path]); // no longer indexable
+      this.deps.keywordStore?.remove([path]);
       return;
     }
 
@@ -430,6 +440,7 @@ export class Indexer {
     const chunks = text === null ? [] : chunk(text, windowChars, overlapChars);
     if (chunks.length === 0) {
       await this.deps.vectorStore.upsert(path, []); // clear any stale chunks
+      this.deps.keywordStore?.remove([path]);
       return;
     }
     const vectors = await provider.embed(
@@ -440,6 +451,10 @@ export class Indexer {
     await this.deps.vectorStore.upsert(
       path,
       chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
+    );
+    this.deps.keywordStore?.upsert(
+      path,
+      chunks.map((c) => ({ chunkIx: c.chunkIx, text: c.text })),
     );
   }
 
