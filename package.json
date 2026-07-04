@@ -24,6 +24,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "vitest run --config vitest.eval.config.ts",
     "test:e2e": "electron-vite build && playwright test",
     "prepare": "node scripts/install-hooks.mjs",
     "db:generate": "drizzle-kit generate"
