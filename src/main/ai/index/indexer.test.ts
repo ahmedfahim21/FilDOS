@@ -70,7 +70,12 @@ function fakeProvider(boom?: string) {
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
-function makeIndexer(provider: AiProvider, excludes: string[] = [], textModel = 'm1') {
+function makeIndexer(
+  provider: AiProvider,
+  excludes: string[] = [],
+  textModel = 'm1',
+  countTokens?: (modelId: string, texts: string[]) => Promise<number[]>,
+) {
   let last: IndexProgress | null = null;
   let emits = 0;
   const indexer = new Indexer({
@@ -83,6 +88,7 @@ function makeIndexer(provider: AiProvider, excludes: string[] = [], textModel = 
       last = p;
       emits++;
     },
+    countTokens,
     // Honour only user exclusions here — the OS temp dir lives under an
     // ignored segment on Windows (AppData), which the built-in rules would
     // otherwise skip. Built-ins have their own coverage in ignore.test.ts.
@@ -210,6 +216,34 @@ describe('Indexer.reconcile', () => {
     await indexer.reconcile();
 
     expect((await aiIndex.getState(join(tmp(), 'b.txt')))?.status).toBe('indexed');
+  });
+});
+
+describe('Indexer — token-aware chunking', () => {
+  it('produces more chunks for dense content when countTokens reports small chars/token', async () => {
+    // Write a file large enough to span multiple windows even under the narrow window.
+    // WINDOW default is 2048 chars. Simulate 2 chars/token → safe window ~870 chars.
+    const bigText = 'x'.repeat(4000);
+    await write('dense.ts', bigText);
+
+    const { provider } = fakeProvider();
+
+    // Baseline: no countTokens → char-approx → one or two chunks for 4000 chars
+    const { indexer: base } = makeIndexer(provider);
+    await base.start();
+    const baseChunkCount = await chunkCount();
+
+    await base.clear();
+
+    // With countTokens reporting 2 chars/token (dense code), window narrows to ~870 chars
+    // → should produce more chunks for the same 4000-char file.
+    const denseCountTokens = async (_modelId: string, texts: string[]) =>
+      texts.map((t) => Math.ceil(t.length / 2)); // 2 chars = 1 token
+    const { indexer: dense } = makeIndexer(provider, [], 'm1', denseCountTokens);
+    await dense.start();
+    const denseCount = await chunkCount();
+
+    expect(denseCount).toBeGreaterThan(baseChunkCount);
   });
 });
 

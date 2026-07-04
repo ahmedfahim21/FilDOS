@@ -28,6 +28,12 @@ export interface AiProvider {
   embed(modelId: string, texts: string[], role?: EmbedRole): Promise<Float32Array[]>;
   /** Embed each image file (by path) into a vector; image-capable models only. */
   embedImages(modelId: string, paths: string[]): Promise<Float32Array[]>;
+  /**
+   * Count tokens for each text using the model's own tokenizer. One IPC call,
+   * no inference — used by the indexer to calibrate chunk window size so dense
+   * code or non-Latin text never silently exceeds the model's token limit.
+   */
+  countTokens?(modelId: string, texts: string[]): Promise<number[]>;
   /** Optional text generation (not used by the foundation; future hosted seam). */
   generate?(prompt: string): Promise<string>;
   /** Optional subscription to download/state progress; returns an unsubscribe fn. */

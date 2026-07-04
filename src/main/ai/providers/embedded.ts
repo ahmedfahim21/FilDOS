@@ -95,4 +95,8 @@ export class EmbeddedAiProvider implements AiProvider {
     const rows = await this.request<number[][]>('embedImages', { modelId, paths });
     return rows.map((row) => Float32Array.from(row));
   }
+
+  async countTokens(modelId: string, texts: string[]): Promise<number[]> {
+    return this.request<number[]>('countTokens', { modelId, texts });
+  }
 }

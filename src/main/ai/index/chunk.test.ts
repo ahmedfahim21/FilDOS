@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunk, OVERLAP, WINDOW } from './chunk';
+import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 
 describe('chunk', () => {
   it('returns nothing for blank input', () => {
@@ -22,6 +22,21 @@ describe('chunk', () => {
     for (const c of chunks.slice(0, -1)) expect(c.text.length).toBe(WINDOW);
     // The whole text is covered (last window reaches the end).
     expect(chunks.at(-1)!.text.length).toBeLessThanOrEqual(WINDOW);
+  });
+
+  it('accepts custom window and overlap for token-dense content', () => {
+    // Simulate a dense file where 2 chars = 1 token: real window should be ~half
+    // the default. With a 512-token limit and 2 chars/token the safe window is ~870
+    // chars (512 * 2 * 0.85). Passing explicit params exercises that code path.
+    const charsPerToken = 2;
+    const narrowWindow = Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256);
+    const narrowOverlap = Math.floor(narrowWindow / 8);
+    const text = 'x'.repeat(WINDOW * 2); // 4096 chars
+    const standard = chunk(text);
+    const narrow = chunk(text, narrowWindow, narrowOverlap);
+    expect(narrow.length).toBeGreaterThan(standard.length);
+    // Every non-final narrow chunk is exactly narrowWindow chars.
+    for (const c of narrow.slice(0, -1)) expect(c.text.length).toBe(narrowWindow);
   });
 
   it('overlaps consecutive windows by OVERLAP characters', () => {

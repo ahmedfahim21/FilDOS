@@ -37,10 +37,14 @@ type FeatureExtractor = (
 ) => Promise<EmbedTensor>;
 type ModelCall = (inputs: unknown) => Promise<Record<string, EmbedTensor>>;
 type Tokenize = (texts: string[], opts: { padding: boolean; truncation: boolean }) => unknown;
+/** Subset of AutoTokenizer used for cheap token-count queries (no inference). */
+type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boolean }) => {
+  input_ids: { dims: number[] };
+};
 type Process = (image: unknown) => Promise<unknown>;
 
 type Loaded =
-  | { kind: 'feature-extraction'; extract: FeatureExtractor }
+  | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
   | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
@@ -138,8 +142,12 @@ function get(modelId: string): Promise<Loaded> {
       )) as unknown as ModelCall;
       loaded = { kind: 'clip', tokenize, textModel, process, visionModel };
     } else {
+      // Load the tokenizer separately so countTokens can run without inference.
+      // AutoTokenizer.from_pretrained reads the same cached vocab files as the
+      // pipeline; no extra download, but a second in-memory allocation (~few MB).
+      const tokenizer = (await t.AutoTokenizer.from_pretrained(modelId, opts)) as unknown as TokenizerFn;
       const extract = (await t.pipeline('feature-extraction', modelId, opts)) as unknown as FeatureExtractor;
-      loaded = { kind: 'feature-extraction', extract };
+      loaded = { kind: 'feature-extraction', extract, tokenizer };
     }
     downloading.delete(modelId);
     emit({ state: 'ready', modelId, dim: def.dim });
@@ -179,6 +187,27 @@ async function embedText(
   return l2normalize(out.text_embeds.tolist());
 }
 
+/**
+ * Count tokens for each text using the model's own tokenizer — pure tokenization,
+ * no inference. Used by the indexer to calibrate chunk window size per file so
+ * dense code or non-Latin text never silently overflows the model's token limit.
+ */
+async function countTokensForModel(modelId: string, texts: string[]): Promise<number[]> {
+  const model = await get(modelId);
+  if (model.kind === 'feature-extraction') {
+    return texts.map((text) => {
+      try {
+        const out = model.tokenizer([text], { padding: false, truncation: false });
+        return out.input_ids.dims[1] ?? Math.ceil(text.length / 4);
+      } catch {
+        return Math.ceil(text.length / 4);
+      }
+    });
+  }
+  // CLIP has its own truncation during tokenization; char-approx is fine here.
+  return texts.map((t) => Math.ceil(t.length / 4));
+}
+
 async function embedImages(modelId: string, paths: string[]): Promise<number[][]> {
   const model = await get(modelId);
   if (model.kind !== 'clip') {
@@ -212,6 +241,8 @@ async function handle(
       return embedText(modelId, texts ?? [], role);
     case 'embedImages':
       return embedImages(modelId, paths ?? []);
+    case 'countTokens':
+      return countTokensForModel(modelId, texts ?? []);
     default:
       throw Object.assign(new Error(`Unknown AI request: ${type}`), { code: 'EINVAL' });
   }

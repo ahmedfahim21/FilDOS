@@ -7,7 +7,7 @@ import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import { extractText, isExtractable, isImage } from './extract';
-import { chunk } from './chunk';
+import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import { isIgnored } from './ignore';
 
 /**
@@ -51,6 +51,12 @@ export interface IndexerDeps {
   vectorStore: VectorStore;
   /** Push a progress snapshot to the renderer (or capture it in tests). */
   emit: (progress: IndexProgress) => void;
+  /**
+   * Count tokens for texts using the model's tokenizer (no inference). When
+   * present the indexer uses it to calibrate chunk window size per file so
+   * dense code or non-Latin text stays within the model's actual token limit.
+   */
+  countTokens?: (modelId: string, texts: string[]) => Promise<number[]>;
   /** Whether to skip a path (defaults to the built-in ignore rules). */
   ignore?: (path: string, excludes: readonly string[]) => boolean;
 }
@@ -339,7 +345,26 @@ export class Indexer {
     const text = await extractText(path);
     await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed'));
 
-    const chunks = text === null ? [] : chunk(text);
+    // Calibrate the chunk window for this file's actual token density. A 1000-char
+    // sample is enough to determine chars/token; dense code or CJK runs ~2 chars/token
+    // vs ~4 for English prose, so the default 2048-char window can silently double the
+    // model's 512-token limit without this adjustment.
+    let windowChars = WINDOW;
+    let overlapChars = OVERLAP;
+    if (text !== null && this.deps.countTokens) {
+      const sample = text.slice(0, Math.min(text.length, 1000));
+      try {
+        const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
+        if (sampleTokens > 0) {
+          const charsPerToken = sample.length / sampleTokens;
+          windowChars = Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256);
+          overlapChars = Math.floor(windowChars / 8);
+        }
+      } catch {
+        // Fall through to char-approx defaults.
+      }
+    }
+    const chunks = text === null ? [] : chunk(text, windowChars, overlapChars);
     if (chunks.length === 0) {
       await this.deps.vectorStore.upsert(path, []); // clear any stale chunks
       return;
