@@ -167,15 +167,36 @@ export async function semanticSearch(
     imageHits = [];
   }
 
-  // Merge text (RRF-ranked) and image (cosine-ranked), one hit per file.
-  const merged = new Map<string, Scored>();
-  for (const m of [...textHits, ...imageHits]) {
-    if (m.score <= 0) continue;
-    const cur = merged.get(m.path);
-    if (!cur || m.score > cur.score) merged.set(m.path, m);
-  }
+  // Merge text (RRF/rerank-ordered) and image (cosine-ordered).
+  //
+  // Two invariants to respect:
+  //  1. Text-lane ordering (RRF/rerank) is trusted within that lane — don't re-sort
+  //     by cosine, which would discard the BM25 boost.
+  //  2. Cross-lane comparison uses cosine score so a strongly-relevant image can
+  //     beat a weakly-relevant text hit.
+  //  3. BM25-only text hits (cosine = 0) are included at the bottom of the text lane
+  //     so exact keyword matches that have no embedding are not silently dropped.
+  //
+  // Strategy: keep text hits in their existing order; sort image hits by cosine;
+  // interleave the two streams by cosine at each step.
+  const textPaths = new Set(textHits.map((h) => h.path));
+  const sortedImages = imageHits
+    .filter((h) => h.score > 0 && !textPaths.has(h.path))
+    .sort((a, b) => b.score - a.score);
 
-  const best = [...merged.values()].sort((a, b) => b.score - a.score).slice(0, k * 3);
+  // Assign BM25-only text hits a tiny positive score so they're included but ranked last.
+  const textWithFloor = textHits.map((h) => (h.score > 0 ? h : { ...h, score: 1e-9 }));
+
+  // Two-pointer merge preserving within-text-lane order, interleaving images by cosine.
+  const best: Scored[] = [];
+  let ti = 0, ii = 0;
+  while (best.length < k * 3 && (ti < textWithFloor.length || ii < sortedImages.length)) {
+    const t = textWithFloor[ti];
+    const img = sortedImages[ii];
+    if (!t) { best.push(img!); ii++; }
+    else if (!img || t.score >= img.score) { best.push(t); ti++; }
+    else { best.push(img); ii++; }
+  }
   const infos = await Promise.all(best.map((m) => service.getInfo(m.path).catch(() => null)));
 
   // Prune index rows for files that have vanished from disk.

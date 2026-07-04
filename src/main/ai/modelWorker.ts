@@ -242,13 +242,23 @@ async function rerankText(modelId: string, query: string, passages: string[]): P
     });
   }
   const inputs = passages.map((p) => ({ text: query, text_pair: p }));
-  // `topk: 1` returns the top-scored label only — one {label, score} per input.
-  const results = (await model.classify(inputs, { topk: 1 })) as unknown as Array<
-    { label: string; score: number } | Array<{ label: string; score: number }>
+  // Fetch ALL labels (topk: null) so we can consistently select the positive/relevant
+  // class. With topk: 1, binary classifiers (LABEL_0 = non-relevant, LABEL_1 = relevant)
+  // can return LABEL_0 when its probability is highest, silently inverting reranking.
+  const results = (await model.classify(inputs, { topk: null })) as unknown as Array<
+    Array<{ label: string; score: number }>
   >;
-  return results.map((r) => {
-    const item = Array.isArray(r) ? r[0] : r;
-    return item?.score ?? 0;
+  return results.map((labels) => {
+    if (!labels || !labels.length) return 0;
+    // Single output (regression / single-label cross-encoder): return it directly.
+    if (labels.length === 1) return labels[0].score;
+    // Binary classifiers: find the positive/relevant label by common naming conventions
+    // (LABEL_1, "relevant", "true", "1"). ms-marco MiniLM uses LABEL_0/LABEL_1.
+    const pos = labels.find((l) => /^(1|label_1|relevant|true)$/i.test(l.label));
+    if (pos) return pos.score;
+    // Fallback: take max score — for softmax outputs this is the dominant class;
+    // for sigmoid the highest logit represents the strongest signal.
+    return Math.max(...labels.map((l) => l.score));
   });
 }
 
