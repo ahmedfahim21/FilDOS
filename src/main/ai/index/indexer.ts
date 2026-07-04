@@ -430,7 +430,7 @@ export class Indexer {
         const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
         if (sampleTokens > 0) {
           const charsPerToken = sample.length / sampleTokens;
-          windowChars = Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256);
+          windowChars = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256));
           overlapChars = Math.floor(windowChars / 8);
         }
       } catch {

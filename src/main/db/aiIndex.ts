@@ -112,9 +112,9 @@ export async function statesUnder(underPath?: string): Promise<IndexState[]> {
  * in-memory BM25 store at startup. Omitting the BLOB makes the query cheap
  * regardless of how many files are indexed.
  */
-export async function allChunks(): Promise<{ path: string; chunkIx: number; text: string }[]> {
+export async function allChunks(): Promise<{ path: string; chunkIx: number; text: string; modelId: string }[]> {
   return db()
-    .select({ path: fileChunks.path, chunkIx: fileChunks.chunkIx, text: fileChunks.text })
+    .select({ path: fileChunks.path, chunkIx: fileChunks.chunkIx, text: fileChunks.text, modelId: fileChunks.modelId })
     .from(fileChunks)
     .orderBy(asc(fileChunks.path), asc(fileChunks.chunkIx));
 }

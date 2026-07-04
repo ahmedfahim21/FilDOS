@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AiModelStatus, Theme } from '@shared/types';
-import { getModelDef, INDEX_MODEL_IDS } from '@shared/aiModels';
+import { getModelDef, INDEX_MODEL_IDS, RERANKER_MODEL_ID } from '@shared/aiModels';
 import { useAi } from '@/state/ai';
 import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
@@ -335,9 +335,22 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                       }
                     />
                   ))}
+                  <div className="border-border mt-1 border-t pt-1.5">
+                    <ModelRow
+                      id={RERANKER_MODEL_ID}
+                      status={ai.statuses[RERANKER_MODEL_ID]}
+                      onDownload={() =>
+                        ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
+                          if (!r.ok) notifyError(r.error);
+                          ai.refreshStatuses();
+                        })
+                      }
+                    />
+                  </div>
                   <p className="text-muted-foreground mt-1 text-2xs leading-snug">
                     FilDOS picks the right model per file automatically — a text model for documents
-                    and CLIP for images. Both download when AI is enabled.
+                    and CLIP for images. Both download when AI is enabled. The reranker is optional
+                    and improves search precision when downloaded.
                   </p>
                 </div>
               )}

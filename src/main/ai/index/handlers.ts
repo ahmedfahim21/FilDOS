@@ -74,6 +74,10 @@ const indexer = new Indexer({
   vectorStore,
   keywordStore,
   emit: broadcast,
+  countTokens: async (modelId, texts) => {
+    const p = await activeAiProvider();
+    return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
+  },
 });
 
 const watcher = new IndexWatcher({
@@ -168,6 +172,10 @@ async function rebuildKeywordIndex(): Promise<void> {
   const chunks = await aiIndex.allChunks();
   const byPath = new Map<string, { chunkIx: number; text: string }[]>();
   for (const c of chunks) {
+    // Image chunks (modelId === IMAGE_MODEL_ID) carry the basename as text and
+    // belong only in the vector lane. Exclude them so the keyword store stays
+    // consistent with how Indexer.process() updates it (text-only writes).
+    if (c.modelId === IMAGE_MODEL_ID) continue;
     const arr = byPath.get(c.path) ?? [];
     arr.push({ chunkIx: c.chunkIx, text: c.text });
     byPath.set(c.path, arr);

@@ -45,13 +45,14 @@ type Process = (image: unknown) => Promise<unknown>;
 
 /**
  * Cross-encoder text-classification pipeline. Each call receives one or more
- * `{text, text_pair}` objects and returns `{label, score}` per input.
- * `topk: null` returns ALL labels; we use `topk: 1` for the top score only.
+ * `{text, text_pair}` objects and returns one array of `{label, score}` per
+ * input (outer array = inputs, inner array = labels). With `topk: null` all
+ * labels are returned; with `topk: 1` the inner array has exactly one entry.
  */
 type ClassifierFn = (
   inputs: { text: string; text_pair: string }[],
   opts?: { topk: number | null },
-) => Promise<Array<{ label: string; score: number }>>;
+) => Promise<Array<Array<{ label: string; score: number }>>>;
 
 type Loaded =
   | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
@@ -245,9 +246,7 @@ async function rerankText(modelId: string, query: string, passages: string[]): P
   // Fetch ALL labels (topk: null) so we can consistently select the positive/relevant
   // class. With topk: 1, binary classifiers (LABEL_0 = non-relevant, LABEL_1 = relevant)
   // can return LABEL_0 when its probability is highest, silently inverting reranking.
-  const results = (await model.classify(inputs, { topk: null })) as unknown as Array<
-    Array<{ label: string; score: number }>
-  >;
+  const results = await model.classify(inputs, { topk: null });
   return results.map((labels) => {
     if (!labels || !labels.length) return 0;
     // Single output (regression / single-label cross-encoder): return it directly.
