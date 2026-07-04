@@ -153,7 +153,7 @@ export function registerIndexHandlers(): void {
           { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
           vectorStore,
           query,
-          { rootPath, k: opts?.k },
+          { rootPath, k: opts?.k, keywordStore },
         );
       }),
   );
