@@ -13,6 +13,8 @@ export interface FileViewProps {
   entries: Entry[];
   loading: boolean;
   error: AppError | null;
+  /** Re-run OAuth for the current remote account; set only for cloud folders. */
+  onReconnect?: () => void;
   selection: Set<string>;
   renamingPath: string | null;
   /** Tags attached to an entry, for the tag dots beside its name. */

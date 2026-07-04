@@ -4,7 +4,7 @@ import type { Prefs } from '@shared/types';
 import App from './App';
 import { applyTheme } from './lib/theme';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Wordmark } from './components/Logo';
+import { Splash } from './components/Splash';
 import '@fontsource-variable/inter';
 import '@fontsource/space-mono/400.css';
 import '@fontsource/space-mono/700.css';
@@ -34,12 +34,7 @@ function Root() {
     })();
   }, []);
 
-  if (!boot)
-    return (
-      <div className="grid h-full place-items-center">
-        <Wordmark className="text-[2rem] opacity-90" />
-      </div>
-    );
+  if (!boot) return <Splash />;
   return <App initialPath={boot.path} initialPrefs={boot.prefs} />;
 }
 

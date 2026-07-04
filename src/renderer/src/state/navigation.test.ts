@@ -63,9 +63,9 @@ describe('reducer — pages as history entries', () => {
   });
 
   it('openPage de-dupes the same page (no duplicate history entry)', () => {
-    let s = reducer(start(), { type: 'openPage', page: { kind: 'trash' } });
+    let s = reducer(start(), { type: 'openPage', page: { kind: 'recents' } });
     const before = s;
-    s = reducer(s, { type: 'openPage', page: { kind: 'trash' } });
+    s = reducer(s, { type: 'openPage', page: { kind: 'recents' } });
     expect(s).toBe(before);
     expect(s.history).toHaveLength(2);
   });
@@ -94,7 +94,7 @@ describe('reducer — pages as history entries', () => {
 
   it('up from a page acts on the folder behind it', () => {
     let s = reducer(start(), { type: 'navigate', path: '/home/docs' });
-    s = reducer(s, { type: 'openPage', page: { kind: 'trash' } });
+    s = reducer(s, { type: 'openPage', page: { kind: 'recents' } });
     s = reducer(s, { type: 'up' });
     expect(current(s)).toEqual({ kind: 'folder', path: '/home' });
   });

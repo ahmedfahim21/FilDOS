@@ -103,15 +103,13 @@ export function useFileActions() {
     [run],
   );
 
+  // Delete goes to the OS Trash/Recycle Bin. There is no in-app undo — recover
+  // from Finder/Explorer if needed — so no inverse is pushed onto the stack.
   const trash = useCallback(
     (entries: Entry[]) =>
       run(
         window.fsapi.trash(entries.map((e) => e.path)),
-        () => `Moved ${pluralItems(entries.length)} to Trash`,
-        (items) => ({
-          label: 'Trash',
-          run: () => window.fsapi.restoreTrashed(items.map((i) => i.id)),
-        }),
+        () => `Deleted ${pluralItems(entries.length)}`,
       ),
     [run],
   );

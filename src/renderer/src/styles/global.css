@@ -1,6 +1,42 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Boot splash: the scoop tiles breathe in a staggered wave, the mark gently
+ * floats, and an indeterminate bar sweeps under the wordmark. */
+@keyframes splash-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes splash-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+@keyframes splash-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-splash] * {
+    animation: none !important;
+  }
+}
+
 /*
  * Design tokens shared with the web app: the shadcn/ui token vocabulary plus
  * the FilDOS brand palette. The foundation is black-and-white (Ink primary,
