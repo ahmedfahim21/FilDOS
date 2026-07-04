@@ -36,6 +36,7 @@ const state = (path: string): IndexState => ({
   size: 1,
   contentHash: null,
   modelId: 'm1',
+  indexVersion: 1,
   indexedAt: 1,
   status: 'indexed',
 });
@@ -127,5 +128,33 @@ describe('semanticSearch', () => {
 
     expect(hits.map((h) => h.path)).not.toContain(a);
     expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index
+  });
+});
+
+describe('semanticSearch — RRF hybrid fusion', () => {
+  it('BM25-boosted exact match surfaces higher than vector-only ranking would place it', async () => {
+    // Vector: file A ranks first (high cosine), file B ranks second (lower cosine).
+    // BM25: file B is an exact filename/identifier match → ranks first in keyword lane.
+    // RRF should fuse: A gets 1/(61+1)=0.0164, B gets 1/(61+2)+1/(61+1)≈0.0322 → B wins.
+    const a = join(tmp(), 'alpha.txt');
+    const b = join(tmp(), 'beta.txt');
+    await indexFile(a, [1, 0, 0], 'unrelated prose content here alpha topic');
+    await indexFile(b, [0.85, 0, 0], 'fetchUser function signature docs'); // lower cosine
+
+    // Keyword store populated with the same content.
+    const { MiniSearchKeywordStore } = await import('./keywordStore');
+    const ks = new MiniSearchKeywordStore();
+    ks.upsert(a, [{ chunkIx: 0, text: 'unrelated prose content here alpha topic' }]);
+    ks.upsert(b, [{ chunkIx: 0, text: 'fetchUser function signature docs' }]);
+
+    // Without BM25: A wins (higher cosine).
+    const vecOnly = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser');
+    expect(vecOnly[0].path).toBe(a);
+
+    // With BM25: B surfaces first because 'fetchUser' is an exact identifier match.
+    const hybrid = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser', {
+      keywordStore: ks,
+    });
+    expect(hybrid[0].path).toBe(b);
   });
 });

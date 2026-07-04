@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { IndexProgress, IndexState } from '@shared/types';
@@ -6,8 +7,9 @@ import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
+import type { KeywordStore } from './keywordStore';
 import { extractText, isExtractable, isImage } from './extract';
-import { chunk } from './chunk';
+import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import { isIgnored } from './ignore';
 
 /**
@@ -23,6 +25,60 @@ import { isIgnored } from './ignore';
 const MAX_DEPTH = 64;
 const EMIT_INTERVAL_MS = 120;
 
+/**
+ * Bump this when chunking or extraction logic changes. Any file whose stored
+ * indexVersion doesn't match triggers a full re-embed on the next run, even
+ * if its mtime/size/model haven't changed.
+ */
+export const INDEX_VERSION = 1;
+
+/** How many bytes to sample from the start and end of a large file for the hash. */
+const HASH_SAMPLE = 65_536; // 64 KB
+
+/**
+ * Cheap content hash: SHA-256 of the first+last 64 KB (or the whole file when
+ * smaller). Truncated to 16 hex chars — more than enough for change detection.
+ * Used to distinguish a real content change from a metadata-only mtime bump
+ * (git checkout, cloud-sync re-stat, backup restore) so we skip re-embedding when
+ * the bytes haven't actually changed.
+ */
+async function computeContentHash(path: string, stat: { size: number }): Promise<string> {
+  const fh = await fs.open(path, 'r');
+  try {
+    const h = createHash('sha256');
+    if (stat.size <= HASH_SAMPLE * 2) {
+      const buf = Buffer.allocUnsafe(stat.size);
+      await fh.read(buf, 0, stat.size, 0);
+      h.update(buf);
+    } else {
+      const first = Buffer.allocUnsafe(HASH_SAMPLE);
+      const last = Buffer.allocUnsafe(HASH_SAMPLE);
+      await fh.read(first, 0, HASH_SAMPLE, 0);
+      await fh.read(last, 0, HASH_SAMPLE, stat.size - HASH_SAMPLE);
+      h.update(first).update(last);
+    }
+    return h.digest('hex').slice(0, 16);
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
+ * True when a file needs to be re-embedded: no prior state, previous run
+ * errored, mtime/size/model changed, or the indexer version changed. Single
+ * source of truth — both the crawl phase (bulk in-memory compare) and the
+ * process phase (double-check just before embedding) use this function.
+ */
+export function isStale(
+  prev: IndexState | null | undefined,
+  stat: { mtimeMs: number; size: number },
+  modelId: string,
+): boolean {
+  if (!prev || prev.status === 'error') return true;
+  if (prev.indexVersion !== INDEX_VERSION) return true;
+  return prev.mtime !== stat.mtimeMs || prev.size !== stat.size || prev.modelId !== modelId;
+}
+
 export interface IndexerDeps {
   /** The active embedding provider, or null when none is configured. */
   provider: () => Promise<AiProvider | null>;
@@ -36,6 +92,17 @@ export interface IndexerDeps {
   vectorStore: VectorStore;
   /** Push a progress snapshot to the renderer (or capture it in tests). */
   emit: (progress: IndexProgress) => void;
+  /**
+   * Count tokens for texts using the model's tokenizer (no inference). When
+   * present the indexer uses it to calibrate chunk window size per file so
+   * dense code or non-Latin text stays within the model's actual token limit.
+   */
+  countTokens?: (modelId: string, texts: string[]) => Promise<number[]>;
+  /**
+   * In-memory BM25 index kept in sync alongside the vector store. Optional
+   * so tests that don't care about keyword search don't need to supply it.
+   */
+  keywordStore?: KeywordStore;
   /** Whether to skip a path (defaults to the built-in ignore rules). */
   ignore?: (path: string, excludes: readonly string[]) => boolean;
 }
@@ -166,6 +233,7 @@ export class Indexer {
     this.paused = true;
     await aiIndex.clearAll();
     await jobs.clearJobs();
+    this.deps.keywordStore?.clear();
     this.resetCounters();
     this.state = 'idle';
     this.emit(true);
@@ -235,14 +303,7 @@ export class Indexer {
         } catch {
           continue;
         }
-        const prev = states.get(full);
-        if (
-          !prev ||
-          prev.status === 'error' ||
-          prev.mtime !== stat.mtimeMs ||
-          prev.size !== stat.size ||
-          prev.modelId !== this.modelFor(full)
-        ) {
+        if (isStale(states.get(full), stat, this.modelFor(full))) {
           changed.push(full);
           await flush();
         }
@@ -295,6 +356,7 @@ export class Indexer {
     const { path } = job;
     if (job.op === 'remove') {
       await aiIndex.remove([path]);
+      this.deps.keywordStore?.remove([path]);
       return;
     }
 
@@ -303,24 +365,38 @@ export class Indexer {
       stat = await fs.stat(path);
     } catch {
       await aiIndex.remove([path]); // vanished since enqueue
+      this.deps.keywordStore?.remove([path]);
       return;
     }
     if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes)) {
       await aiIndex.remove([path]); // no longer indexable
+      this.deps.keywordStore?.remove([path]);
       return;
     }
 
     const modelId = this.modelFor(path);
-    // Already current under the right model — re-run is a no-op.
     const prev = await aiIndex.getState(path);
-    if (
-      prev &&
-      prev.status !== 'error' &&
-      prev.mtime === stat.mtimeMs &&
-      prev.size === stat.size &&
-      prev.modelId === modelId
-    ) {
-      return;
+    if (!isStale(prev, stat, modelId)) return;
+
+    // For text files, compute a content hash and skip re-embedding when only
+    // metadata changed (mtime bumped by git/sync/backup, bytes unchanged).
+    // Images are skipped — CLIP re-embed is cheap and the basename snippet
+    // can't change without the file moving.
+    if (!isImage(path)) {
+      let contentHash: string | null = null;
+      try { contentHash = await computeContentHash(path, stat); } catch { /* ignore */ }
+      if (
+        contentHash !== null &&
+        prev?.status !== 'error' &&
+        prev?.indexVersion === INDEX_VERSION &&
+        prev?.modelId === modelId &&
+        prev?.contentHash !== null &&
+        contentHash === prev.contentHash
+      ) {
+        // Metadata-only touch — update bookkeeping without re-embedding.
+        await aiIndex.upsertState({ ...prev, mtime: stat.mtimeMs, size: stat.size, contentHash, indexedAt: Date.now() });
+        return;
+      }
     }
 
     await this.ensureModel(provider, modelId);
@@ -336,12 +412,35 @@ export class Indexer {
       return;
     }
 
-    const text = await extractText(path);
-    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed'));
+    let contentHash: string | null = null;
+    try { contentHash = await computeContentHash(path, stat); } catch { /* ignore */ }
 
-    const chunks = text === null ? [] : chunk(text);
+    const text = await extractText(path);
+    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed', contentHash));
+
+    // Calibrate the chunk window for this file's actual token density. A 1000-char
+    // sample is enough to determine chars/token; dense code or CJK runs ~2 chars/token
+    // vs ~4 for English prose, so the default 2048-char window can silently double the
+    // model's 512-token limit without this adjustment.
+    let windowChars = WINDOW;
+    let overlapChars = OVERLAP;
+    if (text !== null && this.deps.countTokens) {
+      const sample = text.slice(0, Math.min(text.length, 1000));
+      try {
+        const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
+        if (sampleTokens > 0) {
+          const charsPerToken = sample.length / sampleTokens;
+          windowChars = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256));
+          overlapChars = Math.floor(windowChars / 8);
+        }
+      } catch {
+        // Fall through to char-approx defaults.
+      }
+    }
+    const chunks = text === null ? [] : chunk(text, windowChars, overlapChars);
     if (chunks.length === 0) {
       await this.deps.vectorStore.upsert(path, []); // clear any stale chunks
+      this.deps.keywordStore?.remove([path]);
       return;
     }
     const vectors = await provider.embed(
@@ -352,6 +451,10 @@ export class Indexer {
     await this.deps.vectorStore.upsert(
       path,
       chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
+    );
+    this.deps.keywordStore?.upsert(
+      path,
+      chunks.map((c) => ({ chunkIx: c.chunkIx, text: c.text })),
     );
   }
 
@@ -365,7 +468,17 @@ export class Indexer {
     stat: { mtimeMs: number; size: number },
     modelId: string,
     status: IndexState['status'],
+    contentHash: string | null = null,
   ): IndexState {
-    return { path, mtime: stat.mtimeMs, size: stat.size, contentHash: null, modelId, indexedAt: Date.now(), status };
+    return {
+      path,
+      mtime: stat.mtimeMs,
+      size: stat.size,
+      contentHash,
+      modelId,
+      indexVersion: INDEX_VERSION,
+      indexedAt: Date.now(),
+      status,
+    };
   }
 }

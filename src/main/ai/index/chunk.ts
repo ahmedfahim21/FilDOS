@@ -8,11 +8,11 @@
  */
 
 const CHARS_PER_TOKEN = 4;
-const TARGET_TOKENS = 512;
+export const TARGET_TOKENS = 512;
 
-/** Window size in characters (~512 tokens). */
+/** Default window in characters (~512 tokens at 4 chars/token for prose). */
 export const WINDOW = TARGET_TOKENS * CHARS_PER_TOKEN; // 2048
-/** Overlap carried between consecutive windows (~12.5%). */
+/** Default overlap (~12.5% of the default window). */
 export const OVERLAP = WINDOW / 8; // 256
 
 /** A positioned slice of a file's text. */
@@ -23,19 +23,21 @@ export interface TextChunk {
 }
 
 /**
- * Break `text` into ~`WINDOW`-char chunks that overlap by `OVERLAP`. Returns an
- * empty array for blank input and a single chunk for anything within one window.
+ * Break `text` into overlapping character windows. `window` and `overlap` default
+ * to the char-based approximation (WINDOW/OVERLAP) but the indexer passes values
+ * derived from the real tokenizer when the model worker supports it — so chunks
+ * stay within the model's actual token limit even for dense code or non-Latin text.
  */
-export function chunk(text: string): TextChunk[] {
+export function chunk(text: string, window = WINDOW, overlap = OVERLAP): TextChunk[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
-  if (trimmed.length <= WINDOW) return [{ chunkIx: 0, text: trimmed }];
+  if (trimmed.length <= window) return [{ chunkIx: 0, text: trimmed }];
 
-  const stride = WINDOW - OVERLAP;
+  const stride = window - overlap;
   const chunks: TextChunk[] = [];
   for (let start = 0; start < trimmed.length; start += stride) {
-    chunks.push({ chunkIx: chunks.length, text: trimmed.slice(start, start + WINDOW) });
-    if (start + WINDOW >= trimmed.length) break;
+    chunks.push({ chunkIx: chunks.length, text: trimmed.slice(start, start + window) });
+    if (start + window >= trimmed.length) break;
   }
   return chunks;
 }

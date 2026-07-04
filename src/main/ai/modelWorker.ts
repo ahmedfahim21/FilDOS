@@ -37,11 +37,27 @@ type FeatureExtractor = (
 ) => Promise<EmbedTensor>;
 type ModelCall = (inputs: unknown) => Promise<Record<string, EmbedTensor>>;
 type Tokenize = (texts: string[], opts: { padding: boolean; truncation: boolean }) => unknown;
+/** Subset of AutoTokenizer used for cheap token-count queries (no inference). */
+type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boolean }) => {
+  input_ids: { dims: number[] };
+};
 type Process = (image: unknown) => Promise<unknown>;
 
+/**
+ * Cross-encoder text-classification pipeline. Each call receives one or more
+ * `{text, text_pair}` objects and returns one array of `{label, score}` per
+ * input (outer array = inputs, inner array = labels). With `topk: null` all
+ * labels are returned; with `topk: 1` the inner array has exactly one entry.
+ */
+type ClassifierFn = (
+  inputs: { text: string; text_pair: string }[],
+  opts?: { topk: number | null },
+) => Promise<Array<Array<{ label: string; score: number }>>>;
+
 type Loaded =
-  | { kind: 'feature-extraction'; extract: FeatureExtractor }
-  | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall };
+  | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
+  | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall }
+  | { kind: 'reranker'; classify: ClassifierFn };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
 const loaders = new Map<string, Promise<Loaded>>();
@@ -137,9 +153,20 @@ function get(modelId: string): Promise<Loaded> {
         opts,
       )) as unknown as ModelCall;
       loaded = { kind: 'clip', tokenize, textModel, process, visionModel };
+    } else if (def.kind === 'reranker') {
+      const classify = (await t.pipeline(
+        'text-classification',
+        modelId,
+        opts,
+      )) as unknown as ClassifierFn;
+      loaded = { kind: 'reranker', classify };
     } else {
+      // Load the tokenizer separately so countTokens can run without inference.
+      // AutoTokenizer.from_pretrained reads the same cached vocab files as the
+      // pipeline; no extra download, but a second in-memory allocation (~few MB).
+      const tokenizer = (await t.AutoTokenizer.from_pretrained(modelId, opts)) as unknown as TokenizerFn;
       const extract = (await t.pipeline('feature-extraction', modelId, opts)) as unknown as FeatureExtractor;
-      loaded = { kind: 'feature-extraction', extract };
+      loaded = { kind: 'feature-extraction', extract, tokenizer };
     }
     downloading.delete(modelId);
     emit({ state: 'ready', modelId, dim: def.dim });
@@ -173,10 +200,65 @@ async function embedText(
     const out = await model.extract(input, { pooling: 'mean', normalize: true });
     return out.tolist();
   }
+  if (model.kind !== 'clip') {
+    throw Object.assign(new Error('This model cannot embed text.'), { code: 'EUNSUPPORTED' });
+  }
   // CLIP text encoder → projected embeddings (normalized to match image space).
   const inputs = model.tokenize(texts, { padding: true, truncation: true });
   const out = await model.textModel(inputs);
   return l2normalize(out.text_embeds.tolist());
+}
+
+/**
+ * Count tokens for each text using the model's own tokenizer — pure tokenization,
+ * no inference. Used by the indexer to calibrate chunk window size per file so
+ * dense code or non-Latin text never silently overflows the model's token limit.
+ */
+async function countTokensForModel(modelId: string, texts: string[]): Promise<number[]> {
+  const model = await get(modelId);
+  if (model.kind === 'feature-extraction') {
+    return texts.map((text) => {
+      try {
+        const out = model.tokenizer([text], { padding: false, truncation: false });
+        return out.input_ids.dims[1] ?? Math.ceil(text.length / 4);
+      } catch {
+        return Math.ceil(text.length / 4);
+      }
+    });
+  }
+  // CLIP has its own truncation during tokenization; char-approx is fine here.
+  return texts.map((t) => Math.ceil(t.length / 4));
+}
+
+/**
+ * Cross-encoder reranking: score each (query, passage) pair and return one
+ * relevance score per passage. The ms-marco family returns a logit/probability
+ * where higher = more relevant; callers sort descending to reorder candidates.
+ */
+async function rerankText(modelId: string, query: string, passages: string[]): Promise<number[]> {
+  const model = await get(modelId);
+  if (model.kind !== 'reranker') {
+    throw Object.assign(new Error('This model cannot rerank; it was not loaded as a cross-encoder.'), {
+      code: 'EUNSUPPORTED',
+    });
+  }
+  const inputs = passages.map((p) => ({ text: query, text_pair: p }));
+  // Fetch ALL labels (topk: null) so we can consistently select the positive/relevant
+  // class. With topk: 1, binary classifiers (LABEL_0 = non-relevant, LABEL_1 = relevant)
+  // can return LABEL_0 when its probability is highest, silently inverting reranking.
+  const results = await model.classify(inputs, { topk: null });
+  return results.map((labels) => {
+    if (!labels || !labels.length) return 0;
+    // Single output (regression / single-label cross-encoder): return it directly.
+    if (labels.length === 1) return labels[0].score;
+    // Binary classifiers: find the positive/relevant label by common naming conventions
+    // (LABEL_1, "relevant", "true", "1"). ms-marco MiniLM uses LABEL_0/LABEL_1.
+    const pos = labels.find((l) => /^(1|label_1|relevant|true)$/i.test(l.label));
+    if (pos) return pos.score;
+    // Fallback: take max score — for softmax outputs this is the dominant class;
+    // for sigmoid the highest logit represents the strongest signal.
+    return Math.max(...labels.map((l) => l.score));
+  });
 }
 
 async function embedImages(modelId: string, paths: string[]): Promise<number[][]> {
@@ -201,6 +283,8 @@ async function handle(
   texts?: string[],
   paths?: string[],
   role?: EmbedRole,
+  query?: string,
+  passages?: string[],
 ): Promise<unknown> {
   switch (type) {
     case 'status':
@@ -212,6 +296,10 @@ async function handle(
       return embedText(modelId, texts ?? [], role);
     case 'embedImages':
       return embedImages(modelId, paths ?? []);
+    case 'countTokens':
+      return countTokensForModel(modelId, texts ?? []);
+    case 'rerank':
+      return rerankText(modelId, query ?? '', passages ?? []);
     default:
       throw Object.assign(new Error(`Unknown AI request: ${type}`), { code: 'EINVAL' });
   }
@@ -220,10 +308,19 @@ async function handle(
 process.parentPort.on(
   'message',
   (e: {
-    data: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[]; role?: EmbedRole };
+    data: {
+      id: number;
+      type: string;
+      modelId: string;
+      texts?: string[];
+      paths?: string[];
+      role?: EmbedRole;
+      query?: string;
+      passages?: string[];
+    };
   }) => {
-    const { id, type, modelId, texts, paths, role } = e.data;
-    handle(type, modelId, texts, paths, role)
+    const { id, type, modelId, texts, paths, role, query, passages } = e.data;
+    handle(type, modelId, texts, paths, role, query, passages)
       .then((data) => post({ id, ok: true, data }))
       .catch((err: NodeJS.ErrnoException) =>
         post({ id, ok: false, error: { code: err.code ?? 'EAIFAILED', message: err.message } }),

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { IMAGE_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import { IMAGE_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
@@ -10,6 +10,7 @@ import * as aiIndex from '../../db/aiIndex';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
+import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch } from './search';
 
 /**
@@ -57,6 +58,7 @@ async function effectiveExcludes(): Promise<string[]> {
 }
 
 const vectorStore = new SqliteVectorStore();
+const keywordStore = new MiniSearchKeywordStore();
 
 function broadcast(progress: IndexProgress): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -70,7 +72,12 @@ const indexer = new Indexer({
   imageModel: IMAGE_MODEL_ID,
   config: async () => ({ roots: (await indexConfig()).roots, excludes: await effectiveExcludes() }),
   vectorStore,
+  keywordStore,
   emit: broadcast,
+  countTokens: async (modelId, texts) => {
+    const p = await activeAiProvider();
+    return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
+  },
 });
 
 const watcher = new IndexWatcher({
@@ -109,7 +116,10 @@ export function registerIndexHandlers(): void {
       if (!cfg.excludes.includes(p)) await patchConfig({ excludes: [...cfg.excludes, p] });
       // Drop anything already indexed at or under the excluded path.
       const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
-      if (under.length) await aiIndex.remove(under);
+      if (under.length) {
+        await aiIndex.remove(under);
+        keywordStore.remove(under);
+      }
       await watcher.refresh(); // teach the watcher to ignore the new exclusion
     }),
   );
@@ -147,15 +157,38 @@ export function registerIndexHandlers(): void {
           { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
           vectorStore,
           query,
-          { rootPath, k: opts?.k },
+          { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
         );
       }),
   );
 }
 
+/**
+ * Populate the in-memory BM25 store from all chunks already in the DB.
+ * Skips the embedding BLOBs so this is fast at personal-filesystem scale.
+ * Non-fatal: a failure leaves the store empty and search falls back to vector-only.
+ */
+async function rebuildKeywordIndex(): Promise<void> {
+  const chunks = await aiIndex.allChunks();
+  const byPath = new Map<string, { chunkIx: number; text: string }[]>();
+  for (const c of chunks) {
+    // Image chunks (modelId === IMAGE_MODEL_ID) carry the basename as text and
+    // belong only in the vector lane. Exclude them so the keyword store stays
+    // consistent with how Indexer.process() updates it (text-only writes).
+    if (c.modelId === IMAGE_MODEL_ID) continue;
+    const arr = byPath.get(c.path) ?? [];
+    arr.push({ chunkIx: c.chunkIx, text: c.text });
+    byPath.set(c.path, arr);
+  }
+  for (const [path, pathChunks] of byPath) keywordStore.upsert(path, pathChunks);
+}
+
 /** Arm the watcher and resume leftover jobs, if indexing was enabled. Call at startup. */
 export async function startIndexBackground(): Promise<void> {
   if (!(await indexConfig()).enabled) return;
+  // Rebuild BM25 from DB before arming the watcher so keyword search is
+  // available immediately on the first query after startup.
+  try { await rebuildKeywordIndex(); } catch { /* non-fatal; search falls back to vector-only */ }
   await watcher.start();
   void indexer.resume();
 }

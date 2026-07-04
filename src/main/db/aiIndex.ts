@@ -54,6 +54,7 @@ export async function upsertState(state: IndexState): Promise<void> {
         size: sql`excluded.size`,
         contentHash: sql`excluded.content_hash`,
         modelId: sql`excluded.model_id`,
+        indexVersion: sql`excluded.index_version`,
         indexedAt: sql`excluded.indexed_at`,
         status: sql`excluded.status`,
       },
@@ -104,6 +105,18 @@ export async function statesUnder(underPath?: string): Promise<IndexState[]> {
       )
     : await base;
   return rows as IndexState[];
+}
+
+/**
+ * All indexed chunks, without their embedding BLOBs — used to rebuild the
+ * in-memory BM25 store at startup. Omitting the BLOB makes the query cheap
+ * regardless of how many files are indexed.
+ */
+export async function allChunks(): Promise<{ path: string; chunkIx: number; text: string; modelId: string }[]> {
+  return db()
+    .select({ path: fileChunks.path, chunkIx: fileChunks.chunkIx, text: fileChunks.text, modelId: fileChunks.modelId })
+    .from(fileChunks)
+    .orderBy(asc(fileChunks.path), asc(fileChunks.chunkIx));
 }
 
 /**

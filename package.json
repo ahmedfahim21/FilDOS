@@ -24,6 +24,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "vitest run --config vitest.eval.config.ts",
     "test:e2e": "electron-vite build && playwright test",
     "prepare": "node scripts/install-hooks.mjs",
     "db:generate": "drizzle-kit generate"
@@ -70,6 +71,7 @@
     "hugeicons-react": "^0.4.0",
     "lucide-react": "^1.18.0",
     "mammoth": "^1.12.0",
+    "minisearch": "^7.2.0",
     "opendal": "^0.49.4",
     "pdfjs-dist": "^6.0.227",
     "react": "^18.3.1",

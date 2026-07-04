@@ -184,10 +184,15 @@ export interface IndexState {
   mtime: number;
   /** Size in bytes. */
   size: number;
-  /** Content hash that confirms a real change; null when not computed. */
+  /** Content hash (first+last 64 KB, SHA-256 prefix); null for images or hash failures. */
   contentHash: string | null;
   /** Embedding model that produced this file's chunks. */
   modelId: string;
+  /**
+   * Incremented in INDEX_VERSION (indexer.ts) whenever chunking or extraction
+   * logic changes, so old chunks are re-embedded even when the file is unchanged.
+   */
+  indexVersion: number;
   /** When the file was last indexed, in ms. */
   indexedAt: number;
   status: IndexStatus;
