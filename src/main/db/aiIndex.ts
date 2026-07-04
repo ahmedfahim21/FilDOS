@@ -54,6 +54,7 @@ export async function upsertState(state: IndexState): Promise<void> {
         size: sql`excluded.size`,
         contentHash: sql`excluded.content_hash`,
         modelId: sql`excluded.model_id`,
+        indexVersion: sql`excluded.index_version`,
         indexedAt: sql`excluded.indexed_at`,
         status: sql`excluded.status`,
       },

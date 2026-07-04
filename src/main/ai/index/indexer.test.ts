@@ -13,7 +13,7 @@ import { isUnder } from './ignore';
 
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
-import { isStale } from './indexer';
+import { INDEX_VERSION, isStale } from './indexer';
 
 // ---------------------------------------------------------------------------
 // isStale — truth table
@@ -26,6 +26,7 @@ const BASE: IndexState = {
   size: 512,
   contentHash: null,
   modelId: 'm1',
+  indexVersion: INDEX_VERSION,
   indexedAt: 0,
   status: 'indexed',
 };
@@ -40,6 +41,8 @@ describe('isStale', () => {
   it('stale when size changed', () =>
     expect(isStale(BASE, { mtimeMs: 1000, size: 9999 }, 'm1')).toBe(true));
   it('stale when modelId changed', () => expect(isStale(BASE, STAT, 'm2')).toBe(true));
+  it('stale when indexVersion is behind current INDEX_VERSION', () =>
+    expect(isStale({ ...BASE, indexVersion: INDEX_VERSION - 1 }, STAT, 'm1')).toBe(true));
   it('fresh when all fields match', () => expect(isStale(BASE, STAT, 'm1')).toBe(false));
   it('fresh even when prior status is skipped', () =>
     expect(isStale({ ...BASE, status: 'skipped' }, STAT, 'm1')).toBe(false));

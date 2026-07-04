@@ -71,6 +71,7 @@ export const indexState = sqliteTable('index_state', {
   size: integer('size').notNull(),
   contentHash: text('content_hash'),
   modelId: text('model_id').notNull(),
+  indexVersion: integer('index_version').notNull().default(0),
   indexedAt: integer('indexed_at').notNull(),
   status: text('status').notNull(),
 });

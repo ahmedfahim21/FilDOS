@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { IndexProgress, IndexState } from '@shared/types';
@@ -24,10 +25,48 @@ const MAX_DEPTH = 64;
 const EMIT_INTERVAL_MS = 120;
 
 /**
+ * Bump this when chunking or extraction logic changes. Any file whose stored
+ * indexVersion doesn't match triggers a full re-embed on the next run, even
+ * if its mtime/size/model haven't changed.
+ */
+export const INDEX_VERSION = 1;
+
+/** How many bytes to sample from the start and end of a large file for the hash. */
+const HASH_SAMPLE = 65_536; // 64 KB
+
+/**
+ * Cheap content hash: SHA-256 of the first+last 64 KB (or the whole file when
+ * smaller). Truncated to 16 hex chars — more than enough for change detection.
+ * Used to distinguish a real content change from a metadata-only mtime bump
+ * (git checkout, cloud-sync re-stat, backup restore) so we skip re-embedding when
+ * the bytes haven't actually changed.
+ */
+async function computeContentHash(path: string, stat: { size: number }): Promise<string> {
+  const fh = await fs.open(path, 'r');
+  try {
+    const h = createHash('sha256');
+    if (stat.size <= HASH_SAMPLE * 2) {
+      const buf = Buffer.allocUnsafe(stat.size);
+      await fh.read(buf, 0, stat.size, 0);
+      h.update(buf);
+    } else {
+      const first = Buffer.allocUnsafe(HASH_SAMPLE);
+      const last = Buffer.allocUnsafe(HASH_SAMPLE);
+      await fh.read(first, 0, HASH_SAMPLE, 0);
+      await fh.read(last, 0, HASH_SAMPLE, stat.size - HASH_SAMPLE);
+      h.update(first).update(last);
+    }
+    return h.digest('hex').slice(0, 16);
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
  * True when a file needs to be re-embedded: no prior state, previous run
- * errored, or mtime/size/model changed. Single source of truth — both the
- * crawl phase (bulk-compare against the states Map) and the process phase
- * (double-check just before embedding) use this function.
+ * errored, mtime/size/model changed, or the indexer version changed. Single
+ * source of truth — both the crawl phase (bulk in-memory compare) and the
+ * process phase (double-check just before embedding) use this function.
  */
 export function isStale(
   prev: IndexState | null | undefined,
@@ -35,6 +74,7 @@ export function isStale(
   modelId: string,
 ): boolean {
   if (!prev || prev.status === 'error') return true;
+  if (prev.indexVersion !== INDEX_VERSION) return true;
   return prev.mtime !== stat.mtimeMs || prev.size !== stat.size || prev.modelId !== modelId;
 }
 
@@ -325,9 +365,29 @@ export class Indexer {
     }
 
     const modelId = this.modelFor(path);
-    // Already current under the right model — re-run is a no-op.
     const prev = await aiIndex.getState(path);
     if (!isStale(prev, stat, modelId)) return;
+
+    // For text files, compute a content hash and skip re-embedding when only
+    // metadata changed (mtime bumped by git/sync/backup, bytes unchanged).
+    // Images are skipped — CLIP re-embed is cheap and the basename snippet
+    // can't change without the file moving.
+    if (!isImage(path)) {
+      let contentHash: string | null = null;
+      try { contentHash = await computeContentHash(path, stat); } catch { /* ignore */ }
+      if (
+        contentHash !== null &&
+        prev?.status !== 'error' &&
+        prev?.indexVersion === INDEX_VERSION &&
+        prev?.modelId === modelId &&
+        prev?.contentHash !== null &&
+        contentHash === prev.contentHash
+      ) {
+        // Metadata-only touch — update bookkeeping without re-embedding.
+        await aiIndex.upsertState({ ...prev, mtime: stat.mtimeMs, size: stat.size, contentHash, indexedAt: Date.now() });
+        return;
+      }
+    }
 
     await this.ensureModel(provider, modelId);
 
@@ -342,8 +402,11 @@ export class Indexer {
       return;
     }
 
+    let contentHash: string | null = null;
+    try { contentHash = await computeContentHash(path, stat); } catch { /* ignore */ }
+
     const text = await extractText(path);
-    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed'));
+    await aiIndex.upsertState(this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed', contentHash));
 
     // Calibrate the chunk window for this file's actual token density. A 1000-char
     // sample is enough to determine chars/token; dense code or CJK runs ~2 chars/token
@@ -390,7 +453,17 @@ export class Indexer {
     stat: { mtimeMs: number; size: number },
     modelId: string,
     status: IndexState['status'],
+    contentHash: string | null = null,
   ): IndexState {
-    return { path, mtime: stat.mtimeMs, size: stat.size, contentHash: null, modelId, indexedAt: Date.now(), status };
+    return {
+      path,
+      mtime: stat.mtimeMs,
+      size: stat.size,
+      contentHash,
+      modelId,
+      indexVersion: INDEX_VERSION,
+      indexedAt: Date.now(),
+      status,
+    };
   }
 }

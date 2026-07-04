@@ -97,6 +97,12 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_index_jobs_status ON index_jobs(status, enqueued_at);
   `,
+  `
+  -- Add index_version to track chunker/extractor changes. Existing rows default
+  -- to 0 so they are flagged stale when INDEX_VERSION (currently 1) is introduced,
+  -- triggering a one-time full re-index on the next run.
+  ALTER TABLE index_state ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */
