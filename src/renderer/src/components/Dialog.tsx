@@ -84,7 +84,7 @@ export function PromptDialog({
   );
 }
 
-/** A confirmation dialog (used for Move to Trash). */
+/** A confirmation dialog (used for Delete). */
 export function ConfirmDialog({
   title,
   message,

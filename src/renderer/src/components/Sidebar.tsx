@@ -13,6 +13,8 @@ const PROVIDER_NAMES: Record<string, string> = {
   gdrive: 'Google Drive',
   dropbox: 'Dropbox',
   onedrive: 'OneDrive',
+  s3: 'Amazon S3',
+  ipfs: 'IPFS',
   mega: 'Mega',
 };
 
@@ -37,7 +39,6 @@ export function Sidebar({
   onDropPath,
   onOpenTag,
   onOpenRecents,
-  onOpenTrash,
   onOpenCloudConnect,
   onOpenSettings,
   onDropOnTag,
@@ -49,7 +50,6 @@ export function Sidebar({
   onDropPath: (path: string, e: DragEvent) => void;
   onOpenTag: (tag: Tag) => void;
   onOpenRecents: () => void;
-  onOpenTrash: () => void;
   onOpenCloudConnect: () => void;
   onOpenSettings: () => void;
   onDropOnTag: (tag: Tag, e: DragEvent) => void;
@@ -296,14 +296,6 @@ export function Sidebar({
       >
         <Icon name="clock" size={16} />
         <span>Recents</span>
-      </button>
-      <button
-        className={itemClass(activePage?.kind === 'trash')}
-        onClick={onOpenTrash}
-        title="Trash"
-      >
-        <Icon name="trash" size={16} />
-        <span>Trash</span>
       </button>
       <button
         className={itemClass(activePage?.kind === 'settings')}

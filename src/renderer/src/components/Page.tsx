@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * In-flow page shell for the Trash / Recents / Tag-files views. Fills the main
+ * In-flow page shell for the Recents / Tag-files views. Fills the main
  * content area in place of the file browser; the toolbar (Back/Forward + the
  * breadcrumb, which shows the page name) is the navigation chrome, so the page
  * itself is just a thin action bar over a list — mirroring how a folder renders

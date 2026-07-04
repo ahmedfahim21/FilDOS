@@ -93,7 +93,6 @@ rather than hand-rolling.
 - `fs/watch.ts` — single non-recursive `fs.watch` on the focused dir, debounced,
   emits `Events.dirChanged` to the renderer.
 - `fs/thumbnails.ts` — `nativeImage` thumbnails as data URLs, in-memory LRU-ish cache.
-- `fs/trashTracker.ts` — hybrid trash (see below).
 - `db/` — SQLite metadata layer (see below): tags, recents, per-folder views.
 - `prefs.ts` — prefs in the SQLite `prefs` table (JSON values).
 - `ai/` — the AI seam (see below): provider registry + embedded embedding worker.
@@ -203,7 +202,7 @@ State via React context (no Redux):
   panel stay in sync.
 - `components/` — `FileList` (virtualized, resizable cols, inline rename, DnD) and
   `GridView` (thumbnails, icon-size variants) share `viewTypes.ts#FileViewProps`.
-  `RecentsView` / `TrashView` / `TagFilesView` are in-flow **page views** (shared
+  `RecentsView` / `TagFilesView` are in-flow **page views** (shared
   `Page` shell in `Page.tsx`) that replace the file browser in `<main>`: they are
   history entries (`NavLocation` in `state/navigation.tsx`), so the toolbar
   Back/Forward arrows traverse them alongside folders, and `nav.page` selects
@@ -213,13 +212,13 @@ State via React context (no Redux):
 Runtime deps are `@tanstack/react-virtual` (virtualization) and `drizzle-orm`
 (pure-TS, no binaries).
 
-### Trash model = Hybrid (decided with the user)
+### Delete model = OS Trash only (no FilDOS trash feature)
 
-Deletes go to the real OS Trash via `shell.trashItem`. We additionally log where
-each item landed by diffing `~/.Trash` before/after (macOS only) so **Trash viewer
-restore and Cmd+Z undo-of-delete are best-effort** — they can fail if the original
-location is occupied or the OS renamed on collision, and the UI says so. Code:
-`src/main/fs/trashTracker.ts`. On non-macOS it still trashes but skips tracking.
+Delete moves items to the real OS Trash/Recycle Bin via `shell.trashItem`
+(`Channels.trash` in `fs/handlers.ts`; remote paths delegate to the provider's
+`trash`). FilDOS keeps **no trash of its own** — there is no in-app Trash view,
+restore, empty-trash, or Cmd+Z undo-of-delete; recover from Finder/Explorer if
+needed. (An earlier hybrid `~/.Trash`-diffing tracker was removed as unreliable.)
 
 ## Gotchas
 
