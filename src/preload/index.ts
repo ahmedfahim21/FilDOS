@@ -29,10 +29,6 @@ const fsapi: FsApi = {
   move: (paths, destDir) => ipcRenderer.invoke(Channels.move, paths, destDir),
   duplicate: (path) => ipcRenderer.invoke(Channels.duplicate, path),
   trash: (paths) => ipcRenderer.invoke(Channels.trash, paths),
-  listTrashed: () => ipcRenderer.invoke(Channels.listTrashed),
-  restoreTrashed: (ids) => ipcRenderer.invoke(Channels.restoreTrashed, ids),
-  emptyTrash: () => ipcRenderer.invoke(Channels.emptyTrash),
-  openOsTrash: () => ipcRenderer.invoke(Channels.openOsTrash),
   open: (path) => ipcRenderer.invoke(Channels.open, path),
   reveal: (path) => ipcRenderer.invoke(Channels.reveal, path),
   quickAccess: () => ipcRenderer.invoke(Channels.quickAccess),
@@ -99,6 +95,8 @@ contextBridge.exposeInMainWorld('dnd', {
 // Cloud account management.
 const cloudApi: CloudApi = {
   connect: (providerId) => ipcRenderer.invoke(Channels.cloudConnect, providerId),
+  connectConfig: (providerId, options) =>
+    ipcRenderer.invoke(Channels.cloudConnectConfig, providerId, options),
   listAccounts: () => ipcRenderer.invoke(Channels.cloudListAccounts),
   disconnect: (accountId) => ipcRenderer.invoke(Channels.cloudDisconnect, accountId),
 };

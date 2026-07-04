@@ -80,17 +80,6 @@ export interface SemanticHit extends SearchHit {
   snippet: string;
 }
 
-/** A record of something moved to the Trash, used for best-effort restore. */
-export interface TrashedItem {
-  id: string;
-  name: string;
-  /** Where it lived before deletion. */
-  originalPath: string;
-  /** Where it landed in the OS Trash (best-effort resolved). */
-  trashedPath: string;
-  deletedAt: number;
-}
-
 /** Column the file views sort by. */
 export type SortKey = 'name' | 'size' | 'type' | 'modified';
 export type SortDir = 'asc' | 'desc';
@@ -300,16 +289,8 @@ export interface FsApi {
   move(paths: string[], destDir: string): Promise<Result<Entry[]>>;
   /** Copy an entry beside itself with a " copy" suffix. */
   duplicate(path: string): Promise<Result<Entry>>;
-  /** Move to OS Trash; returns records enabling best-effort restore/undo. */
-  trash(paths: string[]): Promise<Result<TrashedItem[]>>;
-  /** List items FilDOS has trashed (and still tracks). */
-  listTrashed(): Promise<Result<TrashedItem[]>>;
-  /** Best-effort restore of tracked trashed items to their original location. */
-  restoreTrashed(ids: string[]): Promise<Result<void>>;
-  /** Permanently delete all tracked trashed items. */
-  emptyTrash(): Promise<Result<void>>;
-  /** Open the OS Trash in the system file manager. */
-  openOsTrash(): Promise<Result<void>>;
+  /** Delete entries by moving them to the OS Trash/Recycle Bin (no in-app restore). */
+  trash(paths: string[]): Promise<Result<void>>;
   open(path: string): Promise<Result<void>>;
   reveal(path: string): Promise<Result<void>>;
   quickAccess(): Promise<Result<QuickAccessItem[]>>;
@@ -372,6 +353,8 @@ export interface AccountRecord {
 export interface CloudApi {
   /** Start an OAuth flow for the given provider; returns the saved account. */
   connect(providerId: string): Promise<Result<AccountRecord>>;
+  /** Connect a config-based backend (S3/IPFS/…) from a credentials/options object. */
+  connectConfig(providerId: string, options: Record<string, string>): Promise<Result<AccountRecord>>;
   /** All stored cloud accounts. */
   listAccounts(): Promise<Result<AccountRecord[]>>;
   /** Remove an account and its stored credentials. */
