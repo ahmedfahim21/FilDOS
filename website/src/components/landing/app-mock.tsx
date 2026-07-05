@@ -1,24 +1,26 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
+import Image from "next/image";
 import {
-  ArrowUp,
   ChevronLeft,
   ChevronRight,
   Clock,
-  Cloud,
-  EyeOff,
+  Command,
   FilePlus,
   Folder,
   FolderPlus,
   HardDrive,
   LayoutGrid,
-  List,
   Plus,
   RotateCw,
   Search,
+  Send,
   Settings,
   Sparkles,
+  X,
 } from "lucide-react";
-import { Logo } from "../logo";
+import { Logo, Mark } from "../logo";
 import { cn } from "@/lib/utils";
 
 /** Fixed design size of the mock; the hero scales it to fit the screen. */
@@ -29,9 +31,9 @@ export const MOCK_H = 500;
  * File-type icons — the exact silhouettes from the desktop app's
  * `src/renderer/src/assets/file-icons/*.svg` (folded sheet + accent fold).
  */
-function Sheet({ a, children }: { a: string; children?: ReactNode }) {
+function Sheet({ a, className, children }: { a: string; className?: string; children?: ReactNode }) {
   return (
-    <svg viewBox="0 0 56 56" className="size-10" aria-hidden>
+    <svg viewBox="0 0 56 56" className={cn("size-9", className)} aria-hidden>
       <path
         d="M16.5 5 H35 L43 13 V48.5 A2.5 2.5 0 0 1 40.5 51 H16.5 A2.5 2.5 0 0 1 14 48.5 V7.5 A2.5 2.5 0 0 1 16.5 5 Z"
         fill={a}
@@ -46,8 +48,8 @@ function Sheet({ a, children }: { a: string; children?: ReactNode }) {
   );
 }
 
-const DocumentIcon = () => (
-  <Sheet a="#6E9BEE">
+const DocumentIcon = ({ className }: { className?: string }) => (
+  <Sheet a="#6E9BEE" className={className}>
     <rect x="19.5" y="22" width="13" height="2.6" rx="1.3" fill="#6E9BEE" />
     <rect x="19.5" y="29" width="18" height="2.6" rx="1.3" fill="#6E9BEE" fillOpacity="0.45" />
     <rect x="19.5" y="35.5" width="18" height="2.6" rx="1.3" fill="#6E9BEE" fillOpacity="0.45" />
@@ -55,8 +57,8 @@ const DocumentIcon = () => (
   </Sheet>
 );
 
-const PdfIcon = () => (
-  <Sheet a="#e0564e">
+const PdfIcon = ({ className }: { className?: string }) => (
+  <Sheet a="#e0564e" className={className}>
     <rect x="19.5" y="21.5" width="13" height="2.4" rx="1.2" fill="#e0564e" fillOpacity="0.4" />
     <rect x="19.5" y="27" width="17" height="2.4" rx="1.2" fill="#e0564e" fillOpacity="0.4" />
     <rect x="18" y="33.5" width="21" height="10" rx="2.5" fill="#e0564e" />
@@ -75,8 +77,8 @@ const PdfIcon = () => (
   </Sheet>
 );
 
-const SpreadsheetIcon = () => (
-  <Sheet a="#4FC9B8">
+const SpreadsheetIcon = ({ className }: { className?: string }) => (
+  <Sheet a="#4FC9B8" className={className}>
     {[24, 30.6, 37.2].map((y, row) =>
       [20, 26.6, 33.2].map((x) => (
         <rect
@@ -94,15 +96,15 @@ const SpreadsheetIcon = () => (
   </Sheet>
 );
 
-const ImageIcon = () => (
-  <Sheet a="#F26D6D">
+const ImageIcon = ({ className }: { className?: string }) => (
+  <Sheet a="#F26D6D" className={className}>
     <circle cx="22" cy="24" r="3" fill="#F26D6D" />
     <path d="M16 44 L24 33 L29 39 L33 34 L41 44 Z" fill="#F26D6D" fillOpacity="0.7" />
   </Sheet>
 );
 
-const PresentationIcon = () => (
-  <Sheet a="#F9A85C">
+const PresentationIcon = ({ className }: { className?: string }) => (
+  <Sheet a="#F9A85C" className={className}>
     <rect x="18.5" y="22" width="20" height="19" rx="2" fill="#F9A85C" fillOpacity="0.1" stroke="#F9A85C" strokeOpacity="0.5" strokeWidth="1.2" />
     <rect x="22" y="32" width="3" height="5" rx="1" fill="#F9A85C" />
     <rect x="27" y="29" width="3" height="8" rx="1" fill="#F9A85C" />
@@ -110,8 +112,8 @@ const PresentationIcon = () => (
   </Sheet>
 );
 
-const FolderIcon = ({ a = "#F9A85C" }: { a?: string }) => (
-  <svg viewBox="0 0 56 56" className="size-10" aria-hidden>
+const FolderGlyph = ({ a = "#F9A85C", className }: { a?: string; className?: string }) => (
+  <svg viewBox="0 0 56 56" className={cn("size-9", className)} aria-hidden>
     <path
       d="M7 19 A3 3 0 0 1 10 16 H22 L26 20 H46 A3 3 0 0 1 49 23 V43 A3 3 0 0 1 46 46 H10 A3 3 0 0 1 7 43 Z"
       fill={a}
@@ -137,15 +139,10 @@ const TAGS = [
   { label: "Important", color: "bg-strawberry", count: 3 },
 ];
 
-const TILES: Array<{
-  name: string;
-  icon: ReactNode;
-  dots?: string[];
-  selected?: boolean;
-}> = [
-  { name: "Invoices", icon: <FolderIcon /> },
-  { name: "Receipts", icon: <FolderIcon a="#4fc9b8" /> },
-  { name: "Tax 2026", icon: <FolderIcon a="#6e9bee" />, dots: ["bg-blueberry"] },
+const TILES: Array<{ name: string; icon: ReactNode; dots?: string[]; selected?: boolean }> = [
+  { name: "Invoices", icon: <FolderGlyph /> },
+  { name: "Receipts", icon: <FolderGlyph a="#4fc9b8" /> },
+  { name: "Tax 2026", icon: <FolderGlyph a="#6e9bee" />, dots: ["bg-blueberry"] },
   { name: "lease-agreement.pdf", icon: <PdfIcon /> },
   { name: "tax-summary.xlsx", icon: <SpreadsheetIcon />, selected: true, dots: ["bg-strawberry"] },
   { name: "notes-q1.docx", icon: <DocumentIcon /> },
@@ -155,10 +152,56 @@ const TILES: Array<{
   { name: "id-photo.jpg", icon: <ImageIcon />, dots: ["bg-grape"] },
 ];
 
-/* ------------------------------ The mock ------------------------------- */
+/** Filter chips of the SearchOverlay — dot + label, one active. */
+const TYPE_CHIPS = [
+  { label: "Folders", dot: "bg-blueberry" },
+  { label: "Docs", dot: "bg-mango", active: "border-mango/40 bg-mango/10 text-mango" },
+  { label: "Images", dot: "bg-bubblegum" },
+  { label: "Audio", dot: "bg-grape" },
+  { label: "Video", dot: "bg-strawberry" },
+  { label: "Code", dot: "bg-mint" },
+];
+
+const BEST_MATCHES: Array<{ icon: ReactNode; name: string; sub: string; badge: string }> = [
+  { icon: <ImageIcon className="size-5" />, name: "receipt-scan.png", sub: "scanned grocery receipt · March 2026", badge: "Best" },
+  { icon: <PdfIcon className="size-5" />, name: "lease-agreement.pdf", sub: "annual lease — rent receipts attached", badge: "92" },
+  { icon: <SpreadsheetIcon className="size-5" />, name: "tax-summary.xlsx", sub: "itemised deductions and receipts", badge: "88" },
+  { icon: <PdfIcon className="size-5" />, name: "clinic-invoice.pdf", sub: "medical receipt · reimbursable", badge: "81" },
+];
+
+const NAME_MATCHES: Array<{ icon: ReactNode; name: string; sub: string }> = [
+  { icon: <FolderGlyph a="#4fc9b8" className="size-5" />, name: "Receipts", sub: "Home › Documents › Finance" },
+  { icon: <ImageIcon className="size-5" />, name: "receipt-scan.png", sub: "Home › Documents › Finance" },
+];
+
+/** Chat transcript — reference only. */
+const CHAT: Array<{
+  role: "user" | "assistant";
+  text: string;
+  files?: Array<{ icon: ReactNode; name: string }>;
+}> = [
+  { role: "user", text: "Which files have my tax receipts?" },
+  {
+    role: "assistant",
+    text: "Found 4 files that look like tax receipts in Documents / Finance:",
+    files: [
+      { icon: <ImageIcon className="size-3.5" />, name: "receipt-scan.png" },
+      { icon: <SpreadsheetIcon className="size-3.5" />, name: "tax-summary.xlsx" },
+      { icon: <PdfIcon className="size-3.5" />, name: "lease-agreement.pdf" },
+      { icon: <PdfIcon className="size-3.5" />, name: "clinic-invoice.pdf" },
+    ],
+  },
+  { role: "user", text: "Summarise the tax summary." },
+  {
+    role: "assistant",
+    text: "tax-summary.xlsx totals $12,480 in deductions across 38 receipts — the biggest categories are medical (34%) and home office (21%).",
+  },
+];
+
+/* ------------------------------ Sub-parts ------------------------------ */
 
 const sectionTitle =
-  "px-1.5 pt-2.5 pb-1 font-medium text-[8px] uppercase tracking-wider text-mist";
+  "px-1.5 pt-2.5 pb-1 font-semibold text-[8px] uppercase tracking-wider text-mist";
 
 function SideItem({
   icon,
@@ -174,8 +217,8 @@ function SideItem({
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-1.5 py-[3px] text-[10px] text-ink/80",
-        active && "bg-ink/[0.09] font-medium text-ink"
+        "flex items-center gap-1.5 rounded-md px-1.5 py-[3px] text-[10px] text-ink/80 transition-colors",
+        active ? "bg-ink/[0.09] font-medium text-ink" : "hover:bg-ink/[0.05]"
       )}
     >
       <span className={cn("text-mist", active && "text-ink")}>{icon}</span>
@@ -185,12 +228,12 @@ function SideItem({
   );
 }
 
-function ToolButton({ children, active }: { children: ReactNode; active?: boolean }) {
+function NavBtn({ children, dim }: { children: ReactNode; dim?: boolean }) {
   return (
     <span
       className={cn(
-        "grid size-6 place-items-center rounded-md text-mist",
-        active && "bg-ink/[0.09] text-ink"
+        "grid size-6 place-items-center rounded-md text-ink/70 transition-colors hover:bg-ink/[0.06]",
+        dim && "opacity-40"
       )}
     >
       {children}
@@ -198,154 +241,402 @@ function ToolButton({ children, active }: { children: ReactNode; active?: boolea
   );
 }
 
-/**
- * A static, pixel-fixed (MOCK_W × MOCK_H) replica of the FilDOS desktop app —
- * sidebar (Quick Access / Drives / Cloud / Tags), toolbar with breadcrumb +
- * filter, grid view with the app's own file-type icons, and the status bar.
- */
-export function AppMock() {
+/* ─────────────────────── Search overlay (filled) ─────────────────────── */
+
+function SearchOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="flex overflow-hidden bg-white text-ink"
-      style={{ width: MOCK_W, height: MOCK_H }}
+      className="animate-in fade-in-0 absolute inset-0 z-40 bg-ink/20 backdrop-blur-[2px] duration-150"
+      onClick={onClose}
     >
-      {/* Sidebar */}
-      <aside className="flex w-44 shrink-0 flex-col border-r border-ink/8 bg-white px-2 pb-2">
-        {/* traffic-light zone */}
-        <div className="flex items-center gap-1.5 px-1 pb-2 pt-2.5">
-          <span className="size-2.5 rounded-full bg-[#ff5f57]" />
-          <span className="size-2.5 rounded-full bg-[#febc2e]" />
-          <span className="size-2.5 rounded-full bg-[#28c840]" />
-        </div>
-        <Logo className="px-1 pb-2 text-[13px]" />
-
-        <div className={sectionTitle}>Quick Access</div>
-        {QUICK_ACCESS.map((label) => (
-          <SideItem
-            key={label}
-            icon={<Folder className="size-3" />}
-            label={label}
-            active={label === "Documents"}
-          />
-        ))}
-
-        <div className={sectionTitle}>Drives</div>
-        <div className="rounded-md px-1.5 py-[3px]">
-          <div className="flex items-center gap-1.5 text-[10px] text-ink/80">
-            <HardDrive className="size-3 text-mist" />
-            Macintosh HD
-          </div>
-          <div className="mt-1 pl-[18px]">
-            <div className="h-1 w-full overflow-hidden rounded-full bg-cloud">
-              <div className="h-full w-[62%] rounded-full bg-ink/30" />
-            </div>
-            <div className="mt-0.5 text-[7px] text-mist">616 GB of 994 GB</div>
-          </div>
+      <div
+        className="animate-in fade-in-0 zoom-in-95 mx-auto mt-9 w-[500px] max-w-[92%] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-ink/10 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Input row */}
+        <div className="flex h-10 items-center gap-2 border-b border-ink/8 px-3.5">
+          <Sparkles className="size-4 shrink-0 text-mint" />
+          <span className="flex-1 text-[12px] text-ink">receipts from tax season</span>
+          <kbd className="rounded border border-ink/15 bg-cloud px-1.5 py-0.5 font-mono text-[8px] text-mist">
+            esc
+          </kbd>
         </div>
 
-        <div className={sectionTitle}>Cloud</div>
-        <SideItem icon={<Cloud className="size-3" />} label="Google Drive" />
-        <SideItem icon={<Plus className="size-3" />} label="Connect…" />
-
-        <div className={sectionTitle}>Tags</div>
-        {TAGS.map(({ label, color, count }) => (
-          <SideItem
-            key={label}
-            icon={<span className={cn("mx-0.5 block size-1.5 rounded-full", color)} />}
-            label={label}
-            right={<span className="text-[8px] text-mist">{count}</span>}
-          />
-        ))}
-
-        <div className="min-h-2 flex-1" />
-        <SideItem icon={<Clock className="size-3" />} label="Recents" />
-        <SideItem icon={<Settings className="size-3" />} label="Settings" />
-      </aside>
-
-      {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Toolbar */}
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-ink/8 px-2">
-          <ToolButton>
-            <ChevronLeft className="size-3.5 text-ink/70" />
-          </ToolButton>
-          <ToolButton>
-            <ChevronRight className="size-3.5 opacity-40" />
-          </ToolButton>
-          <ToolButton>
-            <ArrowUp className="size-3.5" />
-          </ToolButton>
-          <ToolButton>
-            <RotateCw className="size-3" />
-          </ToolButton>
-
-          {/* Breadcrumb address bar */}
-          <div className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-[10px] font-semibold whitespace-nowrap">
-            <span className="text-mist">Home</span>
-            <span className="text-mist opacity-60">›</span>
-            <span className="text-mist">Documents</span>
-            <span className="text-mist opacity-60">›</span>
-            <span>Finance</span>
+        {/* Filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-ink/8 px-3 py-2">
+          <div className="mr-1 flex items-center rounded-full bg-cloud p-0.5 text-[9px]">
+            <span className="rounded-full bg-white px-1.5 py-0.5 font-medium text-ink shadow-sm">
+              Everywhere
+            </span>
+            <span className="px-1.5 py-0.5 text-mist">This folder</span>
           </div>
-
-          {/* Filter box */}
-          <div className="flex h-6 w-36 shrink-0 items-center gap-1 rounded-md border border-ink/10 bg-white px-1.5">
-            <Search className="size-3 text-mist" />
-            <span className="flex-1 text-[9px] text-mist">Filter…</span>
-            <span className="rounded bg-cloud px-1 py-px text-[7px] text-mist">Subfolders</span>
-          </div>
-
-          <ToolButton>
-            <Sparkles className="size-3.5 text-mint" />
-          </ToolButton>
-          <ToolButton>
-            <List className="size-3.5" />
-          </ToolButton>
-          <ToolButton active>
-            <LayoutGrid className="size-3.5" />
-          </ToolButton>
-          <ToolButton>
-            <EyeOff className="size-3.5" />
-          </ToolButton>
-          <ToolButton>
-            <FilePlus className="size-3.5" />
-          </ToolButton>
-          <ToolButton>
-            <FolderPlus className="size-3.5" />
-          </ToolButton>
-        </div>
-
-        {/* Grid view */}
-        <div className="grid flex-1 grid-cols-5 content-start gap-1 overflow-hidden p-2.5">
-          {TILES.map(({ name, icon, dots, selected }) => (
-            <div
-              key={name}
+          {TYPE_CHIPS.map((c) => (
+            <span
+              key={c.label}
               className={cn(
-                "flex flex-col items-center gap-1.5 rounded-lg p-1.5 pt-2.5",
-                selected && "bg-ink/[0.08] ring-1 ring-inset ring-ink/20"
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px]",
+                c.active ?? "border-ink/12 text-mist"
               )}
             >
-              {icon}
-              <div className="flex w-full items-center justify-center gap-1 text-center text-[8.5px] font-medium leading-tight">
-                {dots && (
-                  <span className="flex gap-0.5">
-                    {dots.map((d) => (
-                      <span key={d} className={cn("size-[5px] rounded-full", d)} />
-                    ))}
-                  </span>
+              <span className={cn("size-1.5 rounded-full", c.dot)} />
+              {c.label}
+            </span>
+          ))}
+        </div>
+
+        {/* Results */}
+        <div className="max-h-[280px] overflow-hidden py-1.5">
+          <div className="flex items-center gap-1.5 px-4 pb-1 pt-2 font-semibold text-[8px] uppercase tracking-wider text-mist">
+            <Sparkles className="size-2.5 text-mint" />
+            Best matches
+          </div>
+          {BEST_MATCHES.map((r, i) => (
+            <div
+              key={r.name}
+              className={cn(
+                "mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5",
+                i === 0 && "bg-ink/[0.06]"
+              )}
+            >
+              <span className="shrink-0">{r.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] text-ink">{r.name}</div>
+                <div className="truncate text-[9px] text-mist">{r.sub}</div>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 rounded-sm px-1.5 py-0.5 text-[8px] font-medium tabular-nums",
+                  r.badge === "Best" ? "bg-mint/15 text-mint" : "bg-cloud text-mist"
                 )}
-                <span className="truncate">{name}</span>
+              >
+                {r.badge}
+              </span>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-1.5 px-4 pb-1 pt-2.5 font-semibold text-[8px] uppercase tracking-wider text-mist">
+            <Search className="size-2.5 text-blueberry" />
+            Name matches
+          </div>
+          {NAME_MATCHES.map((r) => (
+            <div key={r.name} className="mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
+              <span className="shrink-0">{r.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] text-ink">{r.name}</div>
+                <div className="truncate text-[9px] text-mist">{r.sub}</div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Status bar */}
-        <div className="flex shrink-0 items-center justify-between border-t border-ink/8 px-3 py-1 text-[8px] text-mist">
-          <span>10 items</span>
-          <span>1 selected · 84 KB</span>
+        {/* Footer hints */}
+        <div className="flex items-center justify-between border-t border-ink/8 px-4 py-1.5 text-[8px] text-mist">
+          <span>↑↓ Navigate · ↵ Open · ⌘↵ Show in Folder</span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full bg-mint" />
+            Meaning + name search · Everywhere
+          </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── Assistant rail (filled) ─────────────────────── */
+
+function AssistantRail({ onClose }: { onClose: () => void }) {
+  return (
+    <aside className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-ink/8 bg-white shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200">
+      {/* Header */}
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+        <Sparkles className="size-3.5 text-mint" />
+        <span className="text-[11px] font-medium text-ink">Assistant</span>
+        <span className="size-1.5 rounded-full bg-mint" />
+        <button
+          onClick={onClose}
+          aria-label="Close Assistant"
+          className="ml-auto grid size-6 place-items-center rounded-md text-mist transition-colors hover:bg-ink/[0.06] hover:text-ink"
+        >
+          <X className="size-3.5" />
+        </button>
+      </header>
+
+      {/* Transcript */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden p-3">
+        {CHAT.map((m, i) =>
+          m.role === "user" ? (
+            <div key={i} className="max-w-[82%] self-end rounded-2xl rounded-br-sm bg-ink px-2.5 py-1.5 text-[10px] leading-snug text-white">
+              {m.text}
+            </div>
+          ) : (
+            <div key={i} className="flex max-w-[92%] gap-1.5 self-start">
+              <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-lg bg-mint/12 ring-1 ring-mint/20">
+                <Sparkles className="size-3 text-mint" />
+              </span>
+              <div className="min-w-0 rounded-2xl rounded-bl-sm bg-cloud px-2.5 py-1.5 text-[10px] leading-snug text-ink/80">
+                {m.text}
+                {m.files && (
+                  <div className="mt-1.5 flex flex-col gap-1">
+                    {m.files.map((f) => (
+                      <div
+                        key={f.name}
+                        className="flex items-center gap-1.5 rounded-md border border-ink/8 bg-white px-1.5 py-1"
+                      >
+                        <span className="shrink-0">{f.icon}</span>
+                        <span className="truncate font-mono text-[8.5px] text-ink/70">{f.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Composer */}
+      <div className="shrink-0 border-t border-ink/8 p-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white px-2.5 py-1.5">
+          <Sparkles className="size-3.5 text-mist" />
+          <span className="flex-1 text-[10px] text-mist">Ask about your files…</span>
+          <span className="grid size-5 place-items-center rounded-md bg-mint text-white">
+            <Send className="size-2.5" />
+          </span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ------------------------------ The mock ------------------------------- */
+
+type Overlay = "none" | "search" | "ai";
+
+/**
+ * A static, pixel-fixed (MOCK_W × MOCK_H) replica of the FilDOS desktop app.
+ * Mirrors the real chrome: a full-width TopBar (nav · centered search launcher ·
+ * AI button), the sidebar beside the content pane's location Toolbar → grid →
+ * status bar. Pressing the search launcher opens a filled SearchOverlay and the
+ * AI button opens the Assistant rail with a sample conversation — both are
+ * reference-only previews that can be closed.
+ *
+ * `autoOpenSearch` lets the hero scroll sequence pop the SearchOverlay open as
+ * the screen finishes expanding; `searchPressed` first plays a tactile
+ * button-press on the launcher just before it opens. Both stay
+ * user-dismissable in between.
+ */
+export function AppMock({
+  autoOpenSearch = false,
+  searchPressed = false,
+}: {
+  autoOpenSearch?: boolean;
+  searchPressed?: boolean;
+}) {
+  const [overlay, setOverlay] = useState<Overlay>("none");
+
+  // Sync the scroll-driven search demo, but only toggle the search lane so a
+  // manually-opened Assistant rail is never clobbered.
+  useEffect(() => {
+    if (autoOpenSearch) setOverlay("search");
+    else setOverlay((o) => (o === "search" ? "none" : o));
+  }, [autoOpenSearch]);
+
+  return (
+    <div
+      className="relative flex cursor-default flex-col overflow-hidden bg-white text-ink"
+      style={{ width: MOCK_W, height: MOCK_H }}
+    >
+      {/* ── TopBar: window chrome + search + AI ─────────────────────────── */}
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="size-2.5 rounded-full bg-[#ff5f57]" />
+          <span className="size-2.5 rounded-full bg-[#febc2e]" />
+          <span className="size-2.5 rounded-full bg-[#28c840]" />
+        </div>
+        <div className="flex flex-1 items-center gap-0.5">
+          <NavBtn>
+            <ChevronLeft className="size-3.5" />
+          </NavBtn>
+          <NavBtn dim>
+            <ChevronRight className="size-3.5" />
+          </NavBtn>
+          <NavBtn>
+            <RotateCw className="size-3" />
+          </NavBtn>
+        </div>
+        {/* centered search launcher */}
+        <button
+          type="button"
+          onClick={() => setOverlay("search")}
+          className={cn(
+            "group flex h-7 w-full max-w-[300px] items-center gap-2 rounded-md border px-2.5 text-mist transition-all duration-150 ease-out hover:border-ink/15 hover:bg-cloud",
+            searchPressed
+              ? "scale-[0.97] border-mint/50 bg-mint/10 text-ink ring-2 ring-mint/30"
+              : "border-ink/10 bg-cloud/70"
+          )}
+        >
+          <Search
+            className={cn(
+              "size-3.5 shrink-0 transition-colors group-hover:text-ink/70",
+              searchPressed && "text-mint"
+            )}
+          />
+          <span
+            className={cn(
+              "flex-1 text-left text-[10px] leading-none transition-colors group-hover:text-ink/70",
+              searchPressed && "text-ink/70"
+            )}
+          >
+            Search
+          </span>
+          <kbd className="flex items-center gap-0.5 rounded border border-ink/15 px-1 py-0.5 font-mono text-[7px] leading-none">
+            <Command className="size-2" />K
+          </kbd>
+        </button>
+        {/* AI assistant */}
+        <div className="flex flex-1 justify-end">
+          <button
+            type="button"
+            onClick={() => setOverlay((o) => (o === "ai" ? "none" : "ai"))}
+            aria-pressed={overlay === "ai"}
+            className={cn(
+              "flex items-center gap-1 rounded-md bg-ink px-2.5 py-1.5 text-[10px] font-medium text-white transition-all hover:bg-ink/85",
+              overlay === "ai" && "ring-2 ring-mint/50 ring-offset-1"
+            )}
+          >
+            <Mark className="size-3" />
+            Ask AI
+          </button>
+        </div>
+      </div>
+
+      {/* ── Body: sidebar | content pane ────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
+        {/* Sidebar */}
+        <aside className="flex w-44 shrink-0 flex-col border-r border-ink/8 bg-white">
+          <div className="flex h-9 shrink-0 items-center px-3">
+            <Logo className="text-[13px]" />
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
+            <div className={sectionTitle}>Quick Access</div>
+            {QUICK_ACCESS.map((label) => (
+              <SideItem
+                key={label}
+                icon={<Folder className="size-3" />}
+                label={label}
+                active={label === "Documents"}
+              />
+            ))}
+
+            <div className={sectionTitle}>Drives</div>
+            <div className="rounded-md px-1.5 py-[3px]">
+              <div className="flex items-center gap-1.5 text-[10px] text-ink/80">
+                <HardDrive className="size-3 text-mist" />
+                Macintosh HD
+              </div>
+              <div className="mt-1 pl-[18px]">
+                <div className="h-1 w-full overflow-hidden rounded-full bg-cloud">
+                  <div className="h-full w-[62%] rounded-full bg-ink/30" />
+                </div>
+                <div className="mt-0.5 text-[7px] text-mist">616 GB of 994 GB</div>
+              </div>
+            </div>
+
+            <div className={sectionTitle}>Cloud</div>
+            <SideItem
+              icon={<Image src="/logos/GDrive.png" alt="" width={12} height={12} className="size-3 object-contain" />}
+              label="Google Drive"
+            />
+            <SideItem
+              icon={<Image src="/logos/Dropbox.png" alt="" width={12} height={12} className="size-3 object-contain" />}
+              label="Dropbox"
+            />
+            <SideItem icon={<Plus className="size-3" />} label="Connect…" />
+
+            <div className={sectionTitle}>Tags</div>
+            {TAGS.map(({ label, color, count }) => (
+              <SideItem
+                key={label}
+                icon={<span className={cn("mx-0.5 block size-1.5 rounded-full", color)} />}
+                label={label}
+                right={<span className="text-[8px] text-mist">{count}</span>}
+              />
+            ))}
+
+            <div className="min-h-2 flex-1" />
+            <SideItem icon={<Clock className="size-3" />} label="Recents" />
+            <SideItem icon={<Settings className="size-3" />} label="Settings" />
+          </div>
+        </aside>
+
+        {/* Content pane */}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {/* Toolbar / location row */}
+          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1 text-[10px] font-semibold whitespace-nowrap">
+              <span className="text-mist">Home</span>
+              <span className="text-mist opacity-60">›</span>
+              <span className="text-mist">Documents</span>
+              <span className="text-mist opacity-60">›</span>
+              <span>Finance</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button className="flex items-center gap-1 rounded-md bg-cloud px-2 py-1 text-[10px] font-medium text-ink transition-colors hover:bg-ink/[0.09]">
+                <LayoutGrid className="size-3 text-mint" />
+                View
+              </button>
+              <button className="grid size-6 place-items-center rounded-md bg-cloud text-ink/70 transition-colors hover:bg-ink/[0.09]">
+                <FilePlus className="size-3.5" />
+              </button>
+              <button className="grid size-6 place-items-center rounded-md bg-cloud text-ink/70 transition-colors hover:bg-ink/[0.09]">
+                <FolderPlus className="size-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Grid view */}
+          <div className="grid flex-1 grid-cols-5 content-start gap-1 overflow-hidden p-2.5">
+            {TILES.map(({ name, icon, dots, selected }) => (
+              <div
+                key={name}
+                className={cn(
+                  "group flex flex-col items-center gap-1 rounded-lg p-1.5 pt-2.5 ring-1 ring-inset transition-all",
+                  selected
+                    ? "bg-ink/[0.08] ring-ink/20"
+                    : "ring-transparent hover:-translate-y-0.5 hover:bg-ink/[0.05] hover:ring-ink/10"
+                )}
+              >
+                <span className="transition-transform duration-200 group-hover:scale-110">
+                  {icon}
+                </span>
+                <div className="flex w-full items-center justify-center gap-1 text-center text-[8.5px] font-medium leading-tight">
+                  {dots && (
+                    <span className="flex gap-0.5">
+                      {dots.map((d) => (
+                        <span key={d} className={cn("size-[5px] rounded-full", d)} />
+                      ))}
+                    </span>
+                  )}
+                  <span className="truncate">{name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Status bar */}
+          <div className="flex shrink-0 items-center justify-between border-t border-ink/8 px-3 py-1 text-[8px] text-mist">
+            <span>10 items</span>
+            <span>1 selected · 84 KB</span>
+          </div>
+
+          {/* Assistant rail lives beside the content pane */}
+          {overlay === "ai" && <AssistantRail onClose={() => setOverlay("none")} />}
+        </div>
+      </div>
+
+      {/* Search overlay covers the whole window */}
+      {overlay === "search" && <SearchOverlay onClose={() => setOverlay("none")} />}
     </div>
   );
 }
