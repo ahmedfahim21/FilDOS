@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import {
-  ArrowLeftRight,
-  Cloud,
+  Columns3,
   Cpu,
-  Files,
-  FolderOpen,
-  HardDrive,
   Heart,
+  Images,
+  LayoutGrid,
+  List,
   Lock,
-  Scale,
   Search,
   ShieldCheck,
   Sparkles,
@@ -17,6 +16,12 @@ import {
 import { Grainient, type ScoopBlend } from "./grainient";
 import { GithubIcon } from "../icons";
 import { cn } from "@/lib/utils";
+import { Mark } from "../logo";
+
+/** A brand logo sized to sit inside a {@link Chip}. */
+function LogoMark({ src, alt }: { src: string; alt: string }) {
+  return <Image src={src} alt={alt} width={48} height={48} className="size-6 object-contain sm:size-7" />;
+}
 
 /** White floating icon chip, like the app tiles in the reference art. */
 function Chip({ children, className }: { children: ReactNode; className?: string }) {
@@ -51,58 +56,60 @@ const FEATURES: Array<{
   {
     blend: "mintBlueberry",
     chips: [
-      <Sparkles key="a" className="size-5 text-mint" />,
-      <Search key="b" className="size-5 text-ink/70" />,
+      <Mark key="a" className="size-6"/>,
+      <Sparkles key="a" className="size-6 text-mint" />,
+      <Search key="b" className="size-6 text-ink/70" />,
     ],
     title: "Search by meaning",
-    desc: "Ask for “receipts from tax season” and FilDOS finds the files by what's inside them — not what they happen to be named.",
+    desc: "Ask for 'receipts from tax season' or 'photos from Japan trip' — FilDOS finds files by meaning, not filenames.",
   },
   {
     blend: "grapeBlueberry",
     chips: [
-      <Cpu key="a" className="size-5 text-grape" />,
-      <ShieldCheck key="b" className="size-5 text-mint" />,
-      <Lock key="c" className="size-5 text-ink/70" />,
+      <Cpu key="a" className="size-6 text-grape" />,
+      <ShieldCheck key="b" className="size-6 text-mint" />,
+      <Lock key="c" className="size-6 text-ink/70" />,
     ],
     title: "Private, on-device AI",
-    desc: "The models run locally on your machine and the index lives in a local database. Nothing about your files ever leaves your PC.",
+    desc: "Everything stays on your device. Models run locally, your index lives locally, and your files never leave your machine.",
   },
   {
     blend: "strawberryBubblegum",
     chips: [
-      <Tag key="a" className="size-5 text-strawberry" />,
+      <Tag key="a" className="size-6 text-strawberry" />,
       <TagDotsChip key="b" />,
     ],
-    title: "Tags that follow your files",
-    desc: "Colour-coded tags, recents, and per-folder views keep everything organized — and they survive renames and moves.",
+    title: "Smart organization",
+    desc: "Colour-coded tags with AI grouping related files automatically.",
   },
   {
     blend: "mangoStrawberry",
     chips: [
-      <FolderOpen key="a" className="size-5 text-mango" />,
-      <Files key="b" className="size-5 text-ink/70" />,
-      <ArrowLeftRight key="c" className="size-5 text-strawberry" />,
+      <List key="a" className="size-6 text-blueberry" />,
+      <LayoutGrid key="b" className="size-6 text-mint" />,
+      <Images key="c" className="size-6 text-bubblegum" />,
+      <Columns3 key="d" className="size-6 text-mango" />,
     ],
-    title: "A real file manager first",
-    desc: "Rename, move, duplicate, preview, drag and drop — snappy and native-feeling, with virtualized views that shrug off huge folders.",
+    title: "File manager first",
+    desc: "List, grid, gallery or column view. Sort, group and filter however you work.",
   },
   {
     blend: "mintMango",
     chips: [
-      <Cloud key="a" className="size-5 text-blueberry" />,
-      <HardDrive key="b" className="size-5 text-ink/70" />,
+      <LogoMark key="a" src="/logos/GDrive.png" alt="Google Drive" />,
+      <LogoMark key="b" src="/logos/Dropbox.png" alt="Dropbox" />,
+      <LogoMark key="c" src="/logos/OneDrive.png" alt="OneDrive" />,
     ],
     title: "Your clouds, one window",
-    desc: "Connect Google Drive, Dropbox and more, and browse them right next to your local folders and drives.",
+    desc: "Browse local folders and cloud storage side by side with one consistent interface.",
   },
   {
     blend: "bubblegumMango",
     chips: [
-      <GithubIcon key="a" className="size-5 text-ink" />,
-      <Heart key="b" className="size-5 text-strawberry" />,
-      <Scale key="c" className="size-5 text-ink/70" />,
+      <GithubIcon key="a" className="size-6 text-ink" />,
+      <Heart key="b" className="size-6 text-strawberry" />,
     ],
-    title: "Free & open source",
+    title: "Open source",
     desc: "Built in the open on GitHub. No accounts, no subscriptions, no telemetry — just an app that's yours.",
   },
 ];
@@ -116,12 +123,12 @@ export function LandingAbout() {
             Features
           </span>
           <h2 className="mt-3 text-3xl font-medium tracking-tight text-ink sm:text-4xl">
-            A file browser with a brain
+            The file browser built for the AI era
           </h2>
           <p className="mt-4 text-base text-mist sm:text-lg">
-            FilDOS is a fast, familiar file manager at its core — with a
-            private semantic layer on top that understands what your files
-            actually contain.
+            FilDOS looks like a familiar file browser, 
+            but underneath it builds a private semantic index 
+            that understands what&apos;s inside your files.
           </p>
         </div>
 
