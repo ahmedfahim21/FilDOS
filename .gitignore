@@ -1,4 +1,5 @@
 node_modules/
+docs/node_modules/
 dist/
 out/
 *.log
@@ -17,3 +18,4 @@ blob-report/
 # website (Next.js) — build output; deps/env are handled by website/.gitignore
 website/.next/
 website/out/
+.gstack/
