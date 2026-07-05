@@ -172,7 +172,7 @@ export function Roadmap() {
             Back to home
           </Link>
 
-          <span className="mt-8 block font-mono text-xs uppercase tracking-widest text-mist">
+          <span className="mt-8 block font-mono text-xs uppercase tracking-widest text-ink/60">
             Roadmap
           </span>
           <h1 className="mt-3 max-w-2xl text-4xl font-medium tracking-tight text-ink sm:text-5xl">

@@ -119,7 +119,7 @@ export function LandingAbout() {
     <section id="features" className="scroll-mt-16 bg-cloud/60 py-16 sm:py-24">
       <div className="container mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
-          <span className="font-mono text-xs uppercase tracking-widest text-mist">
+          <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
             Features
           </span>
           <h2 className="mt-3 text-3xl font-medium tracking-tight text-ink sm:text-4xl">

@@ -93,9 +93,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${spaceMono.variable}`}>
       <body className="font-sans antialiased">
-        <main className="flex flex-col">
-          {children}
-        </main>
+        {children}
         <Analytics />
       </body>
     </html>

@@ -36,7 +36,7 @@ export function HowItWorks() {
     <section id="how-it-works" className="scroll-mt-16 bg-white py-16 sm:py-24">
       <div className="container mx-auto max-w-5xl px-4 sm:px-6">
         <div className="mx-auto mb-14 max-w-2xl text-center sm:mb-20">
-          <span className="font-mono text-xs uppercase tracking-widest text-mist">
+          <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
             How it works
           </span>
           <h2 className="mt-3 text-3xl font-medium tracking-tight text-ink sm:text-4xl">

@@ -228,28 +228,45 @@ function SideItem({
   );
 }
 
-function NavBtn({ children, dim }: { children: ReactNode; dim?: boolean }) {
+/** Close an overlay when the user presses Escape. */
+function useEscapeKey(onEscape: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onEscape();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onEscape]);
+}
+
+function NavBtn({ children, label, dim }: { children: ReactNode; label: string; dim?: boolean }) {
   return (
-    <span
+    <button
+      type="button"
+      aria-label={label}
       className={cn(
         "grid size-6 place-items-center rounded-md text-ink/70 transition-colors hover:bg-ink/[0.06]",
         dim && "opacity-40"
       )}
     >
       {children}
-    </span>
+    </button>
   );
 }
 
 /* ─────────────────────── Search overlay (filled) ─────────────────────── */
 
 function SearchOverlay({ onClose }: { onClose: () => void }) {
+  useEscapeKey(onClose);
   return (
     <div
       className="animate-in fade-in-0 absolute inset-0 z-40 bg-ink/20 backdrop-blur-[2px] duration-150"
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
         className="animate-in fade-in-0 zoom-in-95 mx-auto mt-9 w-[500px] max-w-[92%] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-ink/10 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
@@ -345,8 +362,13 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 /* ─────────────────────── Assistant rail (filled) ─────────────────────── */
 
 function AssistantRail({ onClose }: { onClose: () => void }) {
+  useEscapeKey(onClose);
   return (
-    <aside className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-ink/8 bg-white shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200">
+    <aside
+      role="dialog"
+      aria-label="Assistant"
+      className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-ink/8 bg-white shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200"
+    >
       {/* Header */}
       <header className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
         <Sparkles className="size-3.5 text-mint" />
@@ -454,13 +476,13 @@ export function AppMock({
           <span className="size-2.5 rounded-full bg-[#28c840]" />
         </div>
         <div className="flex flex-1 items-center gap-0.5">
-          <NavBtn>
+          <NavBtn label="Back">
             <ChevronLeft className="size-3.5" />
           </NavBtn>
-          <NavBtn dim>
+          <NavBtn label="Forward" dim>
             <ChevronRight className="size-3.5" />
           </NavBtn>
-          <NavBtn>
+          <NavBtn label="Refresh">
             <RotateCw className="size-3" />
           </NavBtn>
         </div>

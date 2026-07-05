@@ -8,14 +8,16 @@ import { LandingFooter } from "@/components/landing/footer";
 
 export default function LandingPage() {
   return (
-    <div>
+    <>
       <LandingNavbar />
-      <LandingHero />
-      <LandingAbout />
-      <HowItWorks />
-      <SocialProof />
-      <LandingCta />
+      <main className="flex flex-col">
+        <LandingHero />
+        <LandingAbout />
+        <HowItWorks />
+        <SocialProof />
+        <LandingCta />
+      </main>
       <LandingFooter />
-    </div>
+    </>
   );
 }

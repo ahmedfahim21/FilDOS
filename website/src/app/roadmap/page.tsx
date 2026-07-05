@@ -14,10 +14,12 @@ export const metadata: Metadata = {
 
 export default function RoadmapPage() {
   return (
-    <div>
+    <>
       <LandingNavbar />
-      <Roadmap />
+      <main className="flex flex-col">
+        <Roadmap />
+      </main>
       <LandingFooter />
-    </div>
+    </>
   );
 }
