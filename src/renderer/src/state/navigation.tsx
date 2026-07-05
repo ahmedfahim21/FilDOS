@@ -35,8 +35,7 @@ export type NavLocation =
   | { kind: 'recents' }
   | { kind: 'tag'; tagId: number }
   | { kind: 'cloud-connect' }
-  | { kind: 'settings' }
-  | { kind: 'semantic-search'; rootPath: string };
+  | { kind: 'settings' };
 
 /** A non-folder location — what `<main>` renders instead of the file browser. */
 export type NavPage = Exclude<NavLocation, { kind: 'folder' }>;
@@ -46,7 +45,6 @@ function samePage(a: NavLocation, b: NavLocation): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'folder' && b.kind === 'folder') return a.path === b.path;
   if (a.kind === 'tag' && b.kind === 'tag') return a.tagId === b.tagId;
-  if (a.kind === 'semantic-search' && b.kind === 'semantic-search') return a.rootPath === b.rootPath;
   return a.kind === b.kind;
 }
 
@@ -93,7 +91,9 @@ type Action =
   | { type: 'setSort'; key: SortKey }
   | { type: 'setViewMode'; mode: ViewMode }
   | { type: 'setIconSize'; size: IconSize }
-  | { type: 'applyView'; view: ViewState }
+  // The layout (viewMode) is a single app-wide setting, so restoring a folder's
+  // remembered view only touches sort + icon size — never the layout.
+  | { type: 'applyView'; view: { sort: { key: SortKey; dir: SortDir }; iconSize: IconSize } }
   | { type: 'setColumnWidth'; column: keyof ColumnWidths; width: number }
   | { type: 'setQuery'; query: string }
   | { type: 'setSearchRecursive'; value: boolean }
@@ -142,11 +142,11 @@ export function reducer(state: NavState, action: Action): NavState {
     case 'setIconSize':
       return { ...state, iconSize: action.size, viewEdit: state.viewEdit + 1 };
     case 'applyView':
-      // A folder's remembered view; deliberately does NOT bump viewEdit.
+      // A folder's remembered view; deliberately does NOT bump viewEdit. The
+      // layout is app-wide, so this restores sort + icon size only.
       return {
         ...state,
         sort: action.view.sort,
-        viewMode: action.view.viewMode,
         iconSize: action.view.iconSize,
       };
     case 'setQuery':
@@ -184,7 +184,7 @@ interface NavContextValue extends NavState {
   setSort: (key: SortKey) => void;
   setViewMode: (mode: ViewMode) => void;
   setIconSize: (size: IconSize) => void;
-  applyView: (view: ViewState) => void;
+  applyView: (view: { sort: { key: SortKey; dir: SortDir }; iconSize: IconSize }) => void;
   setColumnWidth: (column: keyof ColumnWidths, width: number) => void;
   setQuery: (query: string) => void;
   setSearchRecursive: (value: boolean) => void;
@@ -238,7 +238,11 @@ export function NavigationProvider({
   const setSort = useCallback((key: SortKey) => dispatch({ type: 'setSort', key }), []);
   const setViewMode = useCallback((mode: ViewMode) => dispatch({ type: 'setViewMode', mode }), []);
   const setIconSize = useCallback((size: IconSize) => dispatch({ type: 'setIconSize', size }), []);
-  const applyView = useCallback((view: ViewState) => dispatch({ type: 'applyView', view }), []);
+  const applyView = useCallback(
+    (view: { sort: { key: SortKey; dir: SortDir }; iconSize: IconSize }) =>
+      dispatch({ type: 'applyView', view }),
+    [],
+  );
   const setColumnWidth = useCallback(
     (column: keyof ColumnWidths, width: number) =>
       dispatch({ type: 'setColumnWidth', column, width }),
