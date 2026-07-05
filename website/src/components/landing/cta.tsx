@@ -13,7 +13,7 @@ const SCOOPS = ["#f26d6d", "#f286b4", "#f9a85c", "#6e9bee", "#4fc9b8", "#a585e0"
  */
 function Ripple({ numCircles = 8 }: { numCircles?: number }) {
   return (
-    <div className="pointer-events-none absolute inset-0 select-none [mask-image:linear-gradient(to_bottom,white,transparent)]">
+    <div className="pointer-events-none absolute inset-0 select-none mask-[linear-gradient(to_bottom,white,transparent)]">
       {Array.from({ length: numCircles }, (_, i) => {
         const size = 220 + i * 80;
         const scoop = SCOOPS[i % SCOOPS.length];
@@ -42,7 +42,7 @@ function Ripple({ numCircles = 8 }: { numCircles?: number }) {
 export function LandingCta() {
   return (
     <section className="overflow-hidden bg-white">
-      <div className="relative mx-auto flex min-h-[24rem] w-full max-w-3xl flex-col items-center justify-center gap-6 border-x border-ink/8 px-4 py-16 sm:py-24">
+      <div className="relative mx-auto flex min-h-96 w-full max-w-3xl flex-col items-center justify-center gap-6 border-x border-ink/8 px-4 py-16 sm:py-24">
         <div className="pointer-events-none absolute -top-px left-1/2 w-screen -translate-x-1/2 border-t border-ink/8" />
         <Ripple />
 
@@ -51,8 +51,7 @@ export function LandingCta() {
             Ready to meet your files again?
           </h2>
           <p className="mx-auto max-w-md text-balance text-sm text-mist sm:text-base">
-            Download FilDOS and give your file browser a brain. Free, open
-            source, and everything stays on your machine.
+            Download FilDOS and experience a file browser that understands your files—not just where they&apos;re stored.
           </p>
         </div>
 
@@ -77,7 +76,7 @@ export function LandingCta() {
           </a>
         </div>
 
-        <span className="relative font-mono text-[11px] text-mist">
+        <span className="relative font-mono text-2xs text-mist">
           macOS · Windows · Linux
         </span>
 

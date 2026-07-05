@@ -7,11 +7,6 @@ import { Logo } from "../logo";
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
 const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
 
-const NAV_LINKS = [
-  { label: "Features", href: "#features" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Reviews", href: "#social-proof" },
-];
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -26,22 +21,10 @@ export function LandingNavbar() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-4 sm:pt-4">
-      <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between rounded-2xl border border-ink/10 bg-white/80 px-4 shadow-[0_2px_20px_rgba(15,17,23,0.07)] backdrop-blur-md sm:px-5">
+      <nav className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl border border-ink/10 bg-white/80 px-4 shadow-[0_2px_20px_rgba(15,17,23,0.07)] backdrop-blur-md sm:px-5">
         <a href="#" className="text-lg text-ink" aria-label="FilDOS home">
           <Logo />
         </a>
-
-        <div className="hidden items-center gap-1 md:flex">
-          {NAV_LINKS.map(({ label, href }) => (
-            <a
-              key={href}
-              href={href}
-              className="rounded-full px-3.5 py-1.5 text-sm text-ink/70 transition-colors hover:bg-cloud hover:text-ink"
-            >
-              {label}
-            </a>
-          ))}
-        </div>
 
         <div className="flex items-center gap-2">
           <a
@@ -75,16 +58,6 @@ export function LandingNavbar() {
 
       {open && (
         <div className="mx-auto mt-2 max-w-5xl rounded-2xl border border-ink/10 bg-white/95 p-3 shadow-lg backdrop-blur-md md:hidden">
-          {NAV_LINKS.map(({ label, href }) => (
-            <a
-              key={href}
-              href={href}
-              onClick={() => setOpen(false)}
-              className="block rounded-xl px-3 py-2.5 text-sm text-ink/80 hover:bg-cloud"
-            >
-              {label}
-            </a>
-          ))}
           <a
             href={GITHUB_URL}
             target="_blank"

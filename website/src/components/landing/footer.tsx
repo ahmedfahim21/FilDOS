@@ -19,7 +19,6 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: st
     links: [
       { label: "GitHub", href: GITHUB_URL, external: true },
       { label: "Report an issue", href: `${GITHUB_URL}/issues`, external: true },
-      { label: "X (Twitter)", href: "https://x.com/fildos_cloud", external: true },
     ],
   },
 ];
@@ -31,7 +30,7 @@ export function LandingFooter() {
       <div className="absolute inset-0 opacity-70">
         <FlowField className="h-full w-full" />
       </div>
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/70 via-transparent to-ink/60" />
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-ink/70 via-transparent to-ink/60" />
 
       <div className="container relative z-10 mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
         <div className="flex flex-col gap-10 md:flex-row md:justify-between">
@@ -39,7 +38,7 @@ export function LandingFooter() {
             <Logo className="text-xl" />
             <p className="mt-4 text-sm leading-relaxed text-white/60">
               The AI-native file browser for your PC. Search by meaning,
-              organize in a click — private, fast, and fully on-device.
+              organize, research — fast, and fully on-device.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <a
@@ -52,7 +51,7 @@ export function LandingFooter() {
                 <GithubIcon className="size-4.5" />
               </a>
               <a
-                href="https://x.com/fildos_cloud"
+                href="https://x.com/ahmedfahim21_"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="FilDOS on X"
@@ -66,7 +65,7 @@ export function LandingFooter() {
           <div className="flex gap-16 sm:gap-24">
             {LINK_GROUPS.map(({ title, links }) => (
               <nav key={title}>
-                <div className="mb-3 font-mono text-[11px] uppercase tracking-widest text-white/40">
+                <div className="mb-3 font-mono text-2xs uppercase tracking-widest text-white/40">
                   {title}
                 </div>
                 <ul className="space-y-2.5">
@@ -92,9 +91,6 @@ export function LandingFooter() {
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row">
           <span className="text-xs text-white/50">
             © {new Date().getFullYear()} FilDOS · MIT License
-          </span>
-          <span className="font-mono text-[11px] text-white/40">
-            Built in the open · AI runs on your machine
           </span>
         </div>
       </div>
