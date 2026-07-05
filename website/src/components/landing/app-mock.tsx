@@ -456,12 +456,15 @@ export function AppMock({
 }) {
   const [overlay, setOverlay] = useState<Overlay>("none");
 
-  // Sync the scroll-driven search demo, but only toggle the search lane so a
+  // Sync the scroll-driven search demo on each edge of `autoOpenSearch`,
+  // reconciling during render rather than in an effect (see react.dev, "You
+  // Might Not Need an Effect"). Only the search lane is toggled so a
   // manually-opened Assistant rail is never clobbered.
-  useEffect(() => {
-    if (autoOpenSearch) setOverlay("search");
-    else setOverlay((o) => (o === "search" ? "none" : o));
-  }, [autoOpenSearch]);
+  const [prevAuto, setPrevAuto] = useState(autoOpenSearch);
+  if (autoOpenSearch !== prevAuto) {
+    setPrevAuto(autoOpenSearch);
+    setOverlay((o) => (autoOpenSearch ? "search" : o === "search" ? "none" : o));
+  }
 
   return (
     <div
