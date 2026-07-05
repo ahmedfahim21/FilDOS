@@ -105,12 +105,17 @@ export function Sidebar({
   const title = 'text-muted-foreground px-2 pb-2 text-3xs font-semibold tracking-wider uppercase';
 
   return (
-    <aside className="border-border bg-card flex w-60 shrink-0 flex-col overflow-y-auto border-r px-2 py-3">
-      {/* Traffic-light drag zone: native close/min/max sit here on macOS.
-          Height matches trafficLightPosition.y + button radius so nothing overlaps. */}
-      <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
-      <Logo className="px-2 pb-4 text-lg" />
+    <aside className="border-border bg-card flex w-60 shrink-0 flex-col border-r">
+      {/* Logo header — matches the location row's height so the sidebar nav and
+          the file browser start at the same line. No bottom border here: the
+          divider lives only on the content side, keeping the sidebar one
+          continuous column. */}
+      <div className="flex h-11 shrink-0 items-center px-4">
+        <Logo className="text-lg" />
+      </div>
 
+      {/* Scrollable navigation body */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-3">
       <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (
@@ -305,6 +310,7 @@ export function Sidebar({
         <Icon name="settings" size={16} />
         <span>Settings</span>
       </button>
+      </div>
 
       {pendingDisconnect && (
         <ConfirmDialog

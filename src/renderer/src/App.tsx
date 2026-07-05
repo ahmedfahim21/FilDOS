@@ -21,8 +21,10 @@ import { IndexingProvider, useIndexing } from '@/state/indexing';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
+import { useOnline } from '@/hooks/useOnline';
 import { baseName, parentOf } from '@/lib/path';
-import { isRemote, parseRemote } from '@shared/remote';
+import { dragPaths, resolveDroppedPaths } from '@/lib/dragState';
+import { isRemote, parseRemote, providerLabel } from '@shared/remote';
 import { OPENDAL_BACKENDS } from '@shared/opendalBackends';
 
 /** Providers whose accounts are re-authed by re-running an OAuth flow. */
@@ -32,18 +34,24 @@ const OAUTH_PROVIDERS = new Set([
   ...OPENDAL_BACKENDS.filter((b) => b.auth === 'oauth').map((b) => b.id),
 ]);
 import { Sidebar } from '@/components/Sidebar';
+import { TopBar } from '@/components/TopBar';
+import { ChatSidebar } from '@/components/ChatSidebar';
 import { Toolbar } from '@/components/Toolbar';
 import { FileList } from '@/components/FileList';
 import { GridView } from '@/components/GridView';
+import { GalleryView } from '@/components/GalleryView';
+import { ColumnView } from '@/components/ColumnView';
 import type { FileViewProps, SelectMods } from '@/components/viewTypes';
 import { ContextMenu, type ContextMenuState } from '@/components/ContextMenu';
 import { ConfirmDialog, PromptDialog } from '@/components/Dialog';
 import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
+import { PageChromeSlotContext } from '@/components/Page';
 import { RecentsView } from '@/components/RecentsView';
-import { SemanticSearchView } from '@/components/SemanticSearchView';
+import { SearchOverlay } from '@/components/SearchOverlay';
 import { TagFilesView } from '@/components/TagFilesView';
 import { CloudConnectView } from '@/components/CloudConnectView';
+import { OfflineView } from '@/components/OfflineView';
 import { SettingsView } from '@/components/SettingsView';
 import { Icon } from '@/components/Icon';
 import { TagDot } from '@/components/TagDots';
@@ -72,6 +80,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const { notify, notifyError } = useToast();
   const { entries, visible, loading, error } = useDirectory();
   const tagState = useTagState(visible);
+  const online = useOnline();
 
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [anchorPath, setAnchorPath] = useState<string | null>(null);
@@ -80,6 +89,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const [dialog, setDialog] = useState<DialogState>(null);
   const [infoPath, setInfoPath] = useState<string | null>(null);
   const [sidebarCloudKey, setSidebarCloudKey] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // A file dropped onto the search bar → open the overlay pre-seeded for
+  // "find similar files". Cleared when the overlay closes.
+  const [searchSeedFile, setSearchSeedFile] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  // The Toolbar's slot where the active metadata page portals its controls.
+  const [pageChromeEl, setPageChromeEl] = useState<HTMLDivElement | null>(null);
 
   // The global view defaults: what a folder without remembered settings shows.
   // Updated on every deliberate view change (alongside the prefs row).
@@ -105,11 +121,11 @@ function Browser({ initialView }: { initialView: ViewState }) {
     window.prefs
       .set({ sort: view.sort, viewMode: view.viewMode, iconSize: view.iconSize })
       .catch(() => {});
+    // Layout is stored globally (prefs) only; folders remember sort + icon size.
     window.views
       .set(nav.currentPath, {
         sortKey: view.sort.key,
         sortDir: view.sort.dir,
-        viewMode: view.viewMode,
         iconSize: view.iconSize,
       })
       .catch(() => {});
@@ -126,12 +142,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       if (cancelled || !result.ok) return;
       const remembered = result.data;
       const fallback = globalView.current;
+      // Layout (viewMode) is app-wide and intentionally left untouched here —
+      // only sort + icon size are remembered per folder.
       nav.applyView({
         sort:
           remembered?.sortKey != null
             ? { key: remembered.sortKey, dir: remembered.sortDir ?? 'asc' }
             : fallback.sort,
-        viewMode: remembered?.viewMode ?? fallback.viewMode,
         iconSize: remembered?.iconSize ?? fallback.iconSize,
       });
     });
@@ -149,11 +166,16 @@ function Browser({ initialView }: { initialView: ViewState }) {
     setMenu(null);
   }, [nav.currentPath]);
 
+  // When the connection returns while a cloud folder is open, reload it so the
+  // offline screen gives way to the real listing.
+  const wasOnline = useRef(online);
+  useEffect(() => {
+    if (!wasOnline.current && online && isRemote(nav.currentPath)) nav.refresh();
+    wasOnline.current = online;
+  }, [online, nav]);
+
   const selectedEntries = visible.filter((e) => selection.has(e.path));
   const selectedPaths = selectedEntries.map((e) => e.path);
-  // The whole selection is already excluded from indexing → offer to re-include.
-  const allIndexExcluded =
-    selectedPaths.length > 0 && selectedPaths.every((p) => indexing.excludes.includes(p));
   const selectedSize = selectedEntries.reduce(
     (sum, e) => sum + (e.isDirectory ? 0 : e.size),
     0,
@@ -253,13 +275,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
   }, [reconnectProvider, nav, notify, notifyError]);
 
   // --- Tags ---
-  const isTagOnSelection = useCallback(
-    (tagId: number) =>
-      selectedPaths.length > 0 &&
-      selectedPaths.every((p) => tagState.getTags(p).some((t) => t.id === tagId)),
-    [selectedPaths, tagState],
-  );
-
   const toggleTagOnPaths = useCallback(
     (paths: string[], tag: Tag, apply: boolean) => {
       if (!paths.length) return;
@@ -277,11 +292,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
     [tagState],
   );
 
-  /** Resolve the file paths carried by a drag event. */
-  const droppedPaths = (e: DragEvent) =>
-    Array.from(e.dataTransfer.files)
-      .map((f) => window.dnd.pathForFile(f))
-      .filter(Boolean);
 
   // --- Drag and drop ---
   // Tracks whether the in-progress drag originated inside FilDOS (→ default move)
@@ -290,6 +300,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
   useEffect(() => {
     const clear = () => {
       dragInternal.current = false;
+      dragPaths.clear();
     };
     window.addEventListener('mousedown', clear);
     return () => window.removeEventListener('mousedown', clear);
@@ -300,6 +311,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
       e.preventDefault(); // suppress the HTML5 ghost; use the OS drag instead
       const paths = selection.has(entry.path) ? selectedPaths : [entry.path];
       dragInternal.current = true;
+      dragPaths.set(paths);
       window.dnd.startDrag(paths);
     },
     [selection, selectedPaths],
@@ -310,7 +322,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
       e.preventDefault();
       const internal = dragInternal.current;
       dragInternal.current = false;
-      const paths = droppedPaths(e);
+      const paths = resolveDroppedPaths(e);
       // Skip items already living in the destination (no-op move).
       const valid = paths.filter((p) => p !== destDir && parentOf(p) !== destDir);
       if (!valid.length) return;
@@ -324,7 +336,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
     (tag: Tag, e: DragEvent) => {
       e.preventDefault();
       dragInternal.current = false;
-      const paths = droppedPaths(e);
+      const paths = resolveDroppedPaths(e);
       if (paths.length) {
         tagState.assign(paths, tag.id);
         notify('success', `Tagged ${paths.length} item${paths.length > 1 ? 's' : ''} “${tag.name}”`);
@@ -333,12 +345,28 @@ function Browser({ initialView }: { initialView: ViewState }) {
     [tagState, notify],
   );
 
+  // The search overlay opens from anywhere — even from inputs and pages —
+  // like Spotlight. ⌘K toggles; ⌘F opens (muscle memory for "find").
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'k' || key === 'f') {
+        e.preventDefault();
+        setSearchOpen((o) => key === 'k' ? !o : true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Global keyboard map.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // While a metadata page (Recents/tag) is shown the file browser is
-      // hidden, so its selection-driven shortcuts must stay inert.
-      if (isEditingTarget(e.target) || dialog || nav.page) return;
+      // hidden, so its selection-driven shortcuts must stay inert. The same
+      // goes for the search overlay, which owns the keyboard while open.
+      if (isEditingTarget(e.target) || dialog || nav.page || searchOpen) return;
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key;
 
@@ -367,13 +395,25 @@ function Browser({ initialView }: { initialView: ViewState }) {
             e.preventDefault();
             setDialog({ kind: 'new-folder' });
             return;
-          case 'f':
-            e.preventDefault();
-            nav.openPage({ kind: 'semantic-search', rootPath: nav.currentPath });
-            return;
           case 'z':
             e.preventDefault();
             handleUndo();
+            return;
+          case '1':
+            e.preventDefault();
+            nav.setViewMode('list');
+            return;
+          case '2':
+            e.preventDefault();
+            nav.setViewMode('grid');
+            return;
+          case '3':
+            e.preventDefault();
+            nav.setViewMode('gallery');
+            return;
+          case '4':
+            e.preventDefault();
+            nav.setViewMode('column');
             return;
         }
         if (key === 'ArrowUp') {
@@ -416,6 +456,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [
     dialog,
+    searchOpen,
     selectedEntries,
     selectedPaths,
     clipboard,
@@ -439,7 +480,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
     onSelect: select,
     onActivate: actions.open,
     onBackgroundClick: () => setSelection(new Set()),
-    onContextMenu: (_entry, x, y) => setMenu({ x, y, mode: 'selection' }),
+    onContextMenu: (entry, x, y) => {
+      // If the right-clicked entry is part of the current selection, act on the
+      // whole selection; otherwise target just this entry. This also lets views
+      // whose rows live outside the current folder (column view) drive the menu.
+      const inSelection = selectedEntries.some((e) => e.path === entry.path);
+      setMenu({ x, y, mode: 'selection', entries: inSelection ? undefined : [entry] });
+    },
     onBackgroundContextMenu: (x, y) => setMenu({ x, y, mode: 'background' }),
     onRenameCommit: (entry, name) => {
       setRenamingPath(null);
@@ -484,13 +531,6 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Settings';
-  } else if (page?.kind === 'semantic-search') {
-    pageTitle = (
-      <>
-        <Icon name="search" size={15} /> Semantic Search
-      </>
-    );
-    pageLabel = 'Semantic Search';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -501,111 +541,144 @@ function Browser({ initialView }: { initialView: ViewState }) {
   }
 
   return (
-    <div className="flex h-full" data-testid="app">
-      {/* Sidebar spans the full window height so the traffic-light spacer
-          at its top sits flush with the top-left corner of the window. */}
-      <Sidebar
-        tags={tagState.tags}
-        activePage={nav.page}
-        cloudKey={sidebarCloudKey}
-        onDropPath={(path, e) => handleDrop(path, e)}
-        onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
-        onOpenRecents={() => nav.openPage({ kind: 'recents' })}
-        onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
-        onOpenSettings={() => nav.openPage({ kind: 'settings' })}
-        onDropOnTag={handleDropOnTag}
+    <PageChromeSlotContext.Provider value={pageChromeEl}>
+    <div className="flex h-full flex-col" data-testid="app">
+      {/* Full-width window chrome: window controls, navigation, Assistant, search. */}
+      <TopBar
+        onOpenSearch={() => {
+          setSearchSeedFile(null);
+          setSearchOpen(true);
+        }}
+        onDropFile={(paths) => {
+          if (!paths[0]) return;
+          setSearchSeedFile(paths[0]);
+          setSearchOpen(true);
+        }}
+        onToggleChat={() => setChatOpen((o) => !o)}
+        chatOpen={chatOpen}
       />
 
-      {/* Right column: toolbar → content → status bar */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Toolbar
-          onNewFolder={() => setDialog({ kind: 'new-folder' })}
-          onNewFile={() => setDialog({ kind: 'new-file' })}
-          pageTitle={pageTitle ?? undefined}
-          remote={isRemote(nav.currentPath)}
+      {/* Below the top bar: sidebar | content pane | Assistant rail. */}
+      <div className="flex min-h-0 flex-1">
+        <Sidebar
+          tags={tagState.tags}
+          activePage={nav.page}
+          cloudKey={sidebarCloudKey}
+          onDropPath={(path, e) => handleDrop(path, e)}
+          onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
+          onOpenRecents={() => nav.openPage({ kind: 'recents' })}
+          onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
+          onOpenSettings={() => nav.openPage({ kind: 'settings' })}
+          onDropOnTag={handleDropOnTag}
         />
 
-        <div className="flex min-h-0 flex-1">
-          <main aria-label="File browser" className="bg-background flex min-w-0 flex-1 flex-col">
-            {nav.page?.kind === 'recents' ? (
-              <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
-            ) : nav.page?.kind === 'cloud-connect' ? (
-              <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
-            ) : nav.page?.kind === 'settings' ? (
-              <SettingsView onBack={nav.back} />
-            ) : nav.page?.kind === 'semantic-search' ? (
-              <SemanticSearchView
-                rootPath={nav.page.rootPath}
-                onBack={nav.back}
-                onNavigate={nav.navigate}
-                onInfo={(p) => setInfoPath(p)}
-              />
-            ) : nav.page?.kind === 'tag' ? (
-              pageTag && (
-                <TagFilesView
-                  tag={pageTag}
-                  onBack={nav.back}
-                  onNavigate={nav.navigate}
-                  onRenameTag={(id, name) => tagState.rename(id, name)}
-                  onDeleteTag={(id) => {
-                    nav.back();
-                    tagState.remove(id);
-                  }}
-                  onChanged={tagState.refresh}
+        {/* Content pane: location row → browser → status bar */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Toolbar
+            onNewFolder={() => setDialog({ kind: 'new-folder' })}
+            onNewFile={() => setDialog({ kind: 'new-file' })}
+            pageTitle={pageTitle ?? undefined}
+            pageSlotRef={setPageChromeEl}
+            remote={isRemote(nav.currentPath)}
+          />
+
+          <div className="flex min-h-0 flex-1">
+            <main aria-label="File browser" className="bg-background flex min-w-0 flex-1 flex-col">
+              {nav.page?.kind === 'recents' ? (
+                <RecentsView onBack={nav.back} onNavigate={nav.navigate} />
+              ) : nav.page?.kind === 'cloud-connect' ? (
+                <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
+              ) : nav.page?.kind === 'settings' ? (
+                <SettingsView onBack={nav.back} />
+              ) : nav.page?.kind === 'tag' ? (
+                pageTag && (
+                  <TagFilesView
+                    tag={pageTag}
+                    onBack={nav.back}
+                    onNavigate={nav.navigate}
+                    onRenameTag={(id, name) => tagState.rename(id, name)}
+                    onDeleteTag={(id) => {
+                      nav.back();
+                      tagState.remove(id);
+                    }}
+                    onChanged={tagState.refresh}
+                  />
+                )
+              ) : isRemote(nav.currentPath) && !online ? (
+                <OfflineView
+                  provider={providerLabel(parseRemote(nav.currentPath)?.provider ?? '')}
+                  onRetry={nav.refresh}
                 />
-              )
-            ) : nav.viewMode === 'grid' ? (
-              <GridView {...viewProps} />
-            ) : (
-              <FileList {...viewProps} />
+              ) : nav.viewMode === 'grid' ? (
+                <GridView {...viewProps} />
+              ) : nav.viewMode === 'gallery' ? (
+                <GalleryView {...viewProps} />
+              ) : nav.viewMode === 'column' ? (
+                <ColumnView {...viewProps} />
+              ) : (
+                <FileList {...viewProps} />
+              )}
+            </main>
+            {!nav.page && infoPath && (
+              <InfoPanel
+                path={infoPath}
+                tags={tagState.tags}
+                getTags={tagState.getTags}
+                onToggleTag={(path, tag, apply) => toggleTagOnPaths([path], tag, apply)}
+                onClose={() => setInfoPath(null)}
+              />
             )}
-          </main>
-          {!nav.page && infoPath && (
-            <InfoPanel
-              path={infoPath}
-              tags={tagState.tags}
-              getTags={tagState.getTags}
-              onToggleTag={(path, tag, apply) => toggleTagOnPaths([path], tag, apply)}
-              onClose={() => setInfoPath(null)}
-            />
-          )}
+          </div>
+
+          <StatusBar
+            shown={visible.length}
+            hidden={entries.length - visible.length}
+            selectedCount={selectedEntries.length}
+            selectedSize={selectedSize}
+            label={pageLabel}
+          />
         </div>
 
-        <StatusBar
-          shown={visible.length}
-          hidden={entries.length - visible.length}
-          selectedCount={selectedEntries.length}
-          selectedSize={selectedSize}
-          label={pageLabel}
-        />
+        {chatOpen && <ChatSidebar onClose={() => setChatOpen(false)} />}
       </div>
 
-      {menu && (menu.mode === 'background' || selectedEntries.length > 0) && (
+      {menu && (() => {
+        // The menu acts on its explicit entries (e.g. a column-view row from
+        // another folder) or, by default, the current folder's selection.
+        const targets = menu.entries ?? selectedEntries;
+        const paths = targets.map((e) => e.path);
+        const indexExcluded =
+          paths.length > 0 && paths.every((p) => indexing.excludes.includes(p));
+        const tagOnTargets = (tagId: number) =>
+          paths.length > 0 &&
+          paths.every((p) => tagState.getTags(p).some((t) => t.id === tagId));
+        if (menu.mode !== 'background' && targets.length === 0) return null;
+        return (
         <ContextMenu
           state={menu}
-          count={selectedEntries.length}
+          count={targets.length}
           canPaste={!!clipboard.clip}
           showHidden={nav.showHidden}
           onClose={() => setMenu(null)}
-          onOpen={() => actions.open(selectedEntries[0])}
-          onReveal={() => actions.reveal(selectedEntries[0])}
-          onCopy={() => clipboard.copy(selectedPaths)}
-          onCut={() => clipboard.cut(selectedPaths)}
+          onOpen={() => actions.open(targets[0])}
+          onReveal={() => actions.reveal(targets[0])}
+          onCopy={() => clipboard.copy(paths)}
+          onCut={() => clipboard.cut(paths)}
           onPaste={() => actions.paste()}
-          onDuplicate={() => actions.duplicate(selectedEntries[0])}
-          onRename={() => startRename(selectedEntries[0])}
-          onTrash={() => setDialog({ kind: 'delete', entries: selectedEntries })}
-          onInfo={() => setInfoPath(selectedEntries[0].path)}
-          indexExcluded={allIndexExcluded}
+          onDuplicate={() => actions.duplicate(targets[0])}
+          onRename={() => startRename(targets[0])}
+          onTrash={() => setDialog({ kind: 'delete', entries: targets })}
+          onInfo={() => setInfoPath(targets[0].path)}
+          indexExcluded={indexExcluded}
           onToggleIndexExclude={
             ai.enabled && !isRemote(nav.currentPath)
               ? async () => {
-                  const n = selectedPaths.length;
-                  if (allIndexExcluded) {
-                    await Promise.all(selectedPaths.map((p) => indexing.removeExclude(p)));
+                  const n = paths.length;
+                  if (indexExcluded) {
+                    await Promise.all(paths.map((p) => indexing.removeExclude(p)));
                     notify('success', n > 1 ? `Included ${n} items in indexing` : 'Included in indexing');
                   } else {
-                    await Promise.all(selectedPaths.map((p) => indexing.addExclude(p)));
+                    await Promise.all(paths.map((p) => indexing.addExclude(p)));
                     notify(
                       'success',
                       n > 1 ? `Excluded ${n} items from indexing` : 'Excluded from indexing',
@@ -615,9 +688,9 @@ function Browser({ initialView }: { initialView: ViewState }) {
               : undefined
           }
           tags={tagState.tags}
-          isTagOnSelection={isTagOnSelection}
-          onToggleTag={(tag, apply) => toggleTagOnPaths(selectedPaths, tag, apply)}
-          onNewTag={() => setDialog({ kind: 'new-tag', paths: selectedPaths })}
+          isTagOnSelection={tagOnTargets}
+          onToggleTag={(tag, apply) => toggleTagOnPaths(paths, tag, apply)}
+          onNewTag={() => setDialog({ kind: 'new-tag', paths })}
           onNewFolder={() => setDialog({ kind: 'new-folder' })}
           onNewFile={() => setDialog({ kind: 'new-file' })}
           onSelectAll={selectAll}
@@ -628,7 +701,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onSort={nav.setSort}
           remote={isRemote(nav.currentPath)}
         />
-      )}
+        );
+      })()}
 
       {dialog?.kind === 'new-folder' && (
         <PromptDialog
@@ -701,8 +775,21 @@ function Browser({ initialView }: { initialView: ViewState }) {
         />
       )}
 
+      <SearchOverlay
+        open={searchOpen}
+        rootPath={nav.currentPath}
+        tags={tagState.tags}
+        seedFile={searchSeedFile}
+        onClose={() => {
+          setSearchOpen(false);
+          setSearchSeedFile(null);
+        }}
+        onNavigate={nav.navigate}
+      />
+
       <Toasts />
     </div>
+    </PageChromeSlotContext.Provider>
   );
 }
 

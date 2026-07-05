@@ -1,4 +1,4 @@
-import type { SortDir, SortKey, Tag } from '@shared/types';
+import type { Entry, SortDir, SortKey, Tag } from '@shared/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +17,13 @@ export interface ContextMenuState {
   y: number;
   /** 'selection' = right-clicked an item; 'background' = right-clicked empty pane. */
   mode: 'selection' | 'background';
+  /**
+   * The entries the menu should act on, when they can't be read from the
+   * current folder's selection — e.g. a row in column view that lives in a
+   * different folder than the one behind the browser. Falls back to the
+   * in-folder selection when unset.
+   */
+  entries?: Entry[];
 }
 
 interface ContextMenuProps {
