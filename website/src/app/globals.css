@@ -122,6 +122,16 @@
   background: #94a3b8;
 }
 
+/* CTA ripple background (adapted from Eldora UI cta-03) */
+@keyframes ripple {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(0.92); }
+}
+
+.animate-ripple {
+  animation: ripple 3.4s ease-in-out infinite;
+}
+
 /* Custom animations for hero section */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }

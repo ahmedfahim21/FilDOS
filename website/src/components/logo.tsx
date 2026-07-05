@@ -12,10 +12,11 @@ const TILES: ReadonlyArray<readonly [col: number, row: number, fill: string]> = 
   [0, 1, "fill-blueberry"],
   [1, 1, "fill-mint"],
   [0, 2, "fill-grape"],
-  // ghost tiles — neutral, low-opacity
-  [2, 1, "fill-ink opacity-[0.08]"],
-  [1, 2, "fill-ink opacity-[0.08]"],
-  [2, 2, "fill-ink opacity-[0.08]"],
+  // ghost tiles — neutral, low-opacity; follow the text colour so the mark
+  // works on both light surfaces and the ink footer.
+  [2, 1, "fill-current opacity-[0.12]"],
+  [1, 2, "fill-current opacity-[0.12]"],
+  [2, 2, "fill-current opacity-[0.12]"],
 ];
 
 /** The scoop-tile mark. Minimum render size 14px. */
