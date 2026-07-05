@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion, useMotionValueEvent, useScroll, useTransform } from "motion/react";
 import { ArrowDown, Download } from "lucide-react";
 import { AppMock, MOCK_W } from "./app-mock";
 import { Mark } from "../logo";
@@ -76,7 +76,7 @@ function MarkBubble({ className }: { className?: string }) {
     <div className={className}>
       <div className="relative rounded-2xl border-2 border-ink bg-white px-3.5 py-3 shadow-[4px_4px_0_0_#0f1117]">
         <Mark className="size-9" />
-        <div className="absolute -bottom-[9px] left-6 size-4 rotate-45 border-b-2 border-r-2 border-ink bg-white" />
+        <div className="absolute -bottom-2.25 left-6 size-4 rotate-45 border-b-2 border-r-2 border-ink bg-white" />
       </div>
     </div>
   );
@@ -135,10 +135,23 @@ export function LandingHero() {
   const y = useTransform(scrollYProgress, [0.12, 0.8], [0, fit.y]);
   const copyOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0]);
   const copyY = useTransform(scrollYProgress, [0, 0.18], [0, -36]);
+  // Once the copy has faded, stop it from intercepting hovers over the
+  // expanded app screen underneath it.
+  const copyPointer = useTransform(scrollYProgress, (v) => (v > 0.18 ? "none" : "auto"));
   const sceneOpacity = useTransform(scrollYProgress, [0.08, 0.4], [1, 0]);
   const bgOpacity = useTransform(scrollYProgress, [0.12, 0.55], [1, 0]);
   const bezelOpacity = useTransform(scrollYProgress, [0.45, 0.75], [1, 0]);
   const hintOpacity = useTransform(scrollYProgress, [0, 0.08], [1, 0]);
+
+  // As the screen finishes expanding, play a tactile press on the search
+  // launcher (0.66–0.72) and then pop the modal open (>0.72), holding it up
+  // through the rest of the sticky sequence.
+  const [searchDemo, setSearchDemo] = useState(false);
+  const [searchPress, setSearchPress] = useState(false);
+  useMotionValueEvent(scrollYProgress, "change", (v) => {
+    setSearchPress(v > 0.66 && v <= 0.72);
+    setSearchDemo(v > 0.72);
+  });
 
   return (
     <section ref={sectionRef} className="relative h-[280vh] bg-white">
@@ -146,7 +159,7 @@ export function LandingHero() {
         {/* Bright background — soft scoop washes + floating tiles, fades on scroll */}
         <motion.div style={{ opacity: bgOpacity }} className="pointer-events-none absolute inset-0">
           <div className="absolute -left-24 -top-24 size-96 rounded-full bg-mint/20 blur-3xl" />
-          <div className="absolute -right-32 top-1/4 size-[28rem] rounded-full bg-bubblegum/20 blur-3xl" />
+          <div className="absolute -right-32 top-1/4 size-112 rounded-full bg-bubblegum/20 blur-3xl" />
           <div className="absolute bottom-0 left-1/4 size-96 rounded-full bg-blueberry/15 blur-3xl" />
           <div className="absolute -bottom-16 right-1/4 size-72 rounded-full bg-mango/15 blur-3xl" />
           {FLOAT_TILES.map((cls) => (
@@ -157,14 +170,10 @@ export function LandingHero() {
         <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 pt-20 sm:pt-24">
           {/* Copy */}
           <motion.div
-            style={{ opacity: copyOpacity, y: copyY }}
+            style={{ opacity: copyOpacity, y: copyY, pointerEvents: copyPointer }}
             className="flex flex-col items-center text-center"
           >
-            <span className="mb-4 flex items-center gap-2 rounded-full border border-ink/10 bg-white/80 px-3.5 py-1.5 text-xs text-ink/70 shadow-sm backdrop-blur-sm sm:text-sm">
-              <Mark className="size-3.5" />
-              FilDOS is now a desktop app
-            </span>
-            <h1 className="max-w-3xl text-4xl font-medium tracking-tight text-ink sm:text-5xl lg:text-6xl">
+            <h1 className="max-w-3xl text-4xl font-medium tracking-tight text-ink sm:text-5xl lg:text-6xl mt-6">
               Your files, finally{" "}
               <span className="relative inline-block">
                 understood
@@ -186,8 +195,7 @@ export function LandingHero() {
               .
             </h1>
             <p className="mt-4 max-w-xl text-base text-mist sm:text-lg">
-              FilDOS is an AI-native file browser for your PC. Search by meaning
-              instead of filenames — private, fast, and fully on-device.
+              FilDOS is an Open-Source AI-native File Browser for your PC. Search semantically, organize, research — fast and fully on-device.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
               <a
@@ -197,7 +205,7 @@ export function LandingHero() {
                 className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-ink/85 sm:text-base"
               >
                 <Download className="size-4" />
-                Download for free
+                Download FilDOS
               </a>
               <a
                 href={GITHUB_URL}
@@ -208,8 +216,8 @@ export function LandingHero() {
                 Star on GitHub
               </a>
             </div>
-            <span className="mt-4 font-mono text-[11px] text-mist sm:text-xs">
-              Free &amp; open source · AI runs on your machine
+            <span className="mt-4 font-mono text-2xs text-mist sm:text-xs">
+              Free &amp; open source · Runs entirely on your machine · No telemetry
             </span>
           </motion.div>
 
@@ -262,7 +270,7 @@ export function LandingHero() {
                         transformOrigin: "top left",
                       }}
                     >
-                      <AppMock />
+                      <AppMock autoOpenSearch={searchDemo} searchPressed={searchPress} />
                     </div>
                   </div>
                 </div>
