@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  
+
   // Known pages — let these through; everything else (404s) bounces home.
   const ALLOWED = ['/', '/roadmap'];
   if (ALLOWED.includes(pathname) || pathname.startsWith('/api/')) {
