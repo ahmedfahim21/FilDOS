@@ -187,9 +187,9 @@ function GridTile({
       draggable
       className={cn(
         'flex cursor-default flex-col items-center gap-1.5 rounded-lg p-1.5 hover:bg-accent',
-        selected && 'bg-foreground/[0.08] ring-1 ring-inset ring-foreground/20 hover:bg-foreground/[0.08]',
+        selected && 'bg-primary/15 ring-1 ring-inset ring-primary/40 hover:bg-primary/15',
         entry.isHidden && 'opacity-55',
-        over && 'bg-accent ring-2 ring-inset ring-foreground/30',
+        over && 'bg-accent ring-2 ring-inset ring-primary/40',
       )}
       style={{ width: tile.width, height: tile.height }}
       onDragStart={(e) => onItemDragStart(entry, e)}

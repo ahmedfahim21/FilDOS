@@ -37,6 +37,40 @@
   }
 }
 
+/* Search overlay: a thin comet of the scoop colours orbiting the panel border.
+ * The element sits 1px proud of the panel; the conic gradient paints the trail
+ * (tail fades in, bright head, hard cut) over a hairline base ring. */
+@property --scoop-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes scoop-orbit {
+  to {
+    --scoop-angle: 360deg;
+  }
+}
+.scoop-trail {
+  background-color: var(--border);
+  background-image: conic-gradient(
+    from var(--scoop-angle),
+    transparent 0deg 200deg,
+    #6e9bee80 240deg,
+    #4fc9b8 268deg,
+    #a585e0 294deg,
+    #f286b4 320deg,
+    #f9a85c 344deg,
+    transparent 350deg 360deg
+  );
+  animation: scoop-orbit 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scoop-trail {
+    animation: none;
+    background-image: none;
+  }
+}
+
 /*
  * Design tokens shared with the web app: the shadcn/ui token vocabulary plus
  * the FilDOS brand palette. The foundation is black-and-white (Ink primary,
@@ -217,5 +251,31 @@ body {
   user-select: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle scrollbars: a slim, translucent Ink/Mist thumb floating on a
+   transparent track, brightening a touch on hover. Works with the six-scoop
+   foundation by borrowing --foreground, so it inverts correctly in dark mode. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  /* A 3px transparent border + content-box clip leaves a ~4px pill with breathing room. */
+  background-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--foreground) 34%, transparent);
 }
 
