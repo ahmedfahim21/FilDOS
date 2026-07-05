@@ -83,8 +83,8 @@ export interface SemanticHit extends SearchHit {
 /** Column the file views sort by. */
 export type SortKey = 'name' | 'size' | 'type' | 'modified';
 export type SortDir = 'asc' | 'desc';
-export type ViewMode = 'list' | 'grid';
-/** Tile size used by the grid view. */
+export type ViewMode = 'list' | 'grid' | 'gallery' | 'column';
+/** Tile size used by the grid and gallery views. */
 export type IconSize = 'small' | 'medium' | 'large';
 
 /** A user-defined tag that can be attached to any number of files. */
@@ -277,6 +277,8 @@ export interface IndexApi {
   setInterval(minutes: number): Promise<Result<void>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
   search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
+  /** "Find similar": rank indexed files by similarity to the given file. */
+  searchFile(path: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
   onProgress(cb: (progress: IndexProgress) => void): () => void;
 }
