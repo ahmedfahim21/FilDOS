@@ -4,11 +4,12 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   
-  // Allow home page and API routes
-  if (pathname === '/' || pathname.startsWith('/api/')) {
+  // Known pages — let these through; everything else (404s) bounces home.
+  const ALLOWED = ['/', '/roadmap'];
+  if (ALLOWED.includes(pathname) || pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
-  
+
   // For all other routes (404s), redirect to home with 307 status
   return NextResponse.redirect(new URL('/', request.url), 307);
 }

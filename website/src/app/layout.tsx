@@ -2,24 +2,37 @@
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
+import { Space_Grotesk, Space_Mono } from "next/font/google";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-space-grotesk",
+});
+
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
+});
 
 export const metadata: Metadata = {
   title: {
-    default: "FilDOS - AI-Native Decentralized Storage",
+    default: "FilDOS - The AI-Native File Browser",
     template: "%s | FilDOS",
   },
   description:
-    "FilDOS is a secure, AI-native decentralized cloud storage solution that prioritizes meaning-first data organization and retrieval. Built on Filecoin with semantic search capabilities.",
+    "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
   keywords: [
     "FilDOS",
-    "decentralized storage",
-    "AI storage",
-    "Filecoin",
+    "file browser",
+    "file manager",
+    "AI file search",
     "semantic search",
-    "blockchain storage",
-    "Web3 storage",
-    "IPFS",
-    "cloud storage",
+    "on-device AI",
+    "desktop app",
+    "local-first",
+    "file organization",
     "data privacy",
   ],
   authors: [{ name: "ArqosLabs" }],
@@ -78,12 +91,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-      >
-        <main className="flex flex-col">
-          {children}
-        </main>
+    <html lang="en" className={`${spaceGrotesk.variable} ${spaceMono.variable}`}>
+      <body className="font-sans antialiased">
+        {children}
         <Analytics />
       </body>
     </html>

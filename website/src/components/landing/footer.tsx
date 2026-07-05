@@ -1,65 +1,98 @@
-"use client";
-import Image from "next/image";
-import { Separator } from "../ui/separator";
-import Link from "next/link";
-import { Button } from "../ui/button";
-import { Twitter } from "lucide-react";
+import { Logo } from "../logo";
+import { GithubIcon, XIcon } from "../icons";
+import { FlowField } from "./flow-field";
+
+const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
+
+const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: string; external?: boolean }> }> = [
+  {
+    title: "Product",
+    links: [
+      { label: "Roadmap", href: "/roadmap" },
+      { label: "Download", href: `${GITHUB_URL}/releases`, external: true },
+      { label: "Old Version", href: `https://old.fildos.cloud`, external: true },
+    ],
+  },
+  {
+    title: "Community",
+    links: [
+      { label: "GitHub", href: GITHUB_URL, external: true },
+      { label: "Report an issue", href: `${GITHUB_URL}/issues`, external: true },
+    ],
+  },
+];
 
 export function LandingFooter() {
-    return (
-        <>
-            <section className="relative py-12 sm:py-16 md:py-20 bg-primary-foreground overflow-hidden">
-                <div className="absolute inset-0 w-full h-full z-0 opacity-25">
-                </div>
-                <div className="container mx-auto px-4 sm:px-6 text-center relative z-10">
-                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-medium mb-3 sm:mb-4">
-                        READY TO EXPERIENCE THE FUTURE OF STORAGE?
-                    </h2>
-                    <div className="w-full max-w-xs sm:max-w-md md:max-w-2xl lg:max-w-4xl mx-auto mt-8 sm:mt-10 px-2 sm:px-0">
-                        <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                            <iframe 
-                                className="absolute top-0 left-0 w-full h-full rounded-sm opacity-80"
-                                src="https://www.youtube.com/embed/fFJgACii3tM?si=vz6sEukN3K1oRKfn" 
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                                allowFullScreen
-                            ></iframe>
-                        </div>
-                    </div>
-                </div>
-            </section>
+  return (
+    <footer className="relative overflow-hidden bg-ink text-white">
+      {/* Scoop-coloured particle streams drifting through the dark */}
+      <div className="absolute inset-0 opacity-70">
+        <FlowField className="h-full w-full" />
+      </div>
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-ink/70 via-transparent to-ink/60" />
 
-            <footer className="relative bg-primary text-white pt-8 sm:pt-12 pb-4 overflow-hidden">
-                <div className="absolute inset-0 w-full h-full z-0 opacity-20">
-                </div>
-                <div className="container mx-auto px-4 sm:px-6 relative z-10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center">
-                        <div>
-                            <div className="flex items-center space-x-2 mb-3 sm:mb-4">
-                                <Image src="/FILDOS.png" alt="FilDOS Logo" width={32} height={32} className="w-6 h-6 sm:w-8 sm:h-8" />
-                                <h3 className="text-lg sm:text-xl font-medium">FilDOS</h3>
-                            </div>
-                            <p className="text-slate-100 text-sm sm:text-base font-light">
-                                A Secure, AI-Native, Meaning-First Decentralized Drive
-                            </p>
-                        </div>
-                        <div className="flex flex-col md:items-end items-start gap-3 sm:gap-4 mt-6 sm:mt-8 md:mt-0">
-                            <span className="text-slate-100 mb-1 sm:mb-2 text-sm sm:text-base font-light">Follow us for updates:</span>
-                            <Link href="https://x.com/fildos_cloud" target="_blank" rel="noopener noreferrer">
-                                <Button variant="outline" className="flex font-light items-center gap-2 border-gray-700 text-white bg-gray-800 hover:bg-gray-700 text-sm sm:text-base">
-                                    <Twitter className="w-4 h-4 sm:w-5 sm:h-5" />
-                                    <span>X (Twitter)</span>
-                                </Button>
-                            </Link>
-                        </div>
-                    </div>
+      <div className="container relative z-10 mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-16">
+        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
+          <div className="max-w-sm">
+            <Logo className="text-xl" />
+            <p className="mt-4 text-sm leading-relaxed text-white/60">
+              The AI-native file browser for your PC. Search by meaning,
+              organize, research — fast, and fully on-device.
+            </p>
+            <div className="mt-5 flex items-center gap-2">
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="FilDOS on GitHub"
+                className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <GithubIcon className="size-4.5" />
+              </a>
+              <a
+                href="https://x.com/ahmedfahim21_"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="FilDOS on X"
+                className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <XIcon className="size-4" />
+              </a>
+            </div>
+          </div>
 
-                    <Separator className="mt-6 sm:mt-8 mb-3 sm:mb-4 bg-white/80" />
-
-                    <div className="text-center text-gray-100 text-xs sm:text-sm font-light">
-                        <p>&copy; 2025 FilDOS. All rights reserved</p>
-                    </div>
+          <div className="flex gap-16 sm:gap-24">
+            {LINK_GROUPS.map(({ title, links }) => (
+              <nav key={title}>
+                <div className="mb-3 font-mono text-2xs uppercase tracking-widest text-white/40">
+                  {title}
                 </div>
-            </footer>
-        </>
-    );
+                <ul className="space-y-2.5">
+                  {links.map(({ label, href, external }) => (
+                    <li key={label}>
+                      <a
+                        href={href}
+                        {...(external
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : {})}
+                        className="text-sm text-white/70 transition-colors hover:text-white"
+                      >
+                        {label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 sm:flex-row">
+          <span className="text-xs text-white/50">
+            © {new Date().getFullYear()} FilDOS · MIT License
+          </span>
+        </div>
+      </div>
+    </footer>
+  );
 }
