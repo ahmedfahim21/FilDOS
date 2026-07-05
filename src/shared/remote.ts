@@ -39,3 +39,18 @@ export function parseRemote(uri: string): RemoteRef | null {
 export function formatRemote(provider: string, accountId: string, path: string): string {
   return path ? `${provider}://${accountId}/${path}` : `${provider}://${accountId}/`;
 }
+
+/** Human-friendly names for the known cloud providers. */
+const PROVIDER_LABELS: Record<string, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+  s3: 'Amazon S3',
+  ipfs: 'IPFS',
+  mega: 'Mega',
+};
+
+/** A display name for a provider id, falling back to the id itself. */
+export function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider;
+}

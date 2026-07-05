@@ -11,7 +11,7 @@ import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
-import { semanticSearch } from './search';
+import { semanticSearch, similarByFile } from './search';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -158,6 +158,26 @@ export function registerIndexHandlers(): void {
           vectorStore,
           query,
           { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
+        );
+      }),
+  );
+
+  ipcMain.handle(
+    Channels.indexSearchFile,
+    (_e, path: string, opts?: { rootPath?: string; k?: number }) =>
+      wrap<SemanticHit[]>(async () => {
+        const provider = await activeAiProvider();
+        if (!provider) {
+          throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
+        }
+        const p = assertValidPath(path);
+        const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
+        return similarByFile(
+          provider,
+          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
+          vectorStore,
+          p,
+          { rootPath, k: opts?.k },
         );
       }),
   );

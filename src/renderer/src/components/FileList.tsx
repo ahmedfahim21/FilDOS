@@ -8,7 +8,7 @@ import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
 import type { FileViewProps } from './viewTypes';
 
-const ROW_HEIGHT = 30;
+const ROW_HEIGHT = 32;
 
 // Shared grid template for the header and every row; the --w-* vars (set on the
 // container) drive the resizable Size/Type/Modified columns.
@@ -124,10 +124,10 @@ export function FileList({
                 className={cn(
                   GRID,
                   'group border-b border-transparent hover:bg-accent',
-                  selected && 'bg-foreground/[0.08] hover:bg-foreground/[0.08]',
+                  selected && 'bg-primary/15 hover:bg-primary/15',
                   entry.isHidden && 'opacity-55',
                   dropTarget === entry.path &&
-                    'bg-accent ring-2 ring-inset ring-foreground/30',
+                    'bg-accent ring-2 ring-inset ring-primary/40',
                 )}
                 style={{
                   position: 'absolute',

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AppError, Entry } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
+import { sortEntries } from '@/lib/sortEntries';
 
 interface DirectoryState {
   entries: Entry[];
@@ -73,23 +74,7 @@ export function useDirectory() {
       list = list.filter((e) => e.name.toLowerCase().includes(q));
     }
 
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    const sorted = [...list].sort((a, b) => {
-      // Folders always lead, regardless of sort column/direction.
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-      switch (sort.key) {
-        case 'size':
-          return (a.size - b.size) * dir;
-        case 'modified':
-          return (a.modified - b.modified) * dir;
-        case 'type':
-          return a.ext.localeCompare(b.ext) * dir || a.name.localeCompare(b.name) * dir;
-        case 'name':
-        default:
-          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) * dir;
-      }
-    });
-    return sorted;
+    return sortEntries(list, sort);
   }, [state.entries, showHidden, sort, recursive, query]);
 
   return { ...state, visible };

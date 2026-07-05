@@ -7,7 +7,7 @@ import * as aiIndex from '../../db/aiIndex';
 import { closeDb, initDb } from '../../db';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { useTempDir } from '../../fs/fixtures';
-import { semanticSearch } from './search';
+import { semanticSearch, similarByFile } from './search';
 
 const tmp = useTempDir();
 const store = new SqliteVectorStore();
@@ -128,6 +128,74 @@ describe('semanticSearch', () => {
 
     expect(hits.map((h) => h.path)).not.toContain(a);
     expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index
+  });
+});
+
+describe('similarByFile', () => {
+  it('ranks files by similarity to a text probe and excludes the probe itself', async () => {
+    const probe = join(tmp(), 'probe.txt');
+    const near = join(tmp(), 'near.txt');
+    const far = join(tmp(), 'far.txt');
+    await indexFile(probe, [1, 0, 0], 'the probe document');
+    await indexFile(near, [0.9, 0.1, 0], 'a very similar document');
+    await indexFile(far, [0, 1, 0], 'something unrelated');
+
+    // Provider embeds every text to the probe's direction.
+    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe);
+
+    expect(hits.map((h) => h.path)).not.toContain(probe);
+    expect(hits[0].path).toBe(near);
+    expect(hits[0].score).toBeGreaterThan(hits[1].score);
+  });
+
+  it('scopes similar results to rootPath', async () => {
+    await fs.mkdir(join(tmp(), 'docs'));
+    const probe = join(tmp(), 'probe.txt');
+    const inDocs = join(tmp(), 'docs', 'a.txt');
+    const outside = join(tmp(), 'b.txt');
+    await fs.writeFile(probe, 'probe text');
+    await indexFile(inDocs, [1, 0, 0], 'in docs');
+    await indexFile(outside, [1, 0, 0], 'outside');
+
+    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe, {
+      rootPath: join(tmp(), 'docs'),
+    });
+
+    expect(hits.map((h) => h.path)).toEqual([inDocs]);
+  });
+
+  it('rejects file types it cannot read', async () => {
+    const bin = join(tmp(), 'movie.mp4');
+    await fs.writeFile(bin, 'not really a movie');
+
+    await expect(
+      similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, bin),
+    ).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
+  });
+
+  it('uses the image lane for image probes', async () => {
+    const probeImg = join(tmp(), 'photo.png');
+    const otherImg = join(tmp(), 'other.png');
+    const textFile = join(tmp(), 'a.txt');
+    await fs.writeFile(probeImg, 'png-bytes');
+    // Index one image chunk (CLIP lane) and one text chunk (text lane).
+    await fs.writeFile(otherImg, 'png-bytes-2');
+    await aiIndex.upsertState(state(otherImg));
+    await store.upsert(otherImg, [
+      { chunkIx: 0, text: 'other.png', embedding: Float32Array.from([1, 0, 0]), modelId: 'clip' },
+    ]);
+    await indexFile(textFile, [1, 0, 0], 'text content');
+
+    const provider = {
+      ...fakeProvider([1, 0, 0]),
+      async embedImages() {
+        return [Float32Array.from([1, 0, 0])];
+      },
+    };
+    const hits = await similarByFile(provider, { text: 'm1', image: 'clip' }, store, probeImg);
+
+    // Only the CLIP-lane chunk matches; the text-lane file must not leak in.
+    expect(hits.map((h) => h.path)).toEqual([otherImg]);
   });
 });
 

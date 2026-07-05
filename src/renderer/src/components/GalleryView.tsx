@@ -6,40 +6,42 @@ import { canPreview } from '@/lib/format';
 import { fileLogo } from '@/lib/fileLogo';
 import { cn } from '@/lib/utils';
 import { useThumbnail } from '@/hooks/useThumbnail';
-import { RenameInput } from './RenameInput';
 import { TagDots } from './TagDots';
 import type { FileViewProps, SelectMods } from './viewTypes';
 
-/** Tile geometry per icon-size preference. */
-// thumb = resolution to fetch previews at; preview/logo = max rendered size of a
-// real thumbnail vs. a type-logo fallback (logos render smaller, with padding).
-const TILE: Record<
-  IconSize,
-  { width: number; height: number; thumb: number; preview: number; logo: number }
-> = {
-  small: { width: 96, height: 92, thumb: 60, preview: 48, logo: 40 },
-  medium: { width: 128, height: 116, thumb: 96, preview: 64, logo: 54 },
-  large: { width: 176, height: 158, thumb: 136, preview: 100, logo: 84 },
+/**
+ * Square-tile edge per icon-size preference. `thumb` is the resolution the
+ * preview is fetched at (a touch above the tile so cropping stays crisp).
+ */
+const TILE: Record<IconSize, { size: number; thumb: number }> = {
+  small: { size: 104, thumb: 128 },
+  medium: { size: 136, thumb: 160 },
+  large: { size: 184, thumb: 224 },
 };
+
+/** Hairline grout between tiles so the wall reads as a mosaic, not a table. */
+const GROUT = 2;
 
 const STATE =
   'flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground';
 
-export function GridView({
+/**
+ * A wall of uniform square thumbnails with no filenames — images crop to fill,
+ * everything else shows its centered type logo. Tiles pack edge-to-edge so a
+ * photo-heavy folder reads as a contact sheet.
+ */
+export function GalleryView({
   entries,
   loading,
   error,
   onReconnect,
   selection,
-  renamingPath,
   getTags,
   onSelect,
   onActivate,
   onContextMenu,
   onBackgroundContextMenu,
   onBackgroundClick,
-  onRenameCommit,
-  onRenameCancel,
   onItemDragStart,
   onDropOnFolder,
   onDropOnPane,
@@ -49,8 +51,6 @@ export function GridView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
-  // The scroll container only exists once we leave the loading/error/empty
-  // states, so re-observe when that emptiness toggles.
   const isEmpty = entries.length === 0;
 
   // Track the scroll container's width to compute the column count.
@@ -63,17 +63,17 @@ export function GridView({
     return () => ro.disconnect();
   }, [loading, error, isEmpty]);
 
-  const perRow = Math.max(1, Math.floor((width || tile.width) / tile.width));
+  const step = tile.size + GROUT;
+  const perRow = Math.max(1, Math.floor((width || step) / step));
   const rowCount = Math.ceil(entries.length / perRow);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => tile.height,
+    estimateSize: () => step,
     overscan: 6,
   });
 
-  // Row height changed with the icon size; drop cached measurements.
   useEffect(() => {
     virtualizer.measure();
   }, [virtualizer, iconSize]);
@@ -95,8 +95,7 @@ export function GridView({
       </div>
     );
   }
-  if (entries.length === 0)
-    return <div className={STATE}>This folder is empty</div>;
+  if (entries.length === 0) return <div className={STATE}>This folder is empty</div>;
 
   return (
     <div
@@ -123,23 +122,22 @@ export function GridView({
                 top: 0,
                 left: 0,
                 right: 0,
-                height: tile.height,
+                height: step,
+                gap: GROUT,
                 transform: `translateY(${vi.start}px)`,
               }}
             >
               {rowEntries.map((entry) => (
-                <GridTile
+                <GalleryTile
                   key={entry.path}
                   entry={entry}
-                  tile={tile}
+                  size={tile.size}
+                  thumb={tile.thumb}
                   tags={getTags(entry.path)}
                   selected={selection.has(entry.path)}
-                  editing={renamingPath === entry.path}
                   onSelect={onSelect}
                   onActivate={onActivate}
                   onContextMenu={onContextMenu}
-                  onRenameCommit={onRenameCommit}
-                  onRenameCancel={onRenameCancel}
                   onItemDragStart={onItemDragStart}
                   onDropOnFolder={onDropOnFolder}
                 />
@@ -152,46 +150,41 @@ export function GridView({
   );
 }
 
-function GridTile({
+function GalleryTile({
   entry,
-  tile,
+  size,
+  thumb,
   tags,
   selected,
-  editing,
   onSelect,
   onActivate,
   onContextMenu,
-  onRenameCommit,
-  onRenameCancel,
   onItemDragStart,
   onDropOnFolder,
 }: {
   entry: Entry;
-  tile: (typeof TILE)[IconSize];
+  size: number;
+  thumb: number;
   tags: Tag[];
   selected: boolean;
-  editing: boolean;
   onSelect: (entry: Entry, mods: SelectMods) => void;
   onActivate: (entry: Entry) => void;
   onContextMenu: (entry: Entry, x: number, y: number) => void;
-  onRenameCommit: (entry: Entry, name: string) => void;
-  onRenameCancel: () => void;
   onItemDragStart: (entry: Entry, e: DragEvent) => void;
   onDropOnFolder: (folder: Entry, e: DragEvent) => void;
 }) {
-  const thumb = useThumbnail(entry.path, tile.thumb, canPreview(entry));
+  const preview = useThumbnail(entry.path, thumb, canPreview(entry));
   const [over, setOver] = useState(false);
 
   return (
     <div
       draggable
+      title={entry.name}
       className={cn(
-        'flex cursor-default flex-col items-center gap-1.5 rounded-lg p-1.5 hover:bg-accent',
-        selected && 'bg-primary/15 ring-1 ring-inset ring-primary/40 hover:bg-primary/15',
+        'group bg-muted relative shrink-0 cursor-default overflow-hidden rounded-md ring-1 ring-inset ring-border/50',
         entry.isHidden && 'opacity-55',
-        over && 'bg-accent ring-2 ring-inset ring-primary/40',
       )}
-      style={{ width: tile.width, height: tile.height }}
+      style={{ width: size, height: size }}
       onDragStart={(e) => onItemDragStart(entry, e)}
       onDragOver={
         entry.isDirectory
@@ -214,12 +207,11 @@ function GridTile({
       }
       onClick={(e) => {
         e.stopPropagation();
-        if (editing) return;
         onSelect(entry, { toggle: e.metaKey || e.ctrlKey, range: e.shiftKey });
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (!editing) onActivate(entry);
+        onActivate(entry);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -228,40 +220,51 @@ function GridTile({
         onContextMenu(entry, e.clientX, e.clientY);
       }}
     >
-      <div className="grid min-h-0 w-full flex-1 place-items-center">
+      {preview ? (
         <img
-          src={thumb ?? fileLogo(entry)}
+          src={preview}
           alt=""
           draggable={false}
-          className={cn(
-            // Thumbnails fill a fixed square, cropping the overflow (object-cover)
-            // so portraits/landscapes keep their aspect ratio instead of being
-            // squeezed; type logos stay contained and centered.
-            thumb ? 'rounded-sm object-cover' : 'max-h-full max-w-full object-contain',
-          )}
-          style={
-            thumb
-              ? { width: tile.preview, height: tile.preview }
-              : { maxWidth: tile.logo, maxHeight: tile.logo }
-          }
-        />
-      </div>
-      {editing ? (
-        <RenameInput
-          className="w-full select-text rounded-sm border border-primary bg-background px-1 py-px text-center text-xs text-foreground outline-none"
-          initial={entry.name}
-          onCommit={(name) => onRenameCommit(entry, name)}
-          onCancel={onRenameCancel}
+          className="h-full w-full object-cover"
         />
       ) : (
-        <div
-          className="line-clamp-2 w-full text-center text-xs font-medium leading-tight wrap-break-word"
-          title={entry.name}
-        >
-          <TagDots tags={tags} max={3} dotSize={7} className="mr-1" />
-          {entry.name}
+        <div className="grid h-full w-full place-items-center p-2">
+          <img
+            src={fileLogo(entry)}
+            alt=""
+            draggable={false}
+            className="max-h-full max-w-full object-contain"
+            style={{ width: size * 0.55, height: size * 0.55 }}
+          />
         </div>
       )}
+
+      {/* Tag dots pinned to a corner so the mosaic keeps its clean edges. */}
+      {tags.length > 0 && (
+        <div className="bg-background/80 absolute left-1 top-1 rounded-full px-1 py-0.5 backdrop-blur-sm">
+          <TagDots tags={tags} max={3} dotSize={7} />
+        </div>
+      )}
+
+      {/* Hover: a short filename over a dark gradient at the bottom. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end bg-gradient-to-t from-black/75 via-black/25 to-transparent px-1.5 pb-1 pt-5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <span className="text-2xs w-full truncate font-medium text-white">
+          {entry.name}
+        </span>
+      </div>
+
+      {/* A little dark filter on hover + the selection / drop-target ring,
+          drawn on top so they never shift layout. */}
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-0 rounded-md ring-inset transition',
+          over
+            ? 'bg-primary/10 ring-2 ring-primary/60'
+            : selected
+              ? 'bg-primary/15 ring-2 ring-primary/60'
+              : 'ring-0 group-hover:bg-black/15',
+        )}
+      />
     </div>
   );
 }

@@ -20,12 +20,15 @@ import {
   FolderAddIcon,
   FolderOpenIcon,
   HardDriveIcon,
+  Image02Icon,
   InformationCircleIcon,
   LayoutGridIcon,
+  LayoutThreeColumnIcon,
   LinkSquare01Icon,
   ListViewIcon,
   Moon01Icon,
   More01Icon,
+  NoInternetIcon,
   PencilEdit01Icon,
   PlusSignIcon,
   Refresh01Icon,
@@ -67,6 +70,8 @@ type IconName =
   | 'search'
   | 'grid'
   | 'list'
+  | 'gallery'
+  | 'columns'
   | 'restore'
   | 'tag'
   | 'clock'
@@ -82,6 +87,7 @@ type IconName =
   | 'monitor'
   | 'alert-circle'
   | 'check-circle'
+  | 'offline'
   | 'more';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
@@ -109,6 +115,8 @@ const ICONS: Record<IconName, HugeIcon> = {
   search: Search01Icon,
   grid: LayoutGridIcon,
   list: ListViewIcon,
+  gallery: Image02Icon,
+  columns: LayoutThreeColumnIcon,
   restore: RotateLeft01Icon,
   tag: Tag01Icon,
   clock: Clock01Icon,
@@ -124,6 +132,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   monitor: ComputerIcon,
   'alert-circle': AlertCircleIcon,
   'check-circle': CheckmarkCircle01Icon,
+  offline: NoInternetIcon,
   more: More01Icon,
 };
 

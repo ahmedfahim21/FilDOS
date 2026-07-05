@@ -207,16 +207,53 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const ix = indexing.progress;
   const indexRunning = ix?.state === 'scanning' || ix?.state === 'indexing';
   const indexPct = ix && ix.total > 0 ? Math.round((ix.indexed / ix.total) * 100) : 0;
-  const indexLabel =
-    ix?.state === 'scanning'
-      ? 'Scanning files…'
-      : ix?.state === 'indexing'
-        ? `Indexing… ${ix.indexed} / ${ix.total}`
-        : ix?.state === 'paused'
-          ? 'Paused'
-          : ix?.state === 'error'
-            ? (ix.message ?? 'Indexing failed')
-            : 'Idle';
+
+  const { indexTitle, indexSubtitle } = (() => {
+    if (!ix) return { indexTitle: 'Idle', indexSubtitle: null };
+    if (ix.state === 'scanning') {
+      return {
+        indexTitle: 'Walking the file tree…',
+        indexSubtitle: ix.scanned > 0 ? `${ix.scanned.toLocaleString()} files found` : null,
+      };
+    }
+    if (ix.state === 'indexing') {
+      const ext = ix.currentFile?.split('.').pop()?.toLowerCase() ?? '';
+      const verb =
+        ext === 'pdf' ? 'Parsing PDF'
+        : ['md', 'mdx', 'rst', 'txt'].includes(ext) ? 'Reading document'
+        : ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext) ? 'Embedding TypeScript'
+        : ext === 'py' ? 'Embedding Python'
+        : ['go', 'rs', 'java', 'cpp', 'c', 'cs', 'swift', 'rb', 'kt'].includes(ext) ? 'Embedding source code'
+        : ['json', 'yaml', 'yml', 'toml'].includes(ext) ? 'Indexing config'
+        : ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'].includes(ext) ? 'Encoding image'
+        : 'Building search vectors';
+      return {
+        indexTitle: `${verb}…`,
+        indexSubtitle: `${ix.indexed.toLocaleString()} / ${ix.total.toLocaleString()} files`,
+      };
+    }
+    if (ix.state === 'paused') {
+      return {
+        indexTitle: 'Paused',
+        indexSubtitle: ix.total > 0
+          ? `${ix.indexed.toLocaleString()} of ${ix.total.toLocaleString()} done`
+          : null,
+      };
+    }
+    if (ix.state === 'error') {
+      return {
+        indexTitle: ix.message ?? 'Indexing failed',
+        indexSubtitle: ix.errors > 0 ? `${ix.errors} file${ix.errors !== 1 ? 's' : ''} skipped` : null,
+      };
+    }
+    // idle
+    return {
+      indexTitle: 'Idle',
+      indexSubtitle: ix.indexed > 0
+        ? `${ix.indexed.toLocaleString()} files in the index`
+        : 'No files indexed yet — press Start',
+    };
+  })();
 
   async function handleTestEmbed() {
     setEmbedding(true);
@@ -400,17 +437,22 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
           >
             {/* Progress */}
             <div className="border-border rounded-lg border px-3 py-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-foreground text-sm">{indexLabel}</span>
-                {!!ix?.errors && (
-                  <span className="text-muted-foreground text-2xs">{ix.errors} skipped</span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-foreground text-sm">{indexTitle}</div>
+                  {indexSubtitle && (
+                    <div className="text-muted-foreground mt-0.5 text-2xs">{indexSubtitle}</div>
+                  )}
+                </div>
+                {!!ix?.errors && ix.state !== 'error' && (
+                  <span className="text-muted-foreground shrink-0 text-2xs">{ix.errors} skipped</span>
                 )}
               </div>
               {indexRunning && (
                 <>
                   <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
                     <div
-                      className="bg-foreground/50 h-full rounded-full transition-all"
+                      className="bg-foreground/50 h-full rounded-full transition-all duration-300"
                       style={{ width: `${indexPct}%` }}
                     />
                   </div>
