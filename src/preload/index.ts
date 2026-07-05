@@ -127,6 +127,7 @@ const indexApi: IndexApi = {
   listExcludes: () => ipcRenderer.invoke(Channels.indexListExcludes),
   setInterval: (minutes) => ipcRenderer.invoke(Channels.indexSetInterval, minutes),
   search: (query, opts) => ipcRenderer.invoke(Channels.indexSearch, query, opts),
+  searchFile: (path, opts) => ipcRenderer.invoke(Channels.indexSearchFile, path, opts),
   onProgress: (cb: (progress: IndexProgress) => void) => {
     const listener = (_e: IpcRendererEvent, progress: IndexProgress) => cb(progress);
     ipcRenderer.on(Events.indexProgress, listener);

@@ -4,6 +4,8 @@ import { relevanceOf } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
+import { extractText, isImage } from './extract';
+import { chunk } from './chunk';
 import * as service from '../../fs/service';
 import * as aiIndex from '../../db/aiIndex';
 
@@ -121,6 +123,35 @@ function rrfFuse(
 /** How many text-lane candidates to pass through the cross-encoder. */
 const RERANK_N = 50;
 
+/**
+ * Resolve scored paths into SemanticHits: stat each file, prune index rows for
+ * files that vanished from disk, attach relative path + snippet, cap at k.
+ */
+async function resolveHits(
+  scored: Scored[],
+  rootPath: string | undefined,
+  k: number,
+): Promise<SemanticHit[]> {
+  const infos = await Promise.all(scored.map((m) => service.getInfo(m.path).catch(() => null)));
+
+  const stale = scored.filter((_, i) => infos[i] === null).map((m) => m.path);
+  if (stale.length) await aiIndex.remove(stale);
+
+  return scored
+    .map((m, i): SemanticHit | null => {
+      const info = infos[i];
+      if (!info) return null;
+      return {
+        ...info,
+        relativePath: rootPath ? relative(rootPath, m.path) : m.path,
+        score: m.score,
+        snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 240),
+      };
+    })
+    .filter((h): h is SemanticHit => h !== null)
+    .slice(0, k);
+}
+
 export async function semanticSearch(
   provider: AiProvider,
   models: SearchModels,
@@ -197,23 +228,63 @@ export async function semanticSearch(
     else if (!img || t.score >= img.score) { best.push(t); ti++; }
     else { best.push(img); ii++; }
   }
-  const infos = await Promise.all(best.map((m) => service.getInfo(m.path).catch(() => null)));
+  return resolveHits(best, opts.rootPath, k);
+}
 
-  // Prune index rows for files that have vanished from disk.
-  const stale = best.filter((_, i) => infos[i] === null).map((m) => m.path);
-  if (stale.length) await aiIndex.remove(stale);
+/** How many leading chunks of the probe file to average into the query vector. */
+const SIMILAR_PROBE_CHUNKS = 4;
 
-  return best
-    .map((m, i): SemanticHit | null => {
-      const info = infos[i];
-      if (!info) return null;
-      return {
-        ...info,
-        relativePath: opts.rootPath ? relative(opts.rootPath, m.path) : m.path,
-        score: m.score,
-        snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 240),
-      };
-    })
-    .filter((h): h is SemanticHit => h !== null)
-    .slice(0, k);
+/**
+ * "Find similar" search: rank indexed files by similarity to a given file
+ * instead of a text query. Images are embedded with the CLIP model and matched
+ * against the image lane; text/document files are embedded with the text model
+ * (the first few chunks averaged into one probe vector) and matched against the
+ * text lane. The probe file itself is excluded from the results.
+ */
+export async function similarByFile(
+  provider: AiProvider,
+  models: SearchModels,
+  vectorStore: VectorStore,
+  filePath: string,
+  opts: { rootPath?: string; k?: number } = {},
+): Promise<SemanticHit[]> {
+  const k = opts.k ?? DEFAULT_K;
+  const fetchK = Math.max(k * OVERFETCH, 50);
+
+  let vec: Float32Array | undefined;
+  let modelId: string;
+  if (isImage(filePath)) {
+    modelId = models.image;
+    [vec] = await provider.embedImages(modelId, [filePath]);
+  } else {
+    modelId = models.text;
+    const text = await extractText(filePath);
+    if (!text) {
+      throw Object.assign(
+        new Error('This file type can’t be read for similarity search.'),
+        { code: 'EUNSUPPORTED' },
+      );
+    }
+    const probes = chunk(text).slice(0, SIMILAR_PROBE_CHUNKS).map((c) => c.text);
+    const vecs = await provider.embed(modelId, probes, 'passage');
+    if (vecs.length) {
+      // Average the chunk vectors; cosine ignores magnitude, so no renorm needed.
+      const dim = vecs[0].length;
+      const avg = new Float32Array(dim);
+      for (const v of vecs) for (let i = 0; i < dim; i++) avg[i] += v[i];
+      vec = avg;
+    }
+  }
+  if (!vec) return [];
+
+  const matches = await vectorStore.search(vec, {
+    underPath: opts.rootPath,
+    k: fetchK,
+    modelId,
+  });
+  const scored = matches
+    .filter((m) => m.path !== filePath)
+    .map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
+
+  return resolveHits(bestPerFile(scored, k), opts.rootPath, k);
 }
