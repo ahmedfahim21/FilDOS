@@ -8,10 +8,9 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: st
   {
     title: "Product",
     links: [
-      { label: "Features", href: "#features" },
-      { label: "How it works", href: "#how-it-works" },
-      { label: "Reviews", href: "#social-proof" },
+      { label: "Roadmap", href: "/roadmap" },
       { label: "Download", href: `${GITHUB_URL}/releases`, external: true },
+      { label: "Old Version", href: `https://old.fildos.cloud`, external: true },
     ],
   },
   {
