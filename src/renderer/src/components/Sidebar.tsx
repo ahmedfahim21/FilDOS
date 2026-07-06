@@ -8,6 +8,13 @@ import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { TagDot } from './TagDots';
+import { folderLogo } from '@/lib/fileLogo';
+import gdriveLogo from '@/assets/cloud/GDrive.png';
+import dropboxLogo from '@/assets/cloud/Dropbox.png';
+import onedriveLogo from '@/assets/cloud/OneDrive.png';
+import s3Logo from '@/assets/cloud/AmazonS3.webp';
+import ipfsLogo from '@/assets/cloud/IPFS.png';
+import megaLogo from '@/assets/cloud/mega.webp';
 
 const PROVIDER_NAMES: Record<string, string> = {
   gdrive: 'Google Drive',
@@ -16,6 +23,15 @@ const PROVIDER_NAMES: Record<string, string> = {
   s3: 'Amazon S3',
   ipfs: 'IPFS',
   mega: 'Mega',
+};
+
+const PROVIDER_LOGOS: Record<string, string> = {
+  gdrive: gdriveLogo,
+  dropbox: dropboxLogo,
+  onedrive: onedriveLogo,
+  s3: s3Logo,
+  ipfs: ipfsLogo,
+  mega: megaLogo,
 };
 
 const itemClass = (active = false, drop = false) =>
@@ -138,7 +154,11 @@ export function Sidebar({
               onDropPath(item.path, e);
             }}
           >
-            <Icon name="folder" size={16} />
+            <img
+              src={folderLogo(item.label)}
+              alt=""
+              className="size-5 shrink-0 object-contain"
+            />
             <span>{item.label}</span>
           </button>
         ))}
@@ -227,12 +247,20 @@ export function Sidebar({
                 onClick={() => navigate(accountRoot)}
                 title={`${account.label} (${account.provider})`}
               >
-                <Icon name="cloud" size={16} />
+                {PROVIDER_LOGOS[account.provider] ? (
+                  <img
+                    src={PROVIDER_LOGOS[account.provider]}
+                    alt=""
+                    className="size-4 shrink-0 rounded object-contain"
+                  />
+                ) : (
+                  <Icon name="cloud" size={16} />
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{account.label}</div>
-                  <div className="text-muted-foreground truncate text-3xs">
+                  <div className="truncate text-sm">
                     {PROVIDER_NAMES[account.provider] ?? account.provider}
                   </div>
+                  <div className="text-muted-foreground truncate text-3xs">{account.label}</div>
                 </div>
               </button>
               <button

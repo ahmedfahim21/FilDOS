@@ -289,7 +289,7 @@ function ModelChip() {
                 </span>
                 {def.id === modelId && <Icon name="check" size={13} className="text-mint" />}
               </div>
-              <span className="text-muted-foreground pl-7 font-mono text-3xs">{summary(def.id)}</span>
+              <span className="text-muted-foreground pl-3.5 font-mono text-3xs">{summary(def.id)}</span>
             </DropdownMenuItem>
           );
         })}
