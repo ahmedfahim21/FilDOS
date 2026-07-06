@@ -25,12 +25,19 @@
  * node-llama-cpp is ESM-only, so this CJS bundle pulls it in with a dynamic
  * import (same pattern as @huggingface/transformers in modelWorker.ts).
  */
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { ChatHistoryItem, Llama, LlamaModel } from 'node-llama-cpp';
 import type * as LlamaCpp from 'node-llama-cpp';
 import type { ChatTurn, LlmModelStatus } from '@shared/types';
-import { getLlmModelDef, LLM_MODELS } from '@shared/llmModels';
+import {
+  getLlmModelDef,
+  LLM_MODELS,
+  resolveLlmConfig,
+  type LlmModelConfig,
+  type LlmSystemSpecs,
+} from '@shared/llmModels';
 
 const MODELS_DIR = process.env.FILDOS_LLM_DIR ?? join(__dirname, 'llm-models');
 
@@ -108,19 +115,53 @@ async function loadModel(modelId: string): Promise<LlamaModel> {
   return model;
 }
 
+/** Probe what this machine can run (GPU backend + memory), for the model picker. */
+async function systemSpecs(): Promise<LlmSystemSpecs> {
+  const base = {
+    ramMb: Math.round(totalmem() / 1_048_576),
+    cpus: cpus().length,
+    arch: process.arch,
+  };
+  try {
+    const { llama } = await engine();
+    const vram = await llama.getVramState();
+    return {
+      ...base,
+      gpu: llama.gpu ? String(llama.gpu) : null,
+      vramMb: Math.round(vram.total / 1_048_576),
+    };
+  } catch {
+    // Engine failed to load (unsupported platform) — report CPU-only.
+    return { ...base, gpu: null, vramMb: 0 };
+  }
+}
+
+/** Delete a downloaded model's weights (unloading it first if resident). */
+async function removeModel(modelId: string): Promise<void> {
+  if (!modelId) fail('EINVAL', 'No model id given.');
+  if (downloads.has(modelId)) fail('EBUSY', 'That model is still downloading.');
+  if (loaded?.modelId === modelId) {
+    await loaded.model.dispose();
+    loaded = null;
+  }
+  rmSync(modelDir(modelId), { recursive: true, force: true });
+  emit({ modelId, state: 'absent' });
+}
+
 // ---------------------------------------------------------------------------
 // Download
 // ---------------------------------------------------------------------------
 
 const downloads = new Map<string, Promise<void>>();
 
-function download(modelId: string): Promise<void> {
+/** Download a model's GGUF. `uri` overrides the built-in catalog (custom models). */
+function download(modelId: string, uri?: string): Promise<void> {
   const existing = downloads.get(modelId);
   if (existing) return existing;
   if (ggufPath(modelId)) return Promise.resolve();
 
-  const def = getLlmModelDef(modelId);
-  if (!def) fail('EINVAL', `Unknown chat model: ${modelId}`);
+  const modelUri = uri ?? getLlmModelDef(modelId)?.uri;
+  if (!modelUri) fail('EINVAL', `Unknown chat model: ${modelId}`);
 
   const promise = (async () => {
     const { lib } = await engine();
@@ -129,7 +170,7 @@ function download(modelId: string): Promise<void> {
     downloading.set(modelId, 0);
     emit({ modelId, state: 'downloading', progress: 0 });
     const downloader = await lib.createModelDownloader({
-      modelUri: def.uri,
+      modelUri,
       dirPath: dir,
       showCliProgress: false,
       onProgress: ({ totalSize, downloadedSize }) => {
@@ -174,17 +215,21 @@ interface ChatArgs {
   system: string;
   history: ChatTurn[];
   prompt: string;
+  /** Resolved generation settings (defaults applied by the caller). */
+  config?: Partial<LlmModelConfig>;
 }
 
-async function runChat({ modelId, requestId, system, history, prompt }: ChatArgs): Promise<string> {
+async function runChat({ modelId, requestId, system, history, prompt, config }: ChatArgs): Promise<string> {
   const abort = new AbortController();
   aborts.set(requestId, abort);
   try {
-    const def = getLlmModelDef(modelId);
-    if (!def) fail('EINVAL', `Unknown chat model: ${modelId}`);
+    // Re-resolve here too so a stale caller can never push wild values in.
+    // (No catalog check — custom models aren't in it; loadModel verifies the
+    // weights exist on disk, which is the check that matters.)
+    const cfg = resolveLlmConfig(modelId, config);
     const { lib } = await engine();
     const model = await loadModel(modelId);
-    const context = await model.createContext({ contextSize: { max: def.ctx } });
+    const context = await model.createContext({ contextSize: { max: cfg.contextSize } });
     try {
       const session = new lib.LlamaChatSession({
         contextSequence: context.getSequence(),
@@ -201,8 +246,9 @@ async function runChat({ modelId, requestId, system, history, prompt }: ChatArgs
         ]);
       }
       return await session.prompt(prompt, {
-        temperature: 0.3,
-        maxTokens: 1024,
+        temperature: cfg.temperature,
+        topP: cfg.topP,
+        maxTokens: cfg.maxTokens,
         signal: abort.signal,
         // On stop, end generation gracefully and keep the partial answer.
         stopOnAbortSignal: true,
@@ -222,21 +268,31 @@ async function runChat({ modelId, requestId, system, history, prompt }: ChatArgs
 
 interface InMessage {
   id: number;
-  type: 'models' | 'download' | 'chat' | 'stopChat';
+  type: 'models' | 'download' | 'remove' | 'specs' | 'chat' | 'stopChat';
   modelId?: string;
+  /** All ids to report status for — built-ins plus the user's custom models. */
+  modelIds?: string[];
+  /** Download source for models outside the built-in catalog. */
+  uri?: string;
   requestId?: string;
   system?: string;
   history?: ChatTurn[];
   prompt?: string;
+  config?: Partial<LlmModelConfig>;
 }
 
 async function handle(msg: InMessage): Promise<unknown> {
   switch (msg.type) {
     case 'models':
-      return LLM_MODELS.map((m) => statusFor(m.id));
+      return (msg.modelIds ?? LLM_MODELS.map((m) => m.id)).map(statusFor);
     case 'download':
-      await download(msg.modelId ?? '');
+      await download(msg.modelId ?? '', msg.uri);
       return undefined;
+    case 'remove':
+      await removeModel(msg.modelId ?? '');
+      return undefined;
+    case 'specs':
+      return systemSpecs();
     case 'chat': {
       const args: ChatArgs = {
         modelId: msg.modelId ?? '',
@@ -244,6 +300,7 @@ async function handle(msg: InMessage): Promise<unknown> {
         system: msg.system ?? '',
         history: msg.history ?? [],
         prompt: msg.prompt ?? '',
+        config: msg.config,
       };
       const run = chatChain.catch(() => {}).then(() => runChat(args));
       chatChain = run;

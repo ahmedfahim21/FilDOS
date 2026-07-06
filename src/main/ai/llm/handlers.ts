@@ -11,7 +11,14 @@ import type {
   Result,
   StoredChatMessage,
 } from '@shared/types';
-import { DEFAULT_LLM_MODEL_ID, getLlmModelDef } from '@shared/llmModels';
+import {
+  DEFAULT_LLM_MODEL_ID,
+  getLlmModelDef,
+  LLM_MODELS,
+  resolveLlmConfig,
+  type LlmModelDef,
+  type LlmSystemSpecs,
+} from '@shared/llmModels';
 import { getPrefs } from '../../prefs';
 import { listDir } from '../../fs/service';
 import * as chats from '../../db/chats';
@@ -62,25 +69,50 @@ function capHistory(history: ChatTurn[]): ChatTurn[] {
   }));
 }
 
+/** A model definition by id — the built-in catalog plus the user's custom models. */
+async function modelDefOf(modelId: string): Promise<LlmModelDef | undefined> {
+  const builtIn = getLlmModelDef(modelId);
+  if (builtIn) return builtIn;
+  return (await getPrefs()).ai?.llmCustomModels?.find((m) => m.id === modelId);
+}
+
 /** Register the chat LLM IPC handlers. Call once at startup. */
 export function registerLlmHandlers(): void {
-  ipcMain.handle(Channels.llmModels, () => wrap<LlmModelStatus[]>(() => manager.models()));
+  ipcMain.handle(Channels.llmModels, () =>
+    wrap<LlmModelStatus[]>(async () => {
+      const custom = (await getPrefs()).ai?.llmCustomModels ?? [];
+      return manager.models([...LLM_MODELS.map((m) => m.id), ...custom.map((m) => m.id)]);
+    }),
+  );
 
   ipcMain.handle(Channels.llmDownload, (e, modelId: string) =>
     wrap<void>(async () => {
-      if (!getLlmModelDef(modelId)) {
+      const def = await modelDefOf(modelId);
+      if (!def) {
         throw Object.assign(new Error(`Unknown chat model: ${modelId}`), { code: 'EINVAL' });
       }
       const off = manager.onProgress((status) => {
         if (!e.sender.isDestroyed()) e.sender.send(Events.llmModelProgress, status);
       });
       try {
-        await manager.download(modelId);
+        await manager.download(modelId, def.uri);
       } finally {
         off();
       }
     }),
   );
+
+  ipcMain.handle(Channels.llmRemove, (_e, modelId: string) =>
+    wrap<void>(async () => {
+      // No catalog check: a just-forgotten custom model must still be removable.
+      if (typeof modelId !== 'string' || !/^[a-z0-9][a-z0-9._-]*$/i.test(modelId)) {
+        throw Object.assign(new Error('Invalid model id.'), { code: 'EINVAL' });
+      }
+      await manager.remove(modelId);
+    }),
+  );
+
+  ipcMain.handle(Channels.llmSpecs, () => wrap<LlmSystemSpecs>(() => manager.specs()));
 
   ipcMain.handle(Channels.chatSend, (e, payload: ChatSendPayload) =>
     wrap<{ sessionId: string }>(async () => {
@@ -90,6 +122,8 @@ export function registerLlmHandlers(): void {
       };
       const prefs = await getPrefs();
       const modelId = payload.modelId ?? prefs.ai?.llmModelId ?? DEFAULT_LLM_MODEL_ID;
+      // The user's per-model settings (Settings → Assistant), defaults applied.
+      const config = resolveLlmConfig(modelId, prefs.ai?.llmConfigs?.[modelId]);
 
       // Persist the user's message up front (a fresh conversation mints its
       // session here); the assistant's reply lands when generation settles.
@@ -110,14 +144,19 @@ export function registerLlmHandlers(): void {
         const offChunk = manager.onChunk((rid, text) => {
           if (rid === requestId) send({ requestId, type: 'chunk', text });
         });
+        // The user's standing instructions ride along with the system prompt.
+        const system = config.systemPrompt
+          ? `${built.system}\n\nAdditional instructions from the user: ${config.systemPrompt}`
+          : built.system;
         let answer: string;
         try {
           answer = await manager.chat({
             modelId,
             requestId,
-            system: built.system,
+            system,
             history: capHistory(payload.history),
             prompt: built.prompt,
+            config,
           });
         } finally {
           offChunk();

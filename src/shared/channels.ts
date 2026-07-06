@@ -58,6 +58,8 @@ export const Channels = {
   indexSearchFile: 'index:searchFile',
   llmModels: 'llm:models',
   llmDownload: 'llm:download',
+  llmRemove: 'llm:remove',
+  llmSpecs: 'llm:specs',
   chatSend: 'chat:send',
   chatStop: 'chat:stop',
   chatsList: 'chats:list',

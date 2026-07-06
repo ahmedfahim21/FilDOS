@@ -1,6 +1,7 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { join } from 'node:path';
 import type { ChatTurn, LlmModelStatus } from '@shared/types';
+import type { LlmModelConfig, LlmSystemSpecs } from '@shared/llmModels';
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -81,12 +82,24 @@ export class LlmManager {
     });
   }
 
-  models(): Promise<LlmModelStatus[]> {
-    return this.request<LlmModelStatus[]>('models');
+  /** Status for the given ids (built-ins + custom); defaults to the catalog. */
+  models(modelIds?: string[]): Promise<LlmModelStatus[]> {
+    return this.request<LlmModelStatus[]>('models', { modelIds });
   }
 
-  async download(modelId: string): Promise<void> {
-    await this.request<void>('download', { modelId });
+  /** Download a model; `uri` overrides the catalog for custom models. */
+  async download(modelId: string, uri?: string): Promise<void> {
+    await this.request<void>('download', { modelId, uri });
+  }
+
+  /** Delete a downloaded model's weights from disk. */
+  async remove(modelId: string): Promise<void> {
+    await this.request<void>('remove', { modelId });
+  }
+
+  /** GPU backend + memory this machine offers (probed by the worker). */
+  specs(): Promise<LlmSystemSpecs> {
+    return this.request<LlmSystemSpecs>('specs');
   }
 
   /** Run one generation; tokens stream via `onChunk`, resolves with the full text. */
@@ -96,6 +109,7 @@ export class LlmManager {
     system: string;
     history: ChatTurn[];
     prompt: string;
+    config?: Partial<LlmModelConfig>;
   }): Promise<string> {
     return this.request<string>('chat', { ...args });
   }

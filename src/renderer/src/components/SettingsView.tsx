@@ -1,11 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AiModelStatus, Theme } from '@shared/types';
 import { getModelDef, INDEX_MODEL_IDS, RERANKER_MODEL_ID } from '@shared/aiModels';
+import {
+  LLM_CONFIG_LIMITS,
+  LLM_SYSTEM_PROMPT_MAX,
+  resolveLlmConfig,
+  type LlmModelDef,
+  type LlmSystemSpecs,
+} from '@shared/llmModels';
 import { useAi } from '@/state/ai';
+import { useChat } from '@/state/chat';
 import { useIndexing } from '@/state/indexing';
 import { useToast } from '@/state/toast';
 import { applyTheme } from '@/lib/theme';
 import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
+import { modelLogo } from '@/lib/modelLogo';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Button } from '@/components/ui/button';
@@ -170,8 +179,309 @@ function ModelRow({
   );
 }
 
+/** "Apple Silicon · Metal GPU · 12 GB memory · 8 cores" from the worker's probe. */
+function specsLine(specs: LlmSystemSpecs): string {
+  const family =
+    specs.arch === 'arm64' && window.platform?.os === 'darwin' ? 'Apple Silicon' : specs.arch;
+  const gpu = specs.gpu ? `${specs.gpu[0].toUpperCase()}${specs.gpu.slice(1)} GPU` : 'CPU only';
+  const memGb = Math.round((specs.gpu ? Math.max(specs.vramMb, 0) : specs.ramMb) / 1024) ||
+    Math.round(specs.ramMb / 1024);
+  return `${family} · ${gpu} · ${memGb} GB memory · ${specs.cpus} cores`;
+}
+
+/** One labelled range slider with a live mono readout. */
+function ParamSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3">
+      <span className="text-muted-foreground w-28 shrink-0 text-2xs">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="accent-mint h-1 min-w-0 flex-1"
+        aria-label={label}
+      />
+      <code className="text-foreground w-14 shrink-0 text-right font-mono text-2xs">{display}</code>
+    </label>
+  );
+}
+
+/**
+ * One chat model: status + download/remove management, a "Recommended" badge
+ * when it fits this machine best, and an expandable panel tuning the
+ * generation parameters the model supports (persisted per model). Custom
+ * (user-added) models show their source and can be forgotten entirely.
+ */
+function ChatModelCard({ def, recommended }: { def: LlmModelDef; recommended: boolean }) {
+  const chat = useChat();
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const custom = def.family === 'custom';
+  const status = chat.statuses[def.id];
+  const state = status?.state ?? 'absent';
+  const pct = Math.round((status?.progress ?? 0) * 100);
+  const stored = chat.configs[def.id];
+  const cfg = resolveLlmConfig(def.id, stored);
+  const customized = !!stored && Object.keys(stored).length > 0;
+  const L = LLM_CONFIG_LIMITS;
+  const sizeNote = def.sizeMb ? `${(def.sizeMb / 1024).toFixed(1)} GB` : 'size resolved at download';
+
+  return (
+    <div className="border-border rounded-lg border">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <img
+          src={modelLogo(def.family)}
+          alt={def.family}
+          className="size-5 shrink-0 object-contain"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-foreground truncate text-sm">{def.label}</span>
+            {recommended && (
+              <span className="bg-mint/15 text-mint rounded-full px-1.5 py-0.5 text-3xs font-medium">
+                Recommended
+              </span>
+            )}
+            {custom && (
+              <span className="bg-blueberry/15 text-blueberry rounded-full px-1.5 py-0.5 text-3xs font-medium">
+                Custom
+              </span>
+            )}
+            {customized && state === 'ready' && (
+              <span
+                className="bg-grape/15 text-grape rounded-full px-1.5 py-0.5 text-3xs font-medium"
+                title="Custom parameters are set"
+              >
+                Customized
+              </span>
+            )}
+          </div>
+          <div className={cn('text-muted-foreground mt-0.5 truncate text-2xs', custom && 'font-mono')}>
+            {state === 'downloading'
+              ? `Downloading… ${pct}%`
+              : state === 'error'
+                ? (status?.message ?? 'Download failed')
+                : custom
+                  ? def.uri
+                  : state === 'ready'
+                    ? def.description
+                    : `${def.description} · ${sizeNote}`}
+          </div>
+          {state === 'downloading' && (
+            <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
+              <div
+                className="bg-mint h-full rounded-full transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        {confirming ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-muted-foreground text-2xs">
+              {custom ? 'Remove this model?' : 'Delete weights?'}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setConfirming(false);
+                setOpen(false);
+                void (custom ? chat.forgetCustomModel(def.id) : chat.removeModel(def.id));
+              }}
+            >
+              Remove
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+              Keep
+            </Button>
+          </div>
+        ) : state === 'ready' ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="bg-mint/15 text-mint rounded-full px-2 py-0.5 text-3xs font-medium">
+              Ready
+            </span>
+            <button
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              className={cn(
+                'text-muted-foreground hover:bg-accent hover:text-foreground grid size-7 place-items-center rounded-md',
+                open && 'bg-accent text-foreground',
+              )}
+              title="Customize parameters"
+              aria-label={`Customize ${def.label}`}
+            >
+              <Icon name="settings" size={14} />
+            </button>
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-muted-foreground hover:bg-accent hover:text-strawberry grid size-7 place-items-center rounded-md"
+              title={custom ? 'Remove this model' : 'Delete downloaded weights'}
+              aria-label={`Remove ${def.label}`}
+            >
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant={state === 'error' ? 'secondary' : 'default'}
+              onClick={() => void chat.download(def.id)}
+              disabled={state === 'downloading'}
+              className={state === 'downloading' ? 'cursor-wait' : undefined}
+            >
+              {state === 'downloading' ? 'Downloading…' : state === 'error' ? 'Retry' : 'Download'}
+            </Button>
+            {custom && state !== 'downloading' && (
+              <button
+                onClick={() => setConfirming(true)}
+                className="text-muted-foreground hover:bg-accent hover:text-strawberry grid size-7 place-items-center rounded-md"
+                title="Remove this model"
+                aria-label={`Remove ${def.label}`}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {open && state === 'ready' && (
+        <div className="border-border space-y-3 border-t px-3 py-3">
+          <ParamSlider
+            label="Temperature"
+            value={cfg.temperature}
+            min={L.temperature.min}
+            max={L.temperature.max}
+            step={L.temperature.step}
+            display={cfg.temperature.toFixed(2)}
+            onChange={(v) => chat.setConfig(def.id, { temperature: v })}
+          />
+          <ParamSlider
+            label="Top-p"
+            value={cfg.topP}
+            min={L.topP.min}
+            max={L.topP.max}
+            step={L.topP.step}
+            display={cfg.topP.toFixed(2)}
+            onChange={(v) => chat.setConfig(def.id, { topP: v })}
+          />
+          <ParamSlider
+            label="Max answer"
+            value={cfg.maxTokens}
+            min={L.maxTokens.min}
+            max={L.maxTokens.max}
+            step={L.maxTokens.step}
+            display={`${cfg.maxTokens} tok`}
+            onChange={(v) => chat.setConfig(def.id, { maxTokens: v })}
+          />
+          <ParamSlider
+            label="Context window"
+            value={cfg.contextSize}
+            min={L.contextSize.min}
+            max={L.contextSize.max}
+            step={L.contextSize.step}
+            display={`${(cfg.contextSize / 1024).toFixed(0)}k`}
+            onChange={(v) => chat.setConfig(def.id, { contextSize: v })}
+          />
+          <div>
+            <span className="text-muted-foreground mb-1 block text-2xs">Custom instructions</span>
+            <textarea
+              value={cfg.systemPrompt}
+              maxLength={LLM_SYSTEM_PROMPT_MAX}
+              rows={2}
+              placeholder="e.g. Always answer in bullet points."
+              onChange={(e) => chat.setConfig(def.id, { systemPrompt: e.target.value })}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-mint/50 w-full resize-none rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-muted-foreground text-3xs">
+              A larger context fits more file content but uses more memory.
+            </p>
+            {customized && (
+              <button
+                onClick={() => chat.setConfig(def.id, null)}
+                className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
+              >
+                Reset to defaults
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Paste-a-model input: any Hugging Face GGUF repo or direct .gguf URL. */
+function AddModelRow() {
+  const chat = useChat();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const add = async () => {
+    if (!value.trim()) return;
+    const problem = await chat.addCustomModel(value);
+    setError(problem);
+    if (!problem) setValue('');
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && void add()}
+          placeholder="hf:owner/repo:Q4_K_M · owner/repo · https://…/model.gguf"
+          className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-mint/50 min-w-0 flex-1 rounded-lg border px-3 py-2 font-mono text-xs outline-none"
+          aria-label="Add a model from the internet"
+        />
+        <Button size="sm" variant="secondary" onClick={() => void add()} disabled={!value.trim()}>
+          Add
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-strawberry mt-1.5 text-2xs">{error}</p>
+      ) : (
+        <p className="text-muted-foreground mt-1.5 text-2xs leading-snug">
+          Any GGUF chat model node-llama-cpp can fetch: a Hugging Face repo (the best quant is
+          picked automatically), a repo with an explicit quant, or a direct .gguf link.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView({ onBack }: { onBack: () => void }) {
   const ai = useAi();
+  const chat = useChat();
   const indexing = useIndexing();
   const { notifyError } = useToast();
   const [embedding, setEmbedding] = useState(false);
@@ -409,6 +719,51 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                 Embeds a sample string with the text model to verify it end-to-end. The first run
                 downloads the model if needed.
               </p>
+            </div>
+          </Section>
+
+          {/* Assistant chat models */}
+          <Section
+            icon="sparkles"
+            accent="mint"
+            title="Assistant"
+            subtitle="On-device chat models — download, tune, and pick what fits your machine"
+          >
+            {/* What this machine can run. */}
+            <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-foreground text-sm">This machine</div>
+                <div className="text-muted-foreground mt-0.5 truncate font-mono text-2xs">
+                  {chat.specs ? specsLine(chat.specs) : 'Detecting hardware…'}
+                </div>
+              </div>
+              {chat.recommendedId && (
+                <span className="bg-mint/15 text-mint shrink-0 rounded-full px-2 py-0.5 text-3xs font-medium">
+                  Best fit: {chat.modelDef(chat.recommendedId)?.label}
+                </span>
+              )}
+            </div>
+
+            <div>
+              <SubLabel>Chat models</SubLabel>
+              <div className="flex flex-col gap-1.5">
+                {chat.allModels.map((def) => (
+                  <ChatModelCard
+                    key={def.id}
+                    def={def}
+                    recommended={chat.recommendedId === def.id}
+                  />
+                ))}
+              </div>
+              <p className="text-muted-foreground mt-2 text-2xs leading-snug">
+                Models run fully on this device through llama.cpp — nothing leaves your machine.
+                Downloaded models appear in the Assistant's picker with the parameters you set here.
+              </p>
+            </div>
+
+            <div>
+              <SubLabel>Add a model from the internet</SubLabel>
+              <AddModelRow />
             </div>
           </Section>
 

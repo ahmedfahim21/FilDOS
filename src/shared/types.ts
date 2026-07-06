@@ -1,7 +1,9 @@
 /**
  * Types shared across the main process, preload bridge and renderer.
- * Keep this file dependency-free so it can be imported from any layer.
+ * Keep this file dependency-free so it can be imported from any layer
+ * (the llmModels import below is type-only — erased at compile time).
  */
+import type { LlmModelConfig, LlmModelDef, LlmSystemSpecs } from './llmModels';
 
 /** A single directory entry as shown in the file list. */
 export interface Entry {
@@ -146,7 +148,17 @@ export interface Prefs {
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
   /** AI feature settings (enable toggle + provider; the model is chosen automatically). */
-  ai?: { enabled: boolean; activeProvider: string; modelId?: string; llmModelId?: string };
+  ai?: {
+    enabled: boolean;
+    activeProvider: string;
+    modelId?: string;
+    /** The chat model the Assistant uses. */
+    llmModelId?: string;
+    /** Per-chat-model generation settings (partial; see `@shared/llmModels`). */
+    llmConfigs?: Record<string, Partial<LlmModelConfig>>;
+    /** User-added chat models (from `parseCustomModelInput`). */
+    llmCustomModels?: LlmModelDef[];
+  };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
     enabled?: boolean;
@@ -462,6 +474,10 @@ export interface LlmApi {
   models(): Promise<Result<LlmModelStatus[]>>;
   /** Download a chat model; progress arrives via `onModelProgress`. */
   download(modelId: string): Promise<Result<void>>;
+  /** Delete a downloaded chat model's weights from disk. */
+  remove(modelId: string): Promise<Result<void>>;
+  /** What this machine can run (GPU backend + memory), for the model picker. */
+  specs(): Promise<Result<LlmSystemSpecs>>;
   /** Answer a message; output streams via `onEvent`, resolves when the stream
    * ends with the session the exchange was saved under. */
   send(payload: ChatSendPayload): Promise<Result<{ sessionId: string }>>;

@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -14,7 +15,15 @@ import type {
   LlmModelStatus,
   SemanticHit,
 } from '@shared/types';
-import { DEFAULT_LLM_MODEL_ID, getLlmModelDef } from '@shared/llmModels';
+import {
+  DEFAULT_LLM_MODEL_ID,
+  LLM_MODELS,
+  parseCustomModelInput,
+  recommendLlmModel,
+  type LlmModelConfig,
+  type LlmModelDef,
+  type LlmSystemSpecs,
+} from '@shared/llmModels';
 
 /** One rendered bubble in the Assistant conversation. */
 export interface ChatMessage {
@@ -46,9 +55,28 @@ interface ChatContextValue {
   sessionId: string | null;
   /** Saved conversations, most recent first (refreshed via refreshSessions). */
   sessions: ChatSessionMeta[];
+  /** What this machine can run (null until probed). */
+  specs: LlmSystemSpecs | null;
+  /** The catalog model recommended for this machine (null until specs load). */
+  recommendedId: string | null;
+  /** Stored per-model generation settings (partials over the defaults). */
+  configs: Record<string, Partial<LlmModelConfig>>;
+  /** Every known model: the built-in catalog plus the user's custom additions. */
+  allModels: LlmModelDef[];
+  /** Look up any known model's definition. */
+  modelDef: (id: string) => LlmModelDef | undefined;
+  /** Add a model from user input (hf: URI / owner/repo / .gguf URL).
+   * Returns an error message, or null on success. */
+  addCustomModel: (input: string) => Promise<string | null>;
+  /** Remove a custom model: forget the entry and delete any weights. */
+  forgetCustomModel: (id: string) => Promise<void>;
+  /** Patch one model's settings (persisted to prefs.ai.llmConfigs). */
+  setConfig: (id: string, patch: Partial<LlmModelConfig> | null) => void;
   setModelId: (id: string) => void;
   /** Download a catalog model; progress lands in `statuses`. */
   download: (id: string) => Promise<void>;
+  /** Delete a downloaded model's weights from disk. */
+  removeModel: (id: string) => Promise<void>;
   send: (args: {
     text: string;
     mentions: ChatMention[];
@@ -86,18 +114,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [statuses, setStatuses] = useState<Record<string, LlmModelStatus>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
+  const [specs, setSpecs] = useState<LlmSystemSpecs | null>(null);
+  const [configs, setConfigs] = useState<Record<string, Partial<LlmModelConfig>>>({});
+  const [customModels, setCustomModels] = useState<LlmModelDef[]>([]);
   const activeRequest = useRef<string | null>(null);
 
-  // Restore the picked model and fetch catalog statuses once.
-  useEffect(() => {
-    window.prefs.get().then((prefs) => {
-      if (prefs.ai?.llmModelId) setModelIdState(prefs.ai.llmModelId);
-    });
-    window.llm.models().then((res) => {
-      if (!res.ok) return;
-      setStatuses(Object.fromEntries(res.data.map((s) => [s.modelId, s])));
-    });
+  const refreshStatuses = useCallback(async () => {
+    const res = await window.llm.models();
+    if (res.ok) setStatuses(Object.fromEntries(res.data.map((s) => [s.modelId, s])));
   }, []);
+
+  // Restore the picked model, per-model settings and custom models; fetch statuses.
+  useEffect(() => {
+    window.prefs
+      .get()
+      .then((prefs) => {
+        if (prefs.ai?.llmModelId) setModelIdState(prefs.ai.llmModelId);
+        if (prefs.ai?.llmConfigs) setConfigs(prefs.ai.llmConfigs);
+        if (prefs.ai?.llmCustomModels) setCustomModels(prefs.ai.llmCustomModels);
+      })
+      .then(refreshStatuses);
+    // Probing loads the llama.cpp binding in the worker — cheap, no model load.
+    window.llm.specs().then((res) => {
+      if (res.ok) setSpecs(res.data);
+    });
+  }, [refreshStatuses]);
 
   // Live download progress, keyed by model id.
   useEffect(
@@ -166,6 +207,91 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, []);
+
+  const removeModel = useCallback(async (id: string) => {
+    const res = await window.llm.remove(id);
+    if (res.ok) setStatuses((prev) => ({ ...prev, [id]: { modelId: id, state: 'absent' } }));
+  }, []);
+
+  const allModels = useMemo(() => [...LLM_MODELS, ...customModels], [customModels]);
+  const modelDef = useCallback(
+    (id: string) => allModels.find((m) => m.id === id),
+    [allModels],
+  );
+
+  /** Persist the custom-model list, merging over the stored ai prefs. */
+  const persistCustomModels = useCallback((models: LlmModelDef[]) => {
+    setCustomModels(models);
+    window.prefs
+      .get()
+      .then((p) =>
+        window.prefs.set({
+          ai: {
+            enabled: p.ai?.enabled ?? false,
+            activeProvider: p.ai?.activeProvider ?? 'embedded',
+            ...p.ai,
+            llmCustomModels: models,
+          },
+        }),
+      )
+      .catch(() => {});
+  }, []);
+
+  const addCustomModel = useCallback(
+    async (input: string): Promise<string | null> => {
+      const def = parseCustomModelInput(input);
+      if (!def) {
+        return 'Enter a Hugging Face repo (owner/repo, optionally :quant) or a direct .gguf URL.';
+      }
+      if (allModels.some((m) => m.id === def.id)) return 'That model is already in the list.';
+      persistCustomModels([...customModels, def]);
+      // Register the new id with the worker so its status shows up as absent.
+      setStatuses((prev) => ({ ...prev, [def.id]: { modelId: def.id, state: 'absent' } }));
+      return null;
+    },
+    [allModels, customModels, persistCustomModels],
+  );
+
+  const setConfig = useCallback((id: string, patch: Partial<LlmModelConfig> | null) => {
+    setConfigs((prev) => {
+      const next = { ...prev };
+      if (patch === null) {
+        delete next[id]; // reset to defaults
+      } else {
+        next[id] = { ...prev[id], ...patch };
+      }
+      // Merge into the stored ai prefs (same discipline as setModelId).
+      window.prefs
+        .get()
+        .then((p) =>
+          window.prefs.set({
+            ai: {
+              enabled: p.ai?.enabled ?? false,
+              activeProvider: p.ai?.activeProvider ?? 'embedded',
+              ...p.ai,
+              llmConfigs: next,
+            },
+          }),
+        )
+        .catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const forgetCustomModel = useCallback(
+    async (id: string) => {
+      await window.llm.remove(id).catch(() => {}); // best effort — weights may not exist
+      persistCustomModels(customModels.filter((m) => m.id !== id));
+      setConfig(id, null); // drop its stored parameters too
+      setStatuses((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (modelId === id) setModelId(DEFAULT_LLM_MODEL_ID);
+    },
+    [customModels, persistCustomModels, modelId, setModelId, setConfig],
+  );
 
   const send = useCallback(
     async ({ text, mentions, command, cwd }: { text: string; mentions: ChatMention[]; command?: string; cwd?: string }) => {
@@ -248,11 +374,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         })),
       );
       setSessionId(id);
-      // Continue with the model the session last used, when it's still in the catalog.
+      // Continue with the model the session last used, when it's still known.
       const meta = sessions.find((s) => s.id === id);
-      if (meta?.modelId && getLlmModelDef(meta.modelId)) setModelId(meta.modelId);
+      if (meta?.modelId && modelDef(meta.modelId)) setModelId(meta.modelId);
     },
-    [busy, sessions, setModelId],
+    [busy, sessions, setModelId, modelDef],
   );
 
   const deleteSession = useCallback(
@@ -268,6 +394,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const modelReady = statuses[modelId]?.state === 'ready';
+  const recommendedId = specs ? recommendLlmModel(specs) : null;
 
   return (
     <ChatContext.Provider
@@ -279,8 +406,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         modelReady,
         sessionId,
         sessions,
+        specs,
+        recommendedId,
+        configs,
+        allModels,
+        modelDef,
+        addCustomModel,
+        forgetCustomModel,
+        setConfig,
         setModelId,
         download,
+        removeModel,
         send,
         stop,
         newChat,

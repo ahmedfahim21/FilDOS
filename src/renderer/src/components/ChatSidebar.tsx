@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AiModelState, ChatMention, ChatSessionMeta, Entry, SemanticHit } from '@shared/types';
-import { CHAT_COMMANDS, getLlmModelDef, LLM_MODELS } from '@shared/llmModels';
+import { CHAT_COMMANDS, resolveLlmConfig } from '@shared/llmModels';
 import { useChat, type ChatMessage } from '@/state/chat';
 import { useNavigation } from '@/state/navigation';
 import { activeToken, completeToken, parseCommand, pruneMentions } from '@/lib/chatComposer';
 import { MarkdownLite } from '@/lib/markdownLite';
 import { fileLogo } from '@/lib/fileLogo';
+import { modelLogo } from '@/lib/modelLogo';
 import { timeAgo } from '@/lib/format';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
@@ -214,11 +216,28 @@ function Message({ message, onOpenSource }: { message: ChatMessage; onOpenSource
   );
 }
 
-/** The model chip in the composer footer — opens the picker as a drop-up. */
+/**
+ * The model chip in the composer footer — a drop-up listing the models on this
+ * device with the parameters set in Settings, plus a link to manage them.
+ */
 function ModelChip() {
-  const { modelId, statuses, setModelId } = useChat();
-  const current = getLlmModelDef(modelId);
+  const { modelId, statuses, configs, recommendedId, setModelId, allModels, modelDef } = useChat();
+  const nav = useNavigation();
+  const current = modelDef(modelId);
   const state: AiModelState = statuses[modelId]?.state ?? 'absent';
+
+  // Only downloaded models are pickable in chat (built-in or custom); the
+  // current selection always shows so a just-removed model doesn't vanish.
+  const listed = allModels.filter(
+    (def) => statuses[def.id]?.state === 'ready' || def.id === modelId,
+  );
+
+  /** "0.3 temp · 0.9 top-p · 1024 tok · 4k ctx" from the model's stored config. */
+  const summary = (id: string) => {
+    const cfg = resolveLlmConfig(id, configs[id]);
+    return `${cfg.temperature} temp · ${cfg.topP} top-p · ${cfg.maxTokens} tok · ${cfg.contextSize / 1024}k ctx`;
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -226,13 +245,22 @@ function ModelChip() {
           className="text-muted-foreground hover:bg-accent hover:text-foreground flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs font-medium"
           title="Choose the chat model"
         >
-          <span className={cn('size-1.5 rounded-full', STATE_DOT[state])} />
+          {current ? (
+            <img src={modelLogo(current.family)} alt={current.family} className="size-3.5 rounded-sm object-contain" />
+          ) : (
+            <span className={cn('size-1.5 rounded-full', STATE_DOT[state])} />
+          )}
           {current?.label ?? modelId}
           <Icon name="chevron" size={10} className="-rotate-90 opacity-60" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-72">
-        {LLM_MODELS.map((def) => {
+        {listed.length === 0 && (
+          <div className="text-muted-foreground px-2 py-2 text-2xs">
+            No models on this device yet.
+          </div>
+        )}
+        {listed.map((def) => {
           const status = statuses[def.id];
           const s: AiModelState = status?.state ?? 'absent';
           return (
@@ -242,21 +270,37 @@ function ModelChip() {
               className="flex-col items-start gap-0.5 py-2"
             >
               <div className="flex w-full items-center gap-2">
-                <span className={cn('size-1.5 shrink-0 rounded-full', STATE_DOT[s])} />
+                <div className="relative shrink-0">
+                  <img src={modelLogo(def.family)} alt={def.family} className="size-5 rounded-sm object-contain" />
+                  <span className={cn('absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-popover', STATE_DOT[s])} />
+                </div>
                 <span className="text-sm font-medium">{def.label}</span>
+                {def.id === recommendedId && (
+                  <span className="bg-mint/15 text-mint rounded-full px-1.5 py-px text-3xs font-medium">
+                    Recommended
+                  </span>
+                )}
                 <span className="text-muted-foreground ml-auto font-mono text-3xs">
                   {s === 'ready'
-                    ? 'on device'
+                    ? ''
                     : s === 'downloading'
                       ? `${Math.round((status?.progress ?? 0) * 100)}%`
-                      : `${(def.sizeMb / 1024).toFixed(1)} GB`}
+                      : 'not downloaded'}
                 </span>
                 {def.id === modelId && <Icon name="check" size={13} className="text-mint" />}
               </div>
-              <span className="text-muted-foreground pl-3.5 text-2xs">{def.description}</span>
+              <span className="text-muted-foreground pl-7 font-mono text-3xs">{summary(def.id)}</span>
             </DropdownMenuItem>
           );
         })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => nav.openPage({ kind: 'settings' })}
+          className="text-muted-foreground gap-2 text-xs"
+        >
+          <Icon name="settings" size={13} />
+          Manage models in Settings…
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -264,7 +308,7 @@ function ModelChip() {
 
 /** Saved conversations — reopen to continue, hover to delete. */
 function HistoryView({ onOpen }: { onOpen: (id: string) => void }) {
-  const { sessions, sessionId, deleteSession, refreshSessions } = useChat();
+  const { sessions, sessionId, deleteSession, refreshSessions, modelDef } = useChat();
   useEffect(() => {
     refreshSessions();
   }, [refreshSessions]);
@@ -296,10 +340,10 @@ function HistoryView({ onOpen }: { onOpen: (id: string) => void }) {
               <span>{timeAgo(s.updatedAt)}</span>
               <span aria-hidden>·</span>
               <span>{s.messageCount} messages</span>
-              {s.modelId && getLlmModelDef(s.modelId) && (
+              {s.modelId && modelDef(s.modelId) && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className="font-mono">{getLlmModelDef(s.modelId)!.label}</span>
+                  <span className="font-mono">{modelDef(s.modelId)!.label}</span>
                 </>
               )}
             </div>
@@ -508,7 +552,7 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
     [nav],
   );
 
-  const model = getLlmModelDef(chat.modelId);
+  const model = chat.modelDef(chat.modelId);
   const status = chat.statuses[chat.modelId];
   const downloading = status?.state === 'downloading';
 
@@ -642,22 +686,37 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-foreground text-xs font-medium">
-                    {status?.state === 'error' ? 'Download failed' : `Get ${model?.label}`}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-foreground flex items-center gap-1.5 text-xs font-medium">
+                      {status?.state === 'error' ? 'Download failed' : `Get ${model?.label}`}
+                      {chat.recommendedId === chat.modelId && (
+                        <span className="bg-mint/15 text-mint rounded-full px-1.5 py-px text-3xs font-medium">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground truncate text-2xs">
+                      {status?.state === 'error'
+                        ? (status.message ?? 'Something went wrong.')
+                        : model?.sizeMb
+                          ? `One-time ${(model.sizeMb / 1024).toFixed(1)} GB download · runs offline`
+                          : 'One-time download · runs offline'}
+                    </div>
                   </div>
-                  <div className="text-muted-foreground truncate text-2xs">
-                    {status?.state === 'error'
-                      ? (status.message ?? 'Something went wrong.')
-                      : `One-time ${((model?.sizeMb ?? 0) / 1024).toFixed(1)} GB download · runs offline`}
-                  </div>
+                  <button
+                    onClick={() => chat.download(chat.modelId)}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 rounded-md px-3 py-1.5 text-xs font-medium"
+                  >
+                    {status?.state === 'error' ? 'Retry' : 'Download'}
+                  </button>
                 </div>
                 <button
-                  onClick={() => chat.download(chat.modelId)}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 rounded-md px-3 py-1.5 text-xs font-medium"
+                  onClick={() => nav.openPage({ kind: 'settings' })}
+                  className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
                 >
-                  {status?.state === 'error' ? 'Retry' : 'Download'}
+                  Compare and manage models in Settings
                 </button>
               </div>
             )}

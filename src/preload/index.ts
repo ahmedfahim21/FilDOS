@@ -144,6 +144,8 @@ contextBridge.exposeInMainWorld('index', indexApi);
 const llmApi: LlmApi = {
   models: () => ipcRenderer.invoke(Channels.llmModels),
   download: (modelId) => ipcRenderer.invoke(Channels.llmDownload, modelId),
+  remove: (modelId) => ipcRenderer.invoke(Channels.llmRemove, modelId),
+  specs: () => ipcRenderer.invoke(Channels.llmSpecs),
   send: (payload) => ipcRenderer.invoke(Channels.chatSend, payload),
   stop: (requestId) => ipcRenderer.invoke(Channels.chatStop, requestId),
   onEvent: (cb: (event: ChatStreamEvent) => void) => {
