@@ -47,23 +47,23 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: "https://fildos.cloud",
     siteName: "FilDOS",
-    title: "FilDOS - AI-Native Decentralized Storage",
+    title: "FilDOS - The AI-Native File Browser",
     description:
-      "A secure, AI-native, meaning-first decentralized drive built on Filecoin. Store, search, and share files by meaning rather than cryptic identifiers.",
+      "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
     images: [
       {
         url: "/opengraph-image.png",
         width: 1200,
         height: 630,
-        alt: "FilDOS - AI-Native Decentralized Storage",
+        alt: "FilDOS - The AI-Native File Browser",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "FilDOS - AI-Native Decentralized Storage",
+    title: "FilDOS - The AI-Native File Browser",
     description:
-      "A secure, AI-native, meaning-first decentralized drive built on Filecoin. Store, search, and share files by meaning.",
+      "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
     images: ["/opengraph-image.png"],
   },
   robots: {
