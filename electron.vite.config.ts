@@ -42,6 +42,7 @@ export default defineConfig({
         input: {
           index: resolve('src/main/index.ts'),
           modelWorker: resolve('src/main/ai/modelWorker.ts'),
+          llmWorker: resolve('src/main/ai/llm/llmWorker.ts'),
         },
       },
     },

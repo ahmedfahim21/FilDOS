@@ -92,6 +92,37 @@ export const fileChunks = sqliteTable(
   (t) => [index('idx_file_chunks_path').on(t.path)],
 );
 
+/** Assistant chat sessions (see db/chats.ts). */
+export const chatSessions = sqliteTable(
+  'chat_sessions',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    modelId: text('model_id'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('idx_chat_sessions_updated').on(t.updatedAt)],
+);
+
+/** Messages within a chat session; mentions/sources are JSON snapshots. */
+export const chatMessages = sqliteTable(
+  'chat_messages',
+  {
+    id: integer('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    command: text('command'),
+    mentions: text('mentions'),
+    sources: text('sources'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_chat_messages_session').on(t.sessionId, t.id)],
+);
+
 /** Persistent indexing queue; one pending job per path (see db/indexJobs.ts). */
 export const indexJobs = sqliteTable(
   'index_jobs',

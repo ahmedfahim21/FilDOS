@@ -116,12 +116,12 @@ export function TopBar({
           variant="default"
           size="sm"
           onClick={onToggleChat}
-          title="AI"
+          title="Ask AI"
           aria-pressed={chatOpen}
           className={cn('gap-1.5', NO_DRAG, chatOpen && 'ring-mint/50 ring-2 ring-offset-1 ring-offset-card')}
         >
           <Mark className="size-4" />
-          AI
+          Ask AI
         </Button>
       </div>
     </div>

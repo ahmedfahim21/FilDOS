@@ -103,6 +103,31 @@ const MIGRATIONS: string[] = [
   -- triggering a one-time full re-index on the next run.
   ALTER TABLE index_state ADD COLUMN index_version INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- Assistant chat history: sessions and their messages, so conversations can
+  -- be reopened and continued later. Mentions and /find sources are stored as
+  -- JSON snapshots of what the message was answered with at the time.
+  CREATE TABLE chat_sessions (
+    id         TEXT PRIMARY KEY,          -- UUID minted by the chat handler
+    title      TEXT NOT NULL,             -- derived from the first message
+    model_id   TEXT,                      -- last model the session used
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_chat_sessions_updated ON chat_sessions(updated_at DESC);
+
+  CREATE TABLE chat_messages (
+    id         INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,             -- 'user' | 'assistant'
+    content    TEXT NOT NULL,
+    command    TEXT,                      -- slash command, user messages only
+    mentions   TEXT,                      -- JSON ChatMention[], user messages only
+    sources    TEXT,                      -- JSON SemanticHit[], assistant messages only
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_chat_messages_session ON chat_messages(session_id, id);
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

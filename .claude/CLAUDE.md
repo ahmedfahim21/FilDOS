@@ -145,6 +145,33 @@ Renderer: `state/indexing.tsx` + the Indexing section in `SettingsView.tsx`, and
 a "Exclude from AI index" context-menu action. Dependencies are injected into
 `Indexer`/`IndexWatcher` so tests drive them with a fake provider, no Electron.
 
+**Assistant chat (`src/main/ai/llm/`).** The "Ask AI" panel: chat with your
+files via a fully on-device LLM. The engine is **node-llama-cpp** (llama.cpp
+with prebuilt platform binaries — Metal on Apple Silicon; the one deliberate
+exception to the zero-native-deps rule, because WASM generation is unusably
+slow). `llmWorker.ts` is a third main entry in `electron.vite.config.ts`,
+running in its own `utilityProcess`: it downloads GGUF weights from the catalog
+in `src/shared/llmModels.ts` into `userData/models/llm/<id>/` (via
+`FILDOS_LLM_DIR`), keeps **one model resident** (switching disposes the old
+one), runs **one chat at a time**, and streams tokens back as unsolicited
+`chunk` messages. `manager.ts` bridges it (mirrors `providers/embedded.ts`);
+`context.ts` builds the prompt from `@file` mentions (`extract.ts`), `#folder`
+mentions (`listDir`) and `/`commands — `/find` runs `searchIndex()` (exported
+from `index/handlers.ts`) first and hands the hits to the model + UI;
+`handlers.ts` owns `llm:*`/`chat:*`/`chats:*` channels and streams
+`Events.chatStream` / `Events.llmModelProgress`. **Every exchange is persisted**
+to `db/chats.ts` (`chat_sessions` + `chat_messages`; session minted lazily on
+first send — `chatSend` returns the sessionId; mentions and /find sources are
+stored as JSON snapshots) so conversations can be reopened and continued from
+the sidebar's history view. Renderer: `window.llm` + `window.chats` (preload)
+→ `state/chat.tsx` (conversation, session list/resume, model pick persisted to
+`prefs.ai.llmModelId`, download states) → `components/ChatSidebar.tsx` (docked
+right of the content pane). The composer autocomplete lives in
+`lib/chatComposer.ts` and answers render through `lib/markdownLite.tsx` (both
+pure + unit-tested). Adding a chat model = one `LLM_MODELS` entry (a `hf:`
+GGUF URI). Adding a slash command = a `CHAT_COMMANDS` entry + an instruction
+in `context.ts`.
+
 ### The database layer (`src/main/db/`)
 
 Everything that isn't the filesystem itself lives in SQLite at

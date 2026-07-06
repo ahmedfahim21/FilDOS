@@ -3,10 +3,14 @@ import { Channels, Events } from '@shared/channels';
 import type {
   AiApi,
   AiModelStatus,
+  ChatsApi,
+  ChatStreamEvent,
   CloudApi,
   FsApi,
   IndexApi,
   IndexProgress,
+  LlmApi,
+  LlmModelStatus,
   Prefs,
   RecentsApi,
   TagsApi,
@@ -135,6 +139,34 @@ const indexApi: IndexApi = {
   },
 };
 contextBridge.exposeInMainWorld('index', indexApi);
+
+// The Assistant chat: model catalog status/download plus streaming generation.
+const llmApi: LlmApi = {
+  models: () => ipcRenderer.invoke(Channels.llmModels),
+  download: (modelId) => ipcRenderer.invoke(Channels.llmDownload, modelId),
+  send: (payload) => ipcRenderer.invoke(Channels.chatSend, payload),
+  stop: (requestId) => ipcRenderer.invoke(Channels.chatStop, requestId),
+  onEvent: (cb: (event: ChatStreamEvent) => void) => {
+    const listener = (_e: IpcRendererEvent, event: ChatStreamEvent) => cb(event);
+    ipcRenderer.on(Events.chatStream, listener);
+    return () => ipcRenderer.removeListener(Events.chatStream, listener);
+  },
+  onModelProgress: (cb: (status: LlmModelStatus) => void) => {
+    const listener = (_e: IpcRendererEvent, status: LlmModelStatus) => cb(status);
+    ipcRenderer.on(Events.llmModelProgress, listener);
+    return () => ipcRenderer.removeListener(Events.llmModelProgress, listener);
+  },
+};
+contextBridge.exposeInMainWorld('llm', llmApi);
+
+// Saved Assistant conversations (list, reopen, rename, delete).
+const chatsApi: ChatsApi = {
+  list: () => ipcRenderer.invoke(Channels.chatsList),
+  messages: (sessionId) => ipcRenderer.invoke(Channels.chatsMessages, sessionId),
+  rename: (sessionId, title) => ipcRenderer.invoke(Channels.chatsRename, sessionId, title),
+  remove: (sessionId) => ipcRenderer.invoke(Channels.chatsRemove, sessionId),
+};
+contextBridge.exposeInMainWorld('chats', chatsApi);
 
 // Expose the platform path separator so the renderer can split breadcrumbs
 // without bundling Node's `path`.

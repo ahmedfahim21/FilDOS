@@ -93,6 +93,29 @@ const watcher = new IndexWatcher({
   reconcile: () => void indexer.reconcile(),
 });
 
+/**
+ * Semantic search against the live index singletons. Shared by the
+ * `index:search` channel below and the Assistant's /find command
+ * (`../llm/handlers.ts`), so both rank with the same stores and reranker.
+ */
+export async function searchIndex(
+  query: string,
+  opts?: { rootPath?: string; k?: number },
+): Promise<SemanticHit[]> {
+  const provider = await activeAiProvider();
+  if (!provider) {
+    throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
+  }
+  const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
+  return semanticSearch(
+    provider,
+    { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
+    vectorStore,
+    query,
+    { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
+  );
+}
+
 /** Register the indexing IPC handlers. Call once after the AI providers exist. */
 export function registerIndexHandlers(): void {
   ipcMain.handle(Channels.indexStart, () =>
@@ -146,20 +169,7 @@ export function registerIndexHandlers(): void {
   ipcMain.handle(
     Channels.indexSearch,
     (_e, query: string, opts?: { rootPath?: string; k?: number }) =>
-      wrap<SemanticHit[]>(async () => {
-        const provider = await activeAiProvider();
-        if (!provider) {
-          throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
-        }
-        const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return semanticSearch(
-          provider,
-          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-          vectorStore,
-          query,
-          { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
-        );
-      }),
+      wrap<SemanticHit[]>(() => searchIndex(query, opts)),
   );
 
   ipcMain.handle(

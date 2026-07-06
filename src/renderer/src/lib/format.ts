@@ -22,6 +22,19 @@ export function formatDate(ms: number): string {
   });
 }
 
+/** Compact relative time, e.g. "just now", "5m ago", "3h ago", "2d ago"; older dates fall back to the short date. */
+export function timeAgo(ms: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - ms) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 /** Short, friendly type label for an entry. */
 export function typeLabel(entry: Entry): string {
   if (entry.isDirectory) return 'Folder';
