@@ -56,6 +56,16 @@ export const Channels = {
   indexSetInterval: 'index:setInterval',
   indexSearch: 'index:search',
   indexSearchFile: 'index:searchFile',
+  llmModels: 'llm:models',
+  llmDownload: 'llm:download',
+  llmRemove: 'llm:remove',
+  llmSpecs: 'llm:specs',
+  chatSend: 'chat:send',
+  chatStop: 'chat:stop',
+  chatsList: 'chats:list',
+  chatsMessages: 'chats:messages',
+  chatsRename: 'chats:rename',
+  chatsRemove: 'chats:remove',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
@@ -68,4 +78,8 @@ export const Events = {
   aiModelProgress: 'ai:modelProgress',
   /** Background indexing progress; payload is an IndexProgress. */
   indexProgress: 'index:progress',
+  /** Chat LLM download/state progress; payload is an LlmModelStatus. */
+  llmModelProgress: 'llm:modelProgress',
+  /** Streaming chat output; payload is a ChatStreamEvent. */
+  chatStream: 'chat:stream',
 } as const;

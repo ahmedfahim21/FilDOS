@@ -17,6 +17,7 @@ import { ToastProvider, useToast } from '@/state/toast';
 import { ClipboardProvider, useClipboard } from '@/state/clipboard';
 import { UndoProvider, useUndo } from '@/state/undo';
 import { AiProvider, useAi } from '@/state/ai';
+import { ChatProvider } from '@/state/chat';
 import { IndexingProvider, useIndexing } from '@/state/indexing';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
@@ -817,11 +818,13 @@ export default function App({
       <ClipboardProvider>
         <UndoProvider>
           <AiProvider>
-            <IndexingProvider>
-              <NavigationProvider initialPath={initialPath} initial={navInitial}>
-                <Browser initialView={initialView} />
-              </NavigationProvider>
-            </IndexingProvider>
+            <ChatProvider>
+              <IndexingProvider>
+                <NavigationProvider initialPath={initialPath} initial={navInitial}>
+                  <Browser initialView={initialView} />
+                </NavigationProvider>
+              </IndexingProvider>
+            </ChatProvider>
           </AiProvider>
         </UndoProvider>
       </ClipboardProvider>

@@ -88,7 +88,12 @@ export function AiProvider({ children }: { children: ReactNode }) {
   );
 
   const persist = useCallback((next: { enabled: boolean; activeProvider: string }) => {
-    window.prefs.set({ ai: next }).catch(() => {});
+    // Merge over the stored ai prefs so fields owned elsewhere (e.g. the chat
+    // model picked in state/chat.tsx) survive an enable/provider change.
+    window.prefs
+      .get()
+      .then((p) => window.prefs.set({ ai: { ...p.ai, ...next } }))
+      .catch(() => {});
   }, []);
 
   const setEnabled = useCallback(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '@shared/types';
-import { canPreview, formatDate, formatSize, isImage, typeLabel } from './format';
+import { canPreview, formatDate, formatSize, isImage, timeAgo, typeLabel } from './format';
 
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
@@ -94,5 +94,24 @@ describe('canPreview', () => {
     expect(canPreview(makeEntry({ ext: 'txt' }))).toBe(false);
     expect(canPreview(makeEntry({ ext: 'mp3' }))).toBe(false);
     expect(canPreview(makeEntry({ ext: 'pdf', isDirectory: true }))).toBe(false);
+  });
+});
+
+describe('timeAgo', () => {
+  const now = Date.UTC(2026, 6, 6, 12, 0, 0);
+
+  it('buckets recent times into friendly units', () => {
+    expect(timeAgo(now - 20_000, now)).toBe('just now');
+    expect(timeAgo(now - 5 * 60_000, now)).toBe('5m ago');
+    expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3h ago');
+    expect(timeAgo(now - 2 * 86_400_000, now)).toBe('2d ago');
+  });
+
+  it('falls back to a short date past a week', () => {
+    expect(timeAgo(now - 30 * 86_400_000, now)).toMatch(/Jun/);
+  });
+
+  it('never goes negative for future timestamps', () => {
+    expect(timeAgo(now + 60_000, now)).toBe('just now');
   });
 });

@@ -1,7 +1,9 @@
 /**
  * Types shared across the main process, preload bridge and renderer.
- * Keep this file dependency-free so it can be imported from any layer.
+ * Keep this file dependency-free so it can be imported from any layer
+ * (the llmModels import below is type-only — erased at compile time).
  */
+import type { LlmModelConfig, LlmModelDef, LlmSystemSpecs } from './llmModels';
 
 /** A single directory entry as shown in the file list. */
 export interface Entry {
@@ -146,7 +148,17 @@ export interface Prefs {
   iconSize?: IconSize;
   columnWidths?: { size: number; type: number; modified: number };
   /** AI feature settings (enable toggle + provider; the model is chosen automatically). */
-  ai?: { enabled: boolean; activeProvider: string; modelId?: string };
+  ai?: {
+    enabled: boolean;
+    activeProvider: string;
+    modelId?: string;
+    /** The chat model the Assistant uses. */
+    llmModelId?: string;
+    /** Per-chat-model generation settings (partial; see `@shared/llmModels`). */
+    llmConfigs?: Record<string, Partial<LlmModelConfig>>;
+    /** User-added chat models (from `parseCustomModelInput`). */
+    llmCustomModels?: LlmModelDef[];
+  };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
     enabled?: boolean;
@@ -366,6 +378,115 @@ export interface CloudApi {
   listAccounts(): Promise<Result<AccountRecord[]>>;
   /** Remove an account and its stored credentials. */
   disconnect(accountId: string): Promise<Result<void>>;
+}
+
+/** Lifecycle snapshot of one chat (LLM) model, surfaced in the Assistant's picker. */
+export interface LlmModelStatus {
+  /** Catalog id from `@shared/llmModels`. */
+  modelId: string;
+  state: AiModelState;
+  /** Download progress in [0, 1] while `state === 'downloading'`. */
+  progress?: number;
+  /** Error detail when `state === 'error'`. */
+  message?: string;
+}
+
+/** A file or folder the user attached to a chat message with @ / #. */
+export interface ChatMention {
+  kind: 'file' | 'folder';
+  /** Absolute path. */
+  path: string;
+  /** Base name, as shown in the mention chip. */
+  name: string;
+}
+
+/** One prior exchange replayed to the model for conversational continuity. */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Everything needed to answer one chat message. */
+export interface ChatSendPayload {
+  /** Renderer-generated id correlating the stream events with this request. */
+  requestId: string;
+  /** Session to append this exchange to; omitted on a fresh conversation
+   * (the handler mints one and returns it). */
+  sessionId?: string;
+  /** Chat model to use (falls back to prefs, then the catalog default). */
+  modelId?: string;
+  /** The user's message with mention tokens still inline. */
+  prompt: string;
+  /** Prior turns of this conversation (already capped by the renderer). */
+  history: ChatTurn[];
+  /** Files/folders attached with @ / #. */
+  mentions: ChatMention[];
+  /** Slash command, when the message started with one (see `@shared/llmModels`). */
+  command?: string;
+  /** The folder currently open in the browser — the default subject for commands. */
+  cwd?: string;
+}
+
+/** A saved conversation, listed in the Assistant's history. */
+export interface ChatSessionMeta {
+  id: string;
+  title: string;
+  /** Last chat model the session used. */
+  modelId?: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
+
+/** One persisted message of a saved session. */
+export interface StoredChatMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  command?: string;
+  mentions?: ChatMention[];
+  sources?: SemanticHit[];
+  createdAt: number;
+}
+
+/** The API surface exposed on `window.chats` (saved Assistant conversations). */
+export interface ChatsApi {
+  /** All saved sessions, most recently active first. */
+  list(): Promise<Result<ChatSessionMeta[]>>;
+  /** A session's messages, oldest first. */
+  messages(sessionId: string): Promise<Result<StoredChatMessage[]>>;
+  rename(sessionId: string, title: string): Promise<Result<void>>;
+  /** Delete a session and its messages. */
+  remove(sessionId: string): Promise<Result<void>>;
+}
+
+/** Streamed chat output, pushed on `Events.chatStream`. */
+export type ChatStreamEvent = { requestId: string } & (
+  | { type: 'chunk'; text: string }
+  | { type: 'sources'; hits: SemanticHit[] }
+  | { type: 'done' }
+  | { type: 'error'; error: AppError }
+);
+
+/** The API surface exposed on `window.llm` (the Assistant chat). */
+export interface LlmApi {
+  /** Status of every catalog model (absent / downloading / ready / error). */
+  models(): Promise<Result<LlmModelStatus[]>>;
+  /** Download a chat model; progress arrives via `onModelProgress`. */
+  download(modelId: string): Promise<Result<void>>;
+  /** Delete a downloaded chat model's weights from disk. */
+  remove(modelId: string): Promise<Result<void>>;
+  /** What this machine can run (GPU backend + memory), for the model picker. */
+  specs(): Promise<Result<LlmSystemSpecs>>;
+  /** Answer a message; output streams via `onEvent`, resolves when the stream
+   * ends with the session the exchange was saved under. */
+  send(payload: ChatSendPayload): Promise<Result<{ sessionId: string }>>;
+  /** Abort an in-flight `send` by its requestId. */
+  stop(requestId: string): Promise<Result<void>>;
+  /** Subscribe to streaming chat output; returns an unsubscribe fn. */
+  onEvent(cb: (event: ChatStreamEvent) => void): () => void;
+  /** Subscribe to model download/state progress; returns an unsubscribe fn. */
+  onModelProgress(cb: (status: LlmModelStatus) => void): () => void;
 }
 
 /** The API surface exposed on `window.ai` by the preload bridge. */

@@ -17,6 +17,7 @@ import {
   startIndexBackground,
   stopIndexBackground,
 } from './ai/index/handlers';
+import { registerLlmHandlers } from './ai/llm/handlers';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
 
@@ -88,12 +89,15 @@ app.whenReady().then(() => {
   }
   // The embedded AI worker can't call app.getPath; hand it the model cache dir.
   process.env.FILDOS_MODELS_DIR = join(app.getPath('userData'), 'models');
+  // Same for the chat LLM worker's GGUF weights.
+  process.env.FILDOS_LLM_DIR = join(app.getPath('userData'), 'models', 'llm');
   registerAiProvider('embedded', new EmbeddedAiProvider());
   registerAiProvider('cloud', new CloudAiProvider());
   registerFsHandlers();
   registerCloudHandlers();
   registerAiHandlers();
   registerIndexHandlers();
+  registerLlmHandlers();
   createWindow();
   // Resume any indexing left over from last session (no-op unless enabled).
   startIndexBackground();

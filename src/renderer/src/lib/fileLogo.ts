@@ -353,6 +353,11 @@ function hashFolderScoop(name: string): number {
   return h % FOLDER_SCOOPS.length;
 }
 
+/** Returns the colored folder SVG for a given folder name. */
+export function folderLogo(name: string): string {
+  return FOLDER_SCOOPS[hashFolderScoop(name)];
+}
+
 /**
  * The custom type-logo image URL to show for an entry that has no live
  * thumbnail preview (folders, and any file we can't or haven't rendered).
