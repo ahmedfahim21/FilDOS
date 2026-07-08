@@ -168,7 +168,7 @@ export function ContextMenu(props: ContextMenuProps) {
             {props.onToggleIndexExclude && (
               <DropdownMenuItem onSelect={props.onToggleIndexExclude}>
                 <Icon name={props.indexExcluded ? 'eye' : 'eye-off'} />{' '}
-                {props.indexExcluded ? 'Include in AI index' : 'Exclude from AI index'}
+                {props.indexExcluded ? 'Show to AI' : 'Hide from AI'}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />

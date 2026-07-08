@@ -41,8 +41,12 @@ describe('isStale', () => {
   it('stale when size changed', () =>
     expect(isStale(BASE, { mtimeMs: 1000, size: 9999 }, 'm1')).toBe(true));
   it('stale when modelId changed', () => expect(isStale(BASE, STAT, 'm2')).toBe(true));
-  it('stale when indexVersion is behind current INDEX_VERSION', () =>
-    expect(isStale({ ...BASE, indexVersion: INDEX_VERSION - 1 }, STAT, 'm1')).toBe(true));
+  it('fresh on v1 rows with content chunks (v2 only changed skipped files)', () =>
+    expect(isStale({ ...BASE, indexVersion: 1 }, STAT, 'm1')).toBe(false));
+  it('stale on v1 rows that were skipped (they gain a filename chunk in v2)', () =>
+    expect(isStale({ ...BASE, indexVersion: 1, status: 'skipped' }, STAT, 'm1')).toBe(true));
+  it('stale on any older indexVersion', () =>
+    expect(isStale({ ...BASE, indexVersion: 0 }, STAT, 'm1')).toBe(true));
   it('fresh when all fields match', () => expect(isStale(BASE, STAT, 'm1')).toBe(false));
   it('fresh even when prior status is skipped', () =>
     expect(isStale({ ...BASE, status: 'skipped' }, STAT, 'm1')).toBe(false));
@@ -78,6 +82,7 @@ function makeIndexer(
   excludes: string[] = [],
   textModel = 'm1',
   countTokens?: (modelId: string, texts: string[]) => Promise<number[]>,
+  excludeExtensions: string[] = [],
 ) {
   let last: IndexProgress | null = null;
   let emits = 0;
@@ -85,7 +90,7 @@ function makeIndexer(
     provider: async () => provider,
     textModel,
     imageModel: 'clip',
-    config: async () => ({ roots: [tmp()], excludes }),
+    config: async () => ({ roots: [tmp()], excludes, excludeExtensions }),
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
       last = p;
@@ -282,5 +287,108 @@ describe('Indexer.start — guards', () => {
 
     expect(seen.at(-1)?.state).toBe('error');
     expect(await chunkCount()).toBe(0);
+  });
+});
+
+describe('Indexer — filename fallback', () => {
+  it('indexes the humanized filename when a document’s content can’t be extracted', async () => {
+    // Garbage bytes with a .pdf extension: extractText yields null (parse fails).
+    await write('Modern_Angular_Also_covers_signals.pdf', 'not really a pdf');
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+
+    const path = join(tmp(), 'Modern_Angular_Also_covers_signals.pdf');
+    expect((await aiIndex.getState(path))?.status).toBe('skipped');
+    const mine = (await db().select().from(fileChunks)).filter((c) => c.path === path);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].text).toBe('Modern Angular Also covers signals pdf');
+  });
+});
+
+describe('Indexer — codebases', () => {
+  it('indexes only documentation inside a detected code project', async () => {
+    await fs.mkdir(join(tmp(), 'proj', 'src'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'proj', 'package.json'), '{}');
+    await fs.writeFile(join(tmp(), 'proj', 'README.md'), '# readme with context');
+    await fs.writeFile(join(tmp(), 'proj', 'src', 'main.ts'), 'export const x = 1;');
+    await fs.writeFile(join(tmp(), 'proj', 'src', 'notes.md'), '# design notes');
+    await write('loose.ts', 'export const y = 2;'); // not inside a codebase
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+
+    expect((await aiIndex.getState(join(tmp(), 'proj', 'README.md')))?.status).toBe('indexed');
+    expect((await aiIndex.getState(join(tmp(), 'proj', 'src', 'notes.md')))?.status).toBe('indexed');
+    expect(await aiIndex.getState(join(tmp(), 'proj', 'src', 'main.ts'))).toBeNull();
+    expect((await aiIndex.getState(join(tmp(), 'loose.ts')))?.status).toBe('indexed');
+  });
+
+  it('prunes already-indexed code files when a project marker appears', async () => {
+    await fs.mkdir(join(tmp(), 'proj'), { recursive: true });
+    const code = join(tmp(), 'proj', 'main.ts');
+    await fs.writeFile(code, 'export const x = 1;');
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+    expect((await aiIndex.getState(code))?.status).toBe('indexed');
+
+    await fs.writeFile(join(tmp(), 'proj', 'package.json'), '{}');
+    await indexer.start();
+    expect(await aiIndex.getState(code)).toBeNull();
+  });
+
+  it('never descends into build output inside a codebase', async () => {
+    await fs.mkdir(join(tmp(), 'proj', 'out'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'proj', 'package.json'), '{}');
+    await fs.writeFile(join(tmp(), 'proj', 'README.md'), '# real docs');
+    await fs.writeFile(join(tmp(), 'proj', 'out', 'README.md'), '# bundled copy');
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+
+    expect((await aiIndex.getState(join(tmp(), 'proj', 'README.md')))?.status).toBe('indexed');
+    expect(await aiIndex.getState(join(tmp(), 'proj', 'out', 'README.md'))).toBeNull();
+  });
+
+  it('does not treat the crawl root itself as a codebase', async () => {
+    await write('package.json', '{}'); // stray marker at the root
+    await write('script.ts', 'export const z = 3;');
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+
+    expect((await aiIndex.getState(join(tmp(), 'script.ts')))?.status).toBe('indexed');
+  });
+});
+
+describe('Indexer — excluded extensions', () => {
+  it('skips excluded types during the crawl', async () => {
+    await write('keep.md', 'hello docs');
+    await write('skip.txt', 'hello text');
+
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider, [], 'm1', undefined, ['txt']);
+    await indexer.start();
+
+    expect((await aiIndex.getState(join(tmp(), 'keep.md')))?.status).toBe('indexed');
+    expect(await aiIndex.getState(join(tmp(), 'skip.txt'))).toBeNull();
+  });
+
+  it('prunes already-indexed files once their type is excluded', async () => {
+    await write('a.txt', 'hello');
+    const { provider } = fakeProvider();
+    const { indexer: first } = makeIndexer(provider);
+    await first.start();
+    expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
+
+    const { indexer: second } = makeIndexer(provider, [], 'm1', undefined, ['txt']);
+    await second.start();
+    expect(await aiIndex.getState(join(tmp(), 'a.txt'))).toBeNull();
   });
 });

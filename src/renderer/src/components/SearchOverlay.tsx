@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import type { Entry, RecentItem, SearchHit, SemanticHit, Tag } from '@shared/types';
+import { nameMatchTier } from '@shared/searchMatch';
 import { useToast } from '@/state/toast';
 import { useAi } from '@/state/ai';
 import { baseName, parentOf } from '@/lib/path';
@@ -26,6 +27,8 @@ interface Row {
   sub: string;
   /** AI relevance in [0,1]; undefined for name/recents rows. */
   score?: number;
+  /** The single strongest result — gets the "Best" pill. */
+  best?: boolean;
 }
 
 interface Section {
@@ -153,8 +156,12 @@ export function SearchOverlay({
   onNavigate,
 }: {
   open: boolean;
-  /** The folder behind the browser — the "This folder" scope. */
-  rootPath: string;
+  /**
+   * The folder behind the browser — the "This folder" scope. Null when a page
+   * (Settings, Recents, a tag) is in view: no folder scope makes sense there,
+   * so the scope toggle is hidden and search always runs everywhere.
+   */
+  rootPath: string | null;
   tags: Tag[];
   /** When opened by dropping a file on the search bar, the file to "find similar" to. */
   seedFile?: string | null;
@@ -214,7 +221,7 @@ export function SearchOverlay({
     return () => window.removeEventListener('keydown', onEsc);
   }, [open, onClose]);
 
-  const scopePath = scope === 'folder' ? rootPath : undefined;
+  const scopePath = scope === 'folder' && rootPath ? rootPath : undefined;
 
   // ── Search execution (debounced, race-guarded) ──────────────────────────
   useEffect(() => {
@@ -253,16 +260,52 @@ export function SearchOverlay({
         }
         return;
       }
-      const [semantic, names] = await Promise.all([
-        ai.ready
-          ? window.index.search(q, { rootPath: scopePath, k: 20 })
-          : Promise.resolve(null),
-        window.fsapi.search(scopePath ?? home ?? rootPath, q),
-      ]);
-      if (reqRef.current !== id) return;
-      setLoading(false);
-      setAiHits(semantic?.ok ? semantic.data : []);
-      setNameHits(names.ok ? names.data : []);
+      // Independent lanes: name matches paint as soon as the disk walk returns;
+      // semantic results join when the embedding round-trip finishes. The
+      // spinner runs until both settle.
+      const done = { semantic: !ai.ready, name: false };
+      const settle = () => {
+        if (done.semantic && done.name) setLoading(false);
+      };
+      if (ai.ready) {
+        window.index.search(q, { rootPath: scopePath, k: 20 }).then((r) => {
+          if (reqRef.current !== id) return;
+          setAiHits(r.ok ? r.data : []);
+          done.semantic = true;
+          settle();
+        });
+      } else {
+        setAiHits([]);
+      }
+      const nameRoot = scopePath ?? home ?? rootPath;
+      if (nameRoot) {
+        // "Everywhere" also sweeps the folder currently in view first: its walk
+        // returns near-instantly, and a file sitting in front of the user must
+        // never lose to the home-wide walk's time budget.
+        const roots =
+          !scopePath && rootPath && rootPath !== nameRoot ? [rootPath, nameRoot] : [nameRoot];
+        Promise.all(roots.map((root) => window.fsapi.search(root, q))).then((results) => {
+          if (reqRef.current !== id) return;
+          const seen = new Set<string>();
+          const merged: SearchHit[] = [];
+          for (const r of results) {
+            if (!r.ok) continue;
+            for (const h of r.data) {
+              if (!seen.has(h.path)) {
+                seen.add(h.path);
+                merged.push(h);
+              }
+            }
+          }
+          setNameHits(merged);
+          done.name = true;
+          settle();
+        });
+      } else {
+        setNameHits([]);
+        done.name = true;
+        settle();
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [open, text, similarFile, scopePath, ai.ready, home, rootPath, tagId, notifyError]);
@@ -286,6 +329,9 @@ export function SearchOverlay({
 
   // ── Assemble sections through the client-side filters ───────────────────
   const sections = useMemo<Section[]>(() => {
+    // Abbreviate the home dir in path sublines — "~/Documents/…" reads, a full
+    // "/Users/name/Documents/…" is noise repeated on every row.
+    const pretty = (p: string) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
     const cutoff = modifiedCutoff(modified);
     const passes = (e: Entry) =>
       (typeKeys.size === 0 ||
@@ -310,7 +356,7 @@ export function SearchOverlay({
                     TYPE_FILTERS.some((f) => typeKeys.has(f.key) && f.match(e))) &&
                   (modified === 'any' || e.modified >= cutoff),
               )
-              .map((e) => ({ entry: e, sub: e.path })),
+              .map((e) => ({ entry: e, sub: pretty(e.path) })),
           },
         ];
       }
@@ -321,38 +367,58 @@ export function SearchOverlay({
           iconClass: 'text-mango',
           rows: recents.map((r) => ({
             entry: pseudoEntry(r.path, r.name, r.openedAt),
-            sub: r.path,
+            sub: pretty(r.path),
           })),
         },
       ];
     }
 
-    const out: Section[] = [];
-    const aiRows = aiHits
-      .filter((h) => passes(h))
-      .map((h) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score }));
-    if (aiRows.length) {
-      out.push({
-        title: similarFile ? 'Similar files' : 'Best matches',
-        icon: 'sparkles',
-        iconClass: 'text-mint',
-        rows: aiRows,
-      });
+    // "Find similar" has no name lane — show the semantic list as-is.
+    if (similarFile) {
+      const rows = aiHits
+        .filter((h) => passes(h))
+        .map((h, i) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score, best: i === 0 }));
+      return rows.length
+        ? [{ title: 'Similar files', icon: 'sparkles' as const, iconClass: 'text-mint', rows }]
+        : [];
     }
-    const seen = new Set(aiRows.map((r) => r.entry.path));
-    const nameRows = nameHits
-      .filter((h) => !seen.has(h.path) && passes(h))
-      .map((h) => ({ entry: h, sub: h.path }));
-    if (nameRows.length) {
-      out.push({
-        title: 'Name matches',
-        icon: 'search',
-        iconClass: 'text-blueberry',
-        rows: nameRows,
-      });
+
+    // One fused list. Segregated "semantic vs name" sections buried the file the
+    // user literally typed the name of below loosely-related semantic hits.
+    // Filename evidence is high-precision, so it anchors the score; semantic
+    // relevance is discounted against it, and a file found by both lanes gets a
+    // corroboration bump.
+    const byPath = new Map<string, { entry: Entry; snippet?: string; sem: number }>();
+    for (const h of aiHits) {
+      if (passes(h)) byPath.set(h.path, { entry: h, snippet: h.snippet, sem: h.score });
     }
-    return out;
-  }, [text, similarFile, aiHits, nameHits, tagFiles, recents, typeKeys, tagId, tagMap, modified, tags]);
+    for (const h of nameHits) {
+      if (passes(h) && !byPath.has(h.path)) byPath.set(h.path, { entry: h, sem: 0 });
+    }
+    const NAME_WEIGHT = [0, 0.72, 0.9, 1] as const; // by nameMatchTier
+    const fused = [...byPath.values()]
+      .map((r) => {
+        const nameScore = NAME_WEIGHT[nameMatchTier(r.entry.name, q)];
+        const semScore = r.sem * 0.8;
+        const corroborated = nameScore > 0 && r.sem > 0 ? 0.08 : 0;
+        return {
+          entry: r.entry,
+          sub: r.snippet?.trim() ? r.snippet : pretty(r.entry.path),
+          score: r.sem > 0 ? r.sem : undefined,
+          rank: Math.max(nameScore, semScore) + corroborated,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.rank - a.rank || (b.score ?? 0) - (a.score ?? 0) || a.entry.path.length - b.entry.path.length,
+      )
+      .slice(0, 50)
+      .map(({ entry, sub, score }, i) => ({ entry, sub, score, best: i === 0 }));
+
+    return fused.length
+      ? [{ title: 'Results', icon: 'sparkles' as const, iconClass: 'text-mint', rows: fused }]
+      : [];
+  }, [text, similarFile, aiHits, nameHits, tagFiles, recents, typeKeys, tagId, tagMap, modified, tags, home]);
 
   const flat = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
@@ -421,7 +487,6 @@ export function SearchOverlay({
 
   if (!open) return null;
 
-  const topScore = flat.find((r) => r.score !== undefined)?.score || 1;
   const aiReady = ai.enabled && ai.ready;
   const activeTag = tagId != null ? tags.find((t) => t.id === tagId) : undefined;
 
@@ -435,7 +500,7 @@ export function SearchOverlay({
       aria-label="Search"
     >
       <div
-        className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[12vh] w-160 max-w-[92vw] duration-150"
+        className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[10vh] w-180 max-w-[94vw] duration-150"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
         onDragOver={(e) => {
@@ -513,23 +578,25 @@ export function SearchOverlay({
 
           {/* ── Filter chips — wraps, never scrolls ── */}
           <div className="border-border flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3.5 py-2.5">
-            {/* Scope: segmented pill */}
-            <div className="bg-muted mr-1 flex h-6 shrink-0 items-center rounded-full p-0.5 text-2xs">
-              {(['all', 'folder'] as Scope[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScope(s)}
-                  className={cn(
-                    'ease-snappy h-5 rounded-full px-2 transition-all duration-150',
-                    scope === s
-                      ? 'bg-background text-foreground font-medium shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {s === 'all' ? 'Everywhere' : 'This folder'}
-                </button>
-              ))}
-            </div>
+            {/* Scope: segmented pill — only when a folder is behind the overlay. */}
+            {rootPath && (
+              <div className="bg-muted mr-1 flex h-6 shrink-0 items-center rounded-full p-0.5 text-2xs">
+                {(['all', 'folder'] as Scope[]).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setScope(s)}
+                    className={cn(
+                      'ease-snappy h-5 rounded-full px-2 transition-all duration-150',
+                      scope === s
+                        ? 'bg-background text-foreground font-medium shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {s === 'all' ? 'Everywhere' : 'This folder'}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {TYPE_FILTERS.map((f) => {
               const active = typeKeys.has(f.key);
@@ -625,7 +692,7 @@ export function SearchOverlay({
           </div>
 
           {/* ── Results ── */}
-          <div ref={listRef} className="max-h-[46vh] flex-1 overflow-y-auto py-1.5">
+          <div ref={listRef} className="max-h-[54vh] flex-1 overflow-y-auto py-1.5">
             {flat.length === 0 ? (
               <div className="flex flex-col items-center gap-2.5 px-6 py-12 text-center">
                 <div className="bg-muted flex size-10 items-center justify-center rounded-full">
@@ -659,18 +726,20 @@ export function SearchOverlay({
                     )}
                     {section.title}
                   </div>
-                  {section.rows.map((row, rowIx) => {
+                  {section.rows.map((row) => {
                     ix++;
                     const i = ix;
-                    const pct = row.score !== undefined
-                      ? Math.round((row.score / topScore) * 100)
-                      : 0;
+                    // Rows are ordered by fused relevance (filename evidence +
+                    // meaning + keywords + reranker), which no single number
+                    // honestly represents — so no pseudo-percentages: just a
+                    // "Best" pill on the top match and the order itself.
+                    const isBest = !!row.best;
                     return (
                       <div
                         key={`${section.title}:${row.entry.path}`}
                         data-ix={i}
                         className={cn(
-                          'mx-1.5 flex cursor-default items-center gap-2.5 rounded-lg px-2.5 py-1.5',
+                          'mx-2 flex cursor-default items-center gap-3 rounded-lg px-2.5 py-2',
                           i === activeIx && 'bg-foreground/6',
                         )}
                         onMouseMove={() => setActiveIx(i)}
@@ -679,8 +748,8 @@ export function SearchOverlay({
                         <img
                           src={fileLogo(row.entry)}
                           alt=""
-                          width={18}
-                          height={18}
+                          width={20}
+                          height={20}
                           draggable={false}
                           className="shrink-0"
                         />
@@ -690,22 +759,18 @@ export function SearchOverlay({
                           </div>
                           <div className="text-muted-foreground truncate text-2xs">{row.sub}</div>
                         </div>
-                        {row.score !== undefined && (
+                        {isBest && (
                           <span
-                            className={cn(
-                              'shrink-0 rounded-sm px-1.5 py-0.5 text-3xs font-medium tabular-nums',
-                              rowIx === 0
-                                ? 'bg-mint/15 text-mint'
-                                : 'bg-muted text-muted-foreground',
-                            )}
-                            title={
-                              rowIx === 0
-                                ? 'Strongest semantic match'
-                                : `${pct}% as relevant as the top match`
-                            }
+                            className="bg-mint/15 text-mint shrink-0 rounded-sm px-1.5 py-0.5 text-3xs font-medium"
+                            title="Strongest match"
                           >
-                            {rowIx === 0 ? 'Best' : `${pct}`}
+                            Best
                           </span>
+                        )}
+                        {i === activeIx && !isBest && (
+                          <kbd className="border-border bg-muted text-muted-foreground shrink-0 rounded border px-1 py-px font-mono text-3xs">
+                            ↵
+                          </kbd>
                         )}
                       </div>
                     );
@@ -734,7 +799,7 @@ export function SearchOverlay({
                     ? 'Meaning + name search'
                     : 'Name search'}
                 {' · '}
-                {scope === 'folder' ? baseName(rootPath) || rootPath : 'Everywhere'}
+                {scopePath ? baseName(scopePath) || scopePath : 'Everywhere'}
               </span>
             </span>
           </div>

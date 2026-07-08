@@ -20,8 +20,13 @@ import {
 import { registerLlmHandlers } from './ai/llm/handlers';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
+import { destroyTray, showTray } from './tray';
 
 async function createWindow(): Promise<void> {
+  // Leaving background (tray) mode: restore the normal app presence.
+  destroyTray();
+  if (process.platform === 'darwin') app.dock?.show();
+
   const prefs = await getPrefs();
   const bounds = prefs.windowBounds;
   // Sync native appearance before the window opens so traffic lights match the
@@ -107,7 +112,21 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+/** Ambient mode: with indexing on (and the pref not disabled), the app stays
+ * resident after the last window closes so the index keeps building. */
+async function ambientIndexing(): Promise<boolean> {
+  const ix = (await getPrefs()).index;
+  return (ix?.enabled ?? false) && (ix?.ambient ?? true);
+}
+
+app.on('window-all-closed', async () => {
+  if (await ambientIndexing()) {
+    showTray({ onOpen: () => void createWindow(), onQuit: () => app.quit() });
+    // On macOS drop the Dock icon too — the tray is the app's only presence,
+    // like other ambient menu-bar apps.
+    if (process.platform === 'darwin') app.dock?.hide();
+    return;
+  }
   if (process.platform !== 'darwin') app.quit();
 });
 

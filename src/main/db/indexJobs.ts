@@ -24,6 +24,28 @@ const CHUNK = 500;
 /** Give up retrying a file after this many failures (kept as 'error', visible). */
 export const MAX_ATTEMPTS = 3;
 
+/** Heavy documents: full parse plus hundreds of chunk embeddings per file. */
+const HEAVY_EXTENSIONS = new Set(['pdf', 'docx']);
+/** One CLIP embedding per file — cheap-ish, but behind plain text. */
+const IMAGE_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif',
+]);
+
+/**
+ * Cost class for queue ordering: cheap text/code and removals drain first so a
+ * fresh index is useful within minutes; images next; book-size documents last.
+ * (Extension sets mirror ai/index/extract.ts — the queue only needs the coarse
+ * classes, not the full taxonomy.)
+ */
+function costClass(path: string, op: IndexOp): number {
+  if (op === 'remove') return 0;
+  const dot = path.lastIndexOf('.');
+  const ext = dot >= 0 ? path.slice(dot + 1).toLowerCase() : '';
+  if (HEAVY_EXTENSIONS.has(ext)) return 2;
+  if (IMAGE_EXTENSIONS.has(ext)) return 1;
+  return 0;
+}
+
 /** Enqueue (or re-arm) a single path; the newest op wins, status resets to pending. */
 export async function enqueue(path: string, op: IndexOp): Promise<void> {
   await enqueueMany([path], op);
@@ -35,7 +57,11 @@ export async function enqueueMany(paths: string[], op: IndexOp): Promise<void> {
   for (let i = 0; i < paths.length; i += CHUNK) {
     await db()
       .insert(indexJobs)
-      .values(paths.slice(i, i + CHUNK).map((path) => ({ path, op, enqueuedAt: now, status: 'pending' })))
+      .values(
+        paths
+          .slice(i, i + CHUNK)
+          .map((path) => ({ path, op, enqueuedAt: now, status: 'pending', priority: costClass(path, op) })),
+      )
       .onConflictDoUpdate({
         target: indexJobs.path,
         set: {
@@ -43,18 +69,19 @@ export async function enqueueMany(paths: string[], op: IndexOp): Promise<void> {
           enqueuedAt: sql`excluded.enqueued_at`,
           status: sql`'pending'`,
           attempts: sql`0`,
+          priority: sql`excluded.priority`,
         },
       });
   }
 }
 
-/** The next pending jobs, oldest first. */
+/** The next pending jobs: cheapest cost class first, then oldest first. */
 export async function nextPending(limit = 1): Promise<IndexJob[]> {
   const rows = await db()
     .select({ path: indexJobs.path, op: indexJobs.op })
     .from(indexJobs)
     .where(eq(indexJobs.status, 'pending'))
-    .orderBy(asc(indexJobs.enqueuedAt))
+    .orderBy(asc(indexJobs.priority), asc(indexJobs.enqueuedAt))
     .limit(limit);
   return rows as IndexJob[];
 }

@@ -7,7 +7,6 @@ import type { KeywordStore } from './keywordStore';
 import { extractText, isImage } from './extract';
 import { chunk } from './chunk';
 import * as service from '../../fs/service';
-import * as aiIndex from '../../db/aiIndex';
 
 /**
  * Semantic search across both indexed modalities. The text lane fuses vector
@@ -120,8 +119,15 @@ function rrfFuse(
     .map(({ path, score, text }) => ({ path, score, text }));
 }
 
-/** How many text-lane candidates to pass through the cross-encoder. */
-const RERANK_N = 50;
+/**
+ * How many text-lane candidates to pass through the cross-encoder, and how much
+ * of each chunk it reads. The reranker runs on WASM: cost is roughly linear in
+ * pairs × tokens, so 50 full 2 KB chunks meant seconds of latency per query.
+ * 16 × 600 chars keeps the precision boost where it matters (the visible top)
+ * at interactive speed.
+ */
+const RERANK_N = 16;
+const RERANK_CHARS = 600;
 
 /**
  * Resolve scored paths into SemanticHits: stat each file, prune index rows for
@@ -129,13 +135,15 @@ const RERANK_N = 50;
  */
 async function resolveHits(
   scored: Scored[],
+  vectorStore: VectorStore,
   rootPath: string | undefined,
   k: number,
 ): Promise<SemanticHit[]> {
   const infos = await Promise.all(scored.map((m) => service.getInfo(m.path).catch(() => null)));
 
   const stale = scored.filter((_, i) => infos[i] === null).map((m) => m.path);
-  if (stale.length) await aiIndex.remove(stale);
+  // Prune through the vector store so its in-memory cache drops them too.
+  if (stale.length) await vectorStore.remove(stale);
 
   return scored
     .map((m, i): SemanticHit | null => {
@@ -177,7 +185,11 @@ export async function semanticSearch(
       const st = await provider.status(opts.rerankerModelId);
       if (st.state === 'ready') {
         const toRerank = textHits.slice(0, RERANK_N);
-        const scores = await provider.rerank(opts.rerankerModelId, q, toRerank.map((h) => h.text));
+        const scores = await provider.rerank(
+          opts.rerankerModelId,
+          q,
+          toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
+        );
         const reranked = toRerank
           .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
           .sort(([, a], [, b]) => b - a)
@@ -190,10 +202,15 @@ export async function semanticSearch(
   }
 
   // Image lane: vector-only — CLIP maps text and images into one space natively.
+  // Gated on the model being downloaded already: embedding the query on demand
+  // would otherwise trigger a CLIP download from the query path.
   let imageHits: Scored[] = [];
   try {
-    const vecImage = await searchOne(provider, models.image, vectorStore, q, opts.rootPath, fetchK);
-    imageHits = bestPerFile(vecImage, fetchK);
+    const st = await provider.status(models.image);
+    if (st.state === 'ready') {
+      const vecImage = await searchOne(provider, models.image, vectorStore, q, opts.rootPath, fetchK);
+      imageHits = bestPerFile(vecImage, fetchK);
+    }
   } catch {
     imageHits = [];
   }
@@ -228,7 +245,7 @@ export async function semanticSearch(
     else if (!img || t.score >= img.score) { best.push(t); ti++; }
     else { best.push(img); ii++; }
   }
-  return resolveHits(best, opts.rootPath, k);
+  return resolveHits(best, vectorStore, opts.rootPath, k);
 }
 
 /** How many leading chunks of the probe file to average into the query vector. */
@@ -286,5 +303,5 @@ export async function similarByFile(
     .filter((m) => m.path !== filePath)
     .map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
 
-  return resolveHits(bestPerFile(scored, k), opts.rootPath, k);
+  return resolveHits(bestPerFile(scored, k), vectorStore, opts.rootPath, k);
 }

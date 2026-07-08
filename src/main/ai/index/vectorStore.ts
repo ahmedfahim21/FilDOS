@@ -17,6 +17,8 @@ export interface VectorStore {
   remove(paths: string[]): Promise<void>;
   /** Carry a file's vectors to a new path after a rename/move. */
   remap(oldPath: string, newPath: string): Promise<void>;
+  /** Drop any in-memory state after the backing rows were wiped externally. */
+  clear?(): void;
 }
 
 export interface SearchOpts {

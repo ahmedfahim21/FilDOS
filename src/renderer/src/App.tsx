@@ -677,13 +677,10 @@ function Browser({ initialView }: { initialView: ViewState }) {
                   const n = paths.length;
                   if (indexExcluded) {
                     await Promise.all(paths.map((p) => indexing.removeExclude(p)));
-                    notify('success', n > 1 ? `Included ${n} items in indexing` : 'Included in indexing');
+                    notify('success', n > 1 ? `${n} items visible to AI again` : 'Visible to AI again');
                   } else {
                     await Promise.all(paths.map((p) => indexing.addExclude(p)));
-                    notify(
-                      'success',
-                      n > 1 ? `Excluded ${n} items from indexing` : 'Excluded from indexing',
-                    );
+                    notify('success', n > 1 ? `${n} items hidden from AI` : 'Hidden from AI');
                   }
                 }
               : undefined
@@ -778,7 +775,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
 
       <SearchOverlay
         open={searchOpen}
-        rootPath={nav.currentPath}
+        rootPath={nav.page ? null : nav.currentPath}
         tags={tagState.tags}
         seedFile={searchSeedFile}
         onClose={() => {

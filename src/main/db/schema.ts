@@ -132,6 +132,11 @@ export const indexJobs = sqliteTable(
     enqueuedAt: integer('enqueued_at').notNull(),
     attempts: integer('attempts').notNull().default(0),
     status: text('status').notNull(),
+    /** Cost class: 0 cheap text / removals, 1 images, 2 heavy docs (pdf/docx). */
+    priority: integer('priority').notNull().default(0),
   },
-  (t) => [index('idx_index_jobs_status').on(t.status, t.enqueuedAt)],
+  (t) => [
+    index('idx_index_jobs_status').on(t.status, t.enqueuedAt),
+    index('idx_index_jobs_priority').on(t.status, t.priority, t.enqueuedAt),
+  ],
 );

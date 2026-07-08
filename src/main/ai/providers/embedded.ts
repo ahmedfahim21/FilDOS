@@ -1,4 +1,5 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
+import { setPriority } from 'node:os';
 import { join } from 'node:path';
 import type { AiModelStatus } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
@@ -40,6 +41,15 @@ export class EmbeddedAiProvider implements AiProvider {
     if (this.worker) return this.worker;
     const worker = utilityProcess.fork(join(__dirname, 'modelWorker.js'), [], {
       serviceName: 'fildos-ai',
+    });
+    // Run inference below normal priority so background indexing never
+    // competes with the user's foreground work for CPU time.
+    worker.on('spawn', () => {
+      try {
+        if (worker.pid) setPriority(worker.pid, 10);
+      } catch {
+        // priority is best-effort (can fail on permission-restricted systems)
+      }
     });
     worker.on('message', (msg: WorkerReply) => this.onMessage(msg));
     worker.on('exit', () => {

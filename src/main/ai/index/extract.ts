@@ -14,15 +14,35 @@ import { assertValidPath } from '../../fs/service';
 
 /** Size cap for plain-text files. */
 export const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
-/** Size cap for documents we parse (PDF/DOCX expand, so allow more). */
-export const DOC_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+/** Size cap for DOCX (mammoth needs the whole file in memory). */
+export const DOC_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+/**
+ * Sanity ceiling for PDFs. Unlike DOCX, PDFs are parsed through a byte-range
+ * transport (see extractPdf) that reads only the ranges pdfjs asks for, so this
+ * guards against pathological files — not memory.
+ */
+export const PDF_MAX_BYTES = 512 * 1024 * 1024; // 512 MB
+/** Hard stop on pages parsed from one PDF (with PDF_MAX_TEXT_CHARS, "index the
+ * relevant front" of a huge book rather than skipping it). */
+export const PDF_MAX_PAGES = 2000;
 /** Upper bound on extracted text, so one huge doc can't dominate the index. */
 export const MAX_TEXT_CHARS = 1_000_000;
+/**
+ * Tighter cap for PDFs: embedding is the expensive step (~each 2 KB chunk is
+ * an inference), and a book's search identity lives in its front — title, TOC,
+ * intro, first chapters. 300 K chars ≈ 100+ pages ≈ ~170 chunks, a fraction of
+ * the full-book cost.
+ */
+export const PDF_MAX_TEXT_CHARS = 300_000;
+
+const PDF_RANGE_CHUNK = 1024 * 1024; // 1 MB per ranged read
+/** A pathological PDF must not stall the indexing pipeline behind one file. */
+const PDF_PARSE_TIMEOUT_MS = 90_000;
 
 /** Plain-text-extractable extensions (without the dot). */
 export const TEXT_EXTENSIONS = new Set([
   // documents & data
-  'txt', 'text', 'md', 'markdown', 'rst', 'log', 'csv', 'tsv', 'json', 'jsonc',
+  'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'log', 'csv', 'tsv', 'json', 'jsonc',
   'ndjson', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'properties',
   // web & markup
   'html', 'htm', 'css', 'scss', 'sass', 'less', 'svg', 'vue', 'svelte',
@@ -69,22 +89,66 @@ async function extractPlain(path: string): Promise<string | null> {
 
 async function extractPdf(path: string): Promise<string | null> {
   const stat = await fs.stat(path);
-  if (!stat.isFile() || stat.size > DOC_MAX_BYTES) return null;
-  const data = new Uint8Array(await fs.readFile(path));
+  if (!stat.isFile() || stat.size > PDF_MAX_BYTES) return null;
   // Load the legacy build (Node-friendly, no DOM worker) lazily.
   const pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as typeof PdfjsTypes;
-  const task = pdfjs.getDocument({ data, useSystemFonts: true });
-  const doc = await task.promise;
-  try {
-    let text = '';
-    for (let i = 1; i <= doc.numPages && text.length < MAX_TEXT_CHARS; i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n';
+
+  // Feed pdfjs byte ranges on demand instead of buffering the whole file:
+  // the xref sits at the tail, and pages fetch only the ranges they need, so
+  // a 300 MB book parses with bounded memory instead of being skipped.
+  const fh = await fs.open(path, 'r');
+  const readRange = async (begin: number, end: number): Promise<Uint8Array> => {
+    const buf = Buffer.alloc(Math.max(0, Math.min(end, stat.size) - begin));
+    await fh.read(buf, 0, buf.length, begin);
+    return new Uint8Array(buf);
+  };
+
+  class FileRangeTransport extends pdfjs.PDFDataRangeTransport {
+    requestDataRange(begin: number, end: number): void {
+      readRange(begin, end).then(
+        (data) => this.onDataRange(begin, data),
+        () => {}, // file handle closed — extraction already settled
+      );
     }
-    return cap(text);
+  }
+
+  try {
+    const transport = new FileRangeTransport(
+      stat.size,
+      await readRange(0, Math.min(PDF_RANGE_CHUNK, stat.size)),
+    );
+    // verbosity 0 = errors only: malformed embedded fonts in PDFs found on disk
+    // otherwise spam the console with harmless "Type3/glyf" recovery warnings.
+    const task = pdfjs.getDocument({
+      range: transport,
+      rangeChunkSize: PDF_RANGE_CHUNK,
+      disableAutoFetch: true, // fetch ranges only when a page needs them
+      useSystemFonts: true,
+      verbosity: 0,
+    });
+    const parse = async (): Promise<string> => {
+      const doc = await task.promise;
+      let text = '';
+      const pages = Math.min(doc.numPages, PDF_MAX_PAGES);
+      for (let i = 1; i <= pages && text.length < PDF_MAX_TEXT_CHARS; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n';
+      }
+      return text.length > PDF_MAX_TEXT_CHARS ? text.slice(0, PDF_MAX_TEXT_CHARS) : text;
+    };
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('PDF parse timed out')), PDF_PARSE_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([parse(), timeout]);
+    } finally {
+      clearTimeout(timer);
+      await task.destroy().catch(() => {});
+    }
   } finally {
-    await task.destroy();
+    await fh.close();
   }
 }
 

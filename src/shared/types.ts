@@ -164,8 +164,12 @@ export interface Prefs {
     enabled?: boolean;
     roots?: string[];
     excludes?: string[];
+    /** File extensions (lowercase, no dot) the indexer never touches. */
+    excludeExtensions?: string[];
     /** Minutes between background rescans of the roots. */
     intervalMinutes?: number;
+    /** Keep indexing (app resident in the tray) after the last window closes. */
+    ambient?: boolean;
   };
 }
 
@@ -263,10 +267,14 @@ export interface IndexConfig {
   enabled: boolean;
   /** Roots to crawl (defaults to the user's home directory). */
   roots: string[];
-  /** Files/folders the user has excluded from indexing. */
+  /** Files/folders the user has hidden from AI ("Hide from AI"). */
   excludes: string[];
+  /** File extensions (lowercase, no dot) the indexer never touches. */
+  excludeExtensions: string[];
   /** Minutes between background rescans of the roots. */
   intervalMinutes: number;
+  /** Keep indexing (app resident in the tray) after the last window closes. */
+  ambient: boolean;
 }
 
 /** The API surface exposed on `window.index` (background indexing control). */
@@ -279,14 +287,20 @@ export interface IndexApi {
   clear(): Promise<Result<void>>;
   /** Current progress snapshot. */
   status(): Promise<Result<IndexProgress>>;
-  /** Exclude a file/folder from indexing (and drop anything already indexed under it). */
+  /** Hide a file/folder from AI (and drop anything already indexed under it). */
   addExclude(path: string): Promise<Result<void>>;
-  /** Remove an exclusion. */
+  /** Stop hiding a path from AI. */
   removeExclude(path: string): Promise<Result<void>>;
-  /** The current exclusion list. */
+  /** The current "Hide from AI" list. */
   listExcludes(): Promise<Result<string[]>>;
+  /** Native picker to hide paths from AI; resolves to the updated list. */
+  pickExcludes(): Promise<Result<string[]>>;
+  /** Replace the list of file extensions the indexer skips (normalized server-side). */
+  setExcludeExtensions(exts: string[]): Promise<Result<string[]>>;
   /** Set how often (minutes) the background rescan runs. */
   setInterval(minutes: number): Promise<Result<void>>;
+  /** Keep indexing in the background after the last window closes. */
+  setAmbient(enabled: boolean): Promise<Result<void>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
   search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** "Find similar": rank indexed files by similarity to the given file. */
