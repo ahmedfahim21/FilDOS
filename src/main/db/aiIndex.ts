@@ -120,6 +120,43 @@ export async function allChunks(): Promise<{ path: string; chunkIx: number; text
 }
 
 /**
+ * Every embedded chunk WITHOUT its text — the load that warms the in-memory
+ * vector cache (vectorStore.sqlite.ts). Chunk text dominates row size, so
+ * omitting it keeps the one-time load cheap; texts for the final top-k are
+ * fetched separately via `chunkTexts`.
+ */
+export async function allEmbeddings(): Promise<
+  { path: string; chunkIx: number; modelId: string; embedding: Buffer }[]
+> {
+  const rows = await db()
+    .select({
+      path: fileChunks.path,
+      chunkIx: fileChunks.chunkIx,
+      modelId: fileChunks.modelId,
+      embedding: fileChunks.embedding,
+    })
+    .from(fileChunks)
+    .where(isNotNull(fileChunks.embedding))
+    .orderBy(asc(fileChunks.path), asc(fileChunks.chunkIx));
+  return rows as { path: string; chunkIx: number; modelId: string; embedding: Buffer }[];
+}
+
+/** Chunk texts for the given paths (the search top-k), keyed by path + chunkIx. */
+export async function chunkTexts(
+  paths: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < paths.length; i += CHUNK) {
+    const rows = await db()
+      .select({ path: fileChunks.path, chunkIx: fileChunks.chunkIx, text: fileChunks.text })
+      .from(fileChunks)
+      .where(inArray(fileChunks.path, paths.slice(i, i + CHUNK)));
+    for (const r of rows) out.set(`${r.path}\x00${r.chunkIx}`, r.text);
+  }
+  return out;
+}
+
+/**
  * Pull embedded chunks for brute-force vector search, optionally narrowed to a
  * subtree (`underPath`) and/or a file extension (`ext`, without the dot). Rows
  * without an embedding are skipped — there's nothing to compare them against.

@@ -21,6 +21,7 @@
  * `wasmPaths` at __dirname keeps the runtime fully offline for WASM.
  */
 import { existsSync, readdirSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { join, sep } from 'node:path';
 import type { ProgressInfo } from '@huggingface/transformers';
 import type { AiModelStatus } from '@shared/types';
@@ -78,7 +79,13 @@ function loadLib() {
     t.env.cacheDir = CACHE_DIR;
     t.env.allowRemoteModels = true;
     t.env.allowLocalModels = true;
-    if (t.env.backends?.onnx?.wasm) t.env.backends.onnx.wasm.wasmPaths = __dirname + sep;
+    if (t.env.backends?.onnx?.wasm) {
+      t.env.backends.onnx.wasm.wasmPaths = __dirname + sep;
+      // Multi-threaded inference, capped at half the cores (max 4) so a long
+      // indexing run speeds up without monopolising the machine — the process
+      // also runs at low OS priority (see providers/embedded.ts).
+      t.env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
+    }
     return t;
   });
 }

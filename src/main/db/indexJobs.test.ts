@@ -51,6 +51,25 @@ describe('nextPending', () => {
   });
 });
 
+describe('nextPending — cost-class ordering', () => {
+  it('drains cheap text first, then images, then heavy documents', async () => {
+    await enqueueMany(['/d/book.pdf', '/d/thesis.docx'], 'upsert');
+    await enqueueMany(['/d/photo.png'], 'upsert');
+    await enqueueMany(['/d/notes.md', '/d/main.ts'], 'upsert');
+
+    const order = (await nextPending(5)).map((j) => j.path);
+    expect(order).toEqual(['/d/notes.md', '/d/main.ts', '/d/photo.png', '/d/book.pdf', '/d/thesis.docx']);
+  });
+
+  it('drains removals ahead of heavy upserts regardless of extension', async () => {
+    await enqueueMany(['/d/big.pdf'], 'upsert');
+    await enqueueMany(['/d/gone.pdf'], 'remove');
+
+    const order = (await nextPending(2)).map((j) => j.path);
+    expect(order).toEqual(['/d/gone.pdf', '/d/big.pdf']);
+  });
+});
+
 describe('markError / resume', () => {
   it('markError increments attempts and flips status', async () => {
     await enqueue('/a', 'upsert');
