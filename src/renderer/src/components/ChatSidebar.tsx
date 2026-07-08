@@ -53,6 +53,13 @@ const SUGGESTIONS = [
     desc: 'Attach any file with @',
     text: '/explain @',
   },
+  {
+    icon: 'tool' as const,
+    tint: 'bg-strawberry/10 text-strawberry',
+    title: 'Perform a file action',
+    desc: 'Create, copy, move, rename, or delete files',
+    text: '',
+  }
 ];
 
 /** Model lifecycle → status-dot scoop (the one place chat uses non-mint scoops). */
@@ -674,8 +681,7 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
               <div className="text-foreground text-sm font-medium">Ask your files anything</div>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 Answers come from a model running entirely on this device — nothing leaves your
-                system. It can also act for you: create, copy, move, rename, or delete files on
-                request (deletes go to the Trash).
+                system.
               </p>
             </div>
             {/* Syntax legend as keycaps. */}

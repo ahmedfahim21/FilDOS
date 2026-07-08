@@ -40,6 +40,7 @@ import {
   Sun01Icon,
   Tag01Icon,
   Tick01Icon,
+  ToolsIcon,
   Upload01Icon,
   ViewOffIcon,
 } from 'hugeicons-react';
@@ -88,6 +89,7 @@ type IconName =
   | 'alert-circle'
   | 'check-circle'
   | 'offline'
+  | 'tool'
   | 'more';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
@@ -132,6 +134,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   monitor: ComputerIcon,
   'alert-circle': AlertCircleIcon,
   'check-circle': CheckmarkCircle01Icon,
+  tool: ToolsIcon,
   offline: NoInternetIcon,
   more: More01Icon,
 };
