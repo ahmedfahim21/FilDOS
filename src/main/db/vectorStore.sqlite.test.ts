@@ -14,7 +14,9 @@ const DOCS_A = p('docs', 'a.md');
 const DOCS_B = p('docs', 'b.md');
 const OTHER_C = p('other', 'c.txt');
 
-const store = new SqliteVectorStore();
+// Fresh per test: the store carries an in-memory vector cache, which must not
+// outlive the :memory: database it mirrors.
+let store: SqliteVectorStore;
 
 const state = (path: string): IndexState => ({
   path,
@@ -37,6 +39,7 @@ async function indexFile(path: string, vec: number[]): Promise<void> {
 
 beforeEach(async () => {
   initDb(':memory:');
+  store = new SqliteVectorStore();
   await indexFile(DOCS_A, [1, 0, 0]);
   await indexFile(DOCS_B, [0, 1, 0]);
   await indexFile(OTHER_C, [0, 0, 1]);
@@ -80,5 +83,40 @@ describe('SqliteVectorStore.remap', () => {
 
     const hits = await store.search(new Float32Array([1, 0, 0]), { k: 1 });
     expect(hits[0].path).toBe(moved);
+  });
+
+  it('remaps cached vectors too when the cache is already warm', async () => {
+    await store.search(new Float32Array([1, 1, 1])); // warm the cache
+    const moved = p('docs', 'renamed.md');
+    await store.remap(DOCS_A, moved);
+
+    const hits = await store.search(new Float32Array([1, 0, 0]), { k: 1 });
+    expect(hits[0].path).toBe(moved);
+  });
+});
+
+describe('SqliteVectorStore cache coherence', () => {
+  it('sees files indexed after the cache was warmed', async () => {
+    await store.search(new Float32Array([1, 1, 1])); // warm
+    await indexFile(p('docs', 'new.md'), [0.9, 0.9, 0]);
+
+    const hits = await store.search(new Float32Array([0.9, 0.9, 0]), { k: 1 });
+    expect(hits[0].path).toBe(p('docs', 'new.md'));
+  });
+
+  it('drops removed files from a warm cache', async () => {
+    await store.search(new Float32Array([1, 1, 1])); // warm
+    await store.remove([DOCS_A]);
+
+    const hits = await store.search(new Float32Array([1, 0, 0]));
+    expect(hits.map((h) => h.path)).not.toContain(DOCS_A);
+  });
+
+  it('reloads from the database after clear()', async () => {
+    await store.search(new Float32Array([1, 1, 1])); // warm
+    store.clear();
+
+    const hits = await store.search(new Float32Array([1, 0, 0]), { k: 1 });
+    expect(hits[0].path).toBe(DOCS_A); // rows still in the DB; cache rebuilt
   });
 });
