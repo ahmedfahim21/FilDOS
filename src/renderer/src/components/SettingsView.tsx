@@ -1,11 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AiModelStatus, Theme } from '@shared/types';
 import { getModelDef, INDEX_MODEL_IDS, RERANKER_MODEL_ID } from '@shared/aiModels';
 import {
+  HF_GGUF_MODELS_URL,
   LLM_CONFIG_LIMITS,
   LLM_SYSTEM_PROMPT_MAX,
   resolveLlmConfig,
   type LlmModelDef,
+  type LlmModelFamily,
   type LlmSystemSpecs,
 } from '@shared/llmModels';
 import { useAi } from '@/state/ai';
@@ -37,6 +39,42 @@ interface ProviderOption {
 const PROVIDERS: ProviderOption[] = [
   { id: 'embedded', name: 'On-device', blurb: 'Runs locally — private, no API key', available: true },
   { id: 'cloud', name: 'Hosted', blurb: 'Coming soon', available: false },
+];
+
+/** The Settings pages. Model management gets its own tab — it's the biggest. */
+type SettingsTab = 'general' | 'search' | 'assistant' | 'privacy';
+
+const TABS: { id: SettingsTab; label: string; icon: IconName }[] = [
+  { id: 'general', label: 'General', icon: 'sun' },
+  { id: 'search', label: 'AI & Search', icon: 'search' },
+  { id: 'assistant', label: 'Assistant', icon: 'sparkles' },
+  { id: 'privacy', label: 'Privacy', icon: 'eye-off' },
+];
+
+/** Display heading + order for each model family in the Assistant tab. */
+const FAMILY_LABELS: Record<LlmModelFamily, string> = {
+  custom: 'Your models',
+  llama: 'Llama — Meta',
+  qwen: 'Qwen — Alibaba',
+  gemma: 'Gemma — Google',
+  phi: 'Phi — Microsoft',
+  mistral: 'Mistral',
+  deepseek: 'DeepSeek',
+  granite: 'Granite — IBM',
+  lfm: 'LFM — Liquid AI',
+  smollm: 'SmolLM — Hugging Face',
+};
+const FAMILY_ORDER: LlmModelFamily[] = [
+  'custom',
+  'llama',
+  'qwen',
+  'gemma',
+  'phi',
+  'mistral',
+  'deepseek',
+  'granite',
+  'lfm',
+  'smollm',
 ];
 
 /** A small on/off switch (Ink/white primary track). */
@@ -117,6 +155,19 @@ function SubLabel({ children }: { children: ReactNode }) {
     <div className="text-muted-foreground mb-2 text-2xs font-medium tracking-wider uppercase">
       {children}
     </div>
+  );
+}
+
+/** Text-only vs. vision-capable badge shown beside every chat model. */
+function ModalityBadge({ def }: { def: LlmModelDef }) {
+  return def.modality === 'vision' ? (
+    <span className="bg-blueberry/15 text-blueberry shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium">
+      Vision
+    </span>
+  ) : (
+    <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium">
+      Text
+    </span>
   );
 }
 
@@ -227,9 +278,10 @@ function ParamSlider({
 
 /**
  * One chat model: status + download/remove management, a "Recommended" badge
- * when it fits this machine best, and an expandable panel tuning the
- * generation parameters the model supports (persisted per model). Custom
- * (user-added) models show their source and can be forgotten entirely.
+ * when it fits this machine best, a text/vision modality badge, and an
+ * expandable panel tuning the generation parameters the model supports
+ * (persisted per model). Custom (user-added) models show their source and can
+ * be forgotten entirely.
  */
 function ChatModelCard({ def, recommended }: { def: LlmModelDef; recommended: boolean }) {
   const chat = useChat();
@@ -257,19 +309,15 @@ function ChatModelCard({ def, recommended }: { def: LlmModelDef; recommended: bo
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-foreground truncate text-sm">{def.label}</span>
+            <ModalityBadge def={def} />
             {recommended && (
-              <span className="bg-mint/15 text-mint rounded-full px-1.5 py-0.5 text-3xs font-medium">
+              <span className="bg-mint/15 text-mint shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium">
                 Recommended
-              </span>
-            )}
-            {custom && (
-              <span className="bg-blueberry/15 text-blueberry rounded-full px-1.5 py-0.5 text-3xs font-medium">
-                Custom
               </span>
             )}
             {customized && state === 'ready' && (
               <span
-                className="bg-grape/15 text-grape rounded-full px-1.5 py-0.5 text-3xs font-medium"
+                className="bg-grape/15 text-grape shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium"
                 title="Custom parameters are set"
               >
                 Customized
@@ -436,6 +484,136 @@ function ChatModelCard({ def, recommended }: { def: LlmModelDef; recommended: bo
   );
 }
 
+/**
+ * The chat-model library: a search box plus modality/downloaded filters over
+ * the (large) built-in catalog, grouped by family. Filters are additive; the
+ * empty state names the active filters so a "no results" is never a mystery.
+ */
+function ChatModelBrowser() {
+  const chat = useChat();
+  const [query, setQuery] = useState('');
+  const [modality, setModality] = useState<'all' | 'text' | 'vision'>('all');
+  const [onlyDownloaded, setOnlyDownloaded] = useState(false);
+
+  const downloadedCount = chat.allModels.filter(
+    (d) => chat.statuses[d.id]?.state === 'ready',
+  ).length;
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const visible = chat.allModels.filter((def) => {
+      if (q && !`${def.label} ${def.description} ${def.family}`.toLowerCase().includes(q)) return false;
+      if (modality !== 'all' && (def.modality ?? 'text') !== modality) return false;
+      if (onlyDownloaded && chat.statuses[def.id]?.state !== 'ready') return false;
+      return true;
+    });
+    return FAMILY_ORDER.map((family) => ({
+      family,
+      models: visible.filter((d) => d.family === family),
+    })).filter((g) => g.models.length > 0);
+  }, [chat.allModels, chat.statuses, query, modality, onlyDownloaded]);
+
+  const chip = (active: boolean) =>
+    cn(
+      'rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+      active
+        ? 'border-border bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/20'
+        : 'border-border text-muted-foreground hover:bg-accent',
+    );
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <SubLabel>Model library</SubLabel>
+        <span className="text-muted-foreground text-2xs">
+          {downloadedCount} of {chat.allModels.length} on this device
+        </span>
+      </div>
+
+      {/* Search + filters */}
+      <div className="mb-3 space-y-2">
+        <div className="border-border bg-background focus-within:border-mint/50 flex items-center gap-2 rounded-lg border px-2.5 py-1.5">
+          <Icon name="search" size={13} className="text-muted-foreground shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search models…"
+            aria-label="Search chat models"
+            className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Clear model search"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Icon name="close" size={12} />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              ['all', 'All'],
+              ['text', 'Text'],
+              ['vision', 'Vision'],
+            ] as const
+          ).map(([value, label]) => (
+            <button key={value} onClick={() => setModality(value)} className={chip(modality === value)}>
+              {label}
+            </button>
+          ))}
+          <span className="bg-border mx-1 h-4 w-px" aria-hidden />
+          <button onClick={() => setOnlyDownloaded((v) => !v)} className={chip(onlyDownloaded)}>
+            On this device
+          </button>
+        </div>
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-6 text-center text-2xs">
+          No models match{query ? ` "${query.trim()}"` : ''}
+          {onlyDownloaded ? ' among downloaded models' : ''}
+          {modality !== 'all' ? ` in the ${modality} group` : ''}.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {groups.map((group) => (
+            <div key={group.family}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <img
+                  src={modelLogo(group.family)}
+                  alt=""
+                  className="size-4 shrink-0 object-contain"
+                />
+                <span className="text-muted-foreground text-2xs font-medium tracking-wider uppercase">
+                  {FAMILY_LABELS[group.family]}
+                </span>
+                <span className="text-muted-foreground/60 text-3xs">{group.models.length}</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {group.models.map((def) => (
+                  <ChatModelCard
+                    key={def.id}
+                    def={def}
+                    recommended={chat.recommendedId === def.id}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-muted-foreground mt-3 text-2xs leading-snug">
+        Models run fully on this device through llama.cpp — nothing leaves your machine.
+        Downloaded models appear in the Assistant's picker with the parameters you set here.
+        Vision-capable models answer text today; image input is coming.
+      </p>
+    </div>
+  );
+}
+
 /** Paste-a-model input: any Hugging Face GGUF repo or direct .gguf URL. */
 function AddModelRow() {
   const chat = useChat();
@@ -475,6 +653,15 @@ function AddModelRow() {
           picked automatically), a repo with an explicit quant, or a direct .gguf link.
         </p>
       )}
+      <a
+        href={HF_GGUF_MODELS_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="text-mint mt-1.5 inline-flex items-center gap-1 text-2xs font-medium underline-offset-2 hover:underline"
+      >
+        Browse trending GGUF models on Hugging Face
+        <Icon name="open" size={11} />
+      </a>
     </div>
   );
 }
@@ -591,6 +778,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const chat = useChat();
   const indexing = useIndexing();
   const { notifyError } = useToast();
+  const [tab, setTab] = useState<SettingsTab>('general');
   const [embedding, setEmbedding] = useState(false);
   const [embedResult, setEmbedResult] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('system');
@@ -689,334 +877,356 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-2xl px-8 py-10">
-        <header className="mb-8">
+        <header className="mb-6">
           <h1 className="text-foreground mb-1 text-xl font-medium">Settings</h1>
           <p className="text-muted-foreground text-sm">
             Configure FilDOS. AI features run on your machine by default.
           </p>
         </header>
 
+        {/* Page tabs — model management is its own page, it's the biggest. */}
+        <nav
+          className="border-border bg-muted/50 mb-6 flex w-fit items-center gap-1 rounded-xl border p-1"
+          role="tablist"
+          aria-label="Settings sections"
+        >
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors',
+                tab === t.id
+                  ? 'bg-card text-foreground ring-border shadow-sm ring-1'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Icon name={t.icon} size={14} />
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
         <div className="flex flex-col gap-5">
-          {/* Appearance */}
-          <Section icon="sun" title="Appearance" subtitle="Theme and interface feedback">
-            <div className="grid grid-cols-3 gap-2">
-              {THEMES.map((t) => (
-                <button
-                  key={t.value}
-                  onClick={() => chooseTheme(t.value)}
-                  className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
-                    theme === t.value
-                      ? 'border-border bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/20'
-                      : 'border-border text-muted-foreground hover:bg-accent',
-                  )}
-                >
-                  <Icon name={t.icon} size={18} />
-                  <span className="text-foreground text-sm">{t.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
-              <div className="min-w-0">
-                <div className="text-foreground text-sm">Interface sounds</div>
-                <div className="text-muted-foreground text-2xs">
-                  Soft cues for actions, notifications, and toggles
-                </div>
-              </div>
-              <Toggle checked={sounds} onChange={chooseSounds} label="Enable interface sounds" />
-            </div>
-          </Section>
-
-          {/* AI features */}
-          <Section
-            icon="sparkles"
-            accent="mint"
-            title="AI features"
-            subtitle="Semantic search and smart organization (foundation)"
-            action={<Toggle checked={ai.enabled} onChange={ai.setEnabled} label="Enable AI features" />}
-          >
-            {/* Provider selector */}
-            <div className={cn(!ai.enabled && 'pointer-events-none opacity-50')}>
-              <SubLabel>Provider</SubLabel>
-              <div className="grid grid-cols-2 gap-2">
-                {PROVIDERS.map((p) => (
+          {tab === 'general' && (
+            <Section icon="sun" title="Appearance" subtitle="Theme and interface feedback">
+              <div className="grid grid-cols-3 gap-2">
+                {THEMES.map((t) => (
                   <button
-                    key={p.id}
-                    disabled={!p.available}
-                    onClick={() => ai.setProvider(p.id)}
+                    key={t.value}
+                    onClick={() => chooseTheme(t.value)}
                     className={cn(
-                      'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
-                      ai.activeProvider === p.id
-                        ? 'border-border bg-foreground/[0.08] ring-1 ring-inset ring-foreground/20'
-                        : 'border-border hover:bg-accent',
-                      !p.available && 'cursor-not-allowed opacity-60 hover:bg-transparent',
+                      'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
+                      theme === t.value
+                        ? 'border-border bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/20'
+                        : 'border-border text-muted-foreground hover:bg-accent',
                     )}
                   >
-                    <div className="flex w-full items-center justify-between gap-2">
-                      <span className="text-foreground text-sm">{p.name}</span>
-                      {!p.available && (
-                        <span className="text-muted-foreground border-border rounded-md border border-dashed px-1.5 py-0.5 text-3xs">
-                          Soon
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-muted-foreground text-2xs">{p.blurb}</span>
+                    <Icon name={t.icon} size={18} />
+                    <span className="text-foreground text-sm">{t.label}</span>
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* Models — managed automatically (no user choice). */}
-            <div className={cn(disabled && 'pointer-events-none opacity-50')}>
-              <SubLabel>Models</SubLabel>
-              {isCloud ? (
-                <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
-                  Switch to On-device to use models.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {INDEX_MODEL_IDS.map((id) => (
-                    <ModelRow
-                      key={id}
-                      id={id}
-                      status={ai.statuses[id]}
-                      onDownload={() =>
-                        ai.downloadModel(id).then((r) => {
-                          if (!r.ok) notifyError(r.error);
-                          ai.refreshStatuses();
-                        })
-                      }
-                    />
-                  ))}
-                  <div className="border-border mt-1 border-t pt-1.5">
-                    <ModelRow
-                      id={RERANKER_MODEL_ID}
-                      status={ai.statuses[RERANKER_MODEL_ID]}
-                      onDownload={() =>
-                        ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
-                          if (!r.ok) notifyError(r.error);
-                          ai.refreshStatuses();
-                        })
-                      }
-                    />
-                  </div>
-                  <p className="text-muted-foreground mt-1 text-2xs leading-snug">
-                    FilDOS picks the right model per file automatically — a text model for documents
-                    and CLIP for images. Both download when AI is enabled. The reranker is optional
-                    and improves search precision when downloaded.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Test embed */}
-            <div className={cn('border-border border-t pt-4', disabled && 'pointer-events-none opacity-50')}>
-              <div className="flex items-center gap-3">
-                <Button size="sm" variant="secondary" onClick={handleTestEmbed} disabled={embedding || disabled}>
-                  {embedding ? 'Embedding…' : 'Test embed'}
-                </Button>
-                {embedResult && (
-                  <code className="text-muted-foreground truncate font-mono text-2xs">
-                    {embedResult}
-                  </code>
-                )}
-              </div>
-              <p className="text-muted-foreground mt-2 text-2xs leading-snug">
-                Embeds a sample string with the text model to verify it end-to-end. The first run
-                downloads the model if needed.
-              </p>
-            </div>
-          </Section>
-
-          {/* Assistant chat models */}
-          <Section
-            icon="sparkles"
-            accent="mint"
-            title="Assistant"
-            subtitle="On-device chat models — download, tune, and pick what fits your machine"
-          >
-            {/* What this machine can run. */}
-            <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-foreground text-sm">This machine</div>
-                <div className="text-muted-foreground mt-0.5 truncate font-mono text-2xs">
-                  {chat.specs ? specsLine(chat.specs) : 'Detecting hardware…'}
-                </div>
-              </div>
-              {chat.recommendedId && (
-                <span className="bg-mint/15 text-mint shrink-0 rounded-full px-2 py-0.5 text-3xs font-medium">
-                  Best fit: {chat.modelDef(chat.recommendedId)?.label}
-                </span>
-              )}
-            </div>
-
-            <div>
-              <SubLabel>Chat models</SubLabel>
-              <div className="flex flex-col gap-1.5">
-                {chat.allModels.map((def) => (
-                  <ChatModelCard
-                    key={def.id}
-                    def={def}
-                    recommended={chat.recommendedId === def.id}
-                  />
-                ))}
-              </div>
-              <p className="text-muted-foreground mt-2 text-2xs leading-snug">
-                Models run fully on this device through llama.cpp — nothing leaves your machine.
-                Downloaded models appear in the Assistant's picker with the parameters you set here.
-              </p>
-            </div>
-
-            <div>
-              <SubLabel>Add a model from the internet</SubLabel>
-              <AddModelRow />
-            </div>
-          </Section>
-
-          {/* Indexing */}
-          <Section
-            icon="search"
-            title="Indexing"
-            subtitle="Builds the search index from your files in the background"
-            className={cn(!ai.enabled && 'pointer-events-none opacity-50')}
-            action={
-              indexRunning ? (
-                <Button size="sm" variant="secondary" onClick={indexing.pause}>
-                  Pause
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={() => void indexing.start()}
-                  disabled={!ai.ready}
-                  title={!ai.ready ? 'Download the model first' : undefined}
-                >
-                  Start
-                </Button>
-              )
-            }
-          >
-            {/* Progress */}
-            <div className="border-border rounded-lg border px-3 py-2.5">
-              <div className="flex items-start justify-between gap-3">
+              <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
                 <div className="min-w-0">
-                  <div className="text-foreground text-sm">{indexTitle}</div>
-                  {indexSubtitle && (
-                    <div className="text-muted-foreground mt-0.5 text-2xs">{indexSubtitle}</div>
-                  )}
-                </div>
-                {!!ix?.errors && ix.state !== 'error' && (
-                  <span
-                    className="text-muted-foreground shrink-0 text-2xs"
-                    title="Files that couldn't be indexed — see the app log for per-file reasons. They retry on the next scan."
-                  >
-                    {ix.errors} failed
-                  </span>
-                )}
-              </div>
-              {indexRunning && (
-                <>
-                  <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
-                    <div
-                      className="bg-foreground/50 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${indexPct}%` }}
-                    />
+                  <div className="text-foreground text-sm">Interface sounds</div>
+                  <div className="text-muted-foreground text-2xs">
+                    Soft cues for actions, notifications, and toggles
                   </div>
-                  {ix?.currentFile && (
-                    <div className="text-muted-foreground mt-1.5 truncate font-mono text-3xs">
-                      {ix.currentFile}
+                </div>
+                <Toggle checked={sounds} onChange={chooseSounds} label="Enable interface sounds" />
+              </div>
+            </Section>
+          )}
+
+          {tab === 'search' && (
+            <>
+              {/* AI features */}
+              <Section
+                icon="sparkles"
+                accent="mint"
+                title="AI features"
+                subtitle="Semantic search and smart organization (foundation)"
+                action={<Toggle checked={ai.enabled} onChange={ai.setEnabled} label="Enable AI features" />}
+              >
+                {/* Provider selector */}
+                <div className={cn(!ai.enabled && 'pointer-events-none opacity-50')}>
+                  <SubLabel>Provider</SubLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PROVIDERS.map((p) => (
+                      <button
+                        key={p.id}
+                        disabled={!p.available}
+                        onClick={() => ai.setProvider(p.id)}
+                        className={cn(
+                          'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                          ai.activeProvider === p.id
+                            ? 'border-border bg-foreground/[0.08] ring-1 ring-inset ring-foreground/20'
+                            : 'border-border hover:bg-accent',
+                          !p.available && 'cursor-not-allowed opacity-60 hover:bg-transparent',
+                        )}
+                      >
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-foreground text-sm">{p.name}</span>
+                          {!p.available && (
+                            <span className="text-muted-foreground border-border rounded-md border border-dashed px-1.5 py-0.5 text-3xs">
+                              Soon
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground text-2xs">{p.blurb}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Models — managed automatically (no user choice). */}
+                <div className={cn(disabled && 'pointer-events-none opacity-50')}>
+                  <SubLabel>Models</SubLabel>
+                  {isCloud ? (
+                    <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
+                      Switch to On-device to use models.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      {INDEX_MODEL_IDS.map((id) => (
+                        <ModelRow
+                          key={id}
+                          id={id}
+                          status={ai.statuses[id]}
+                          onDownload={() =>
+                            ai.downloadModel(id).then((r) => {
+                              if (!r.ok) notifyError(r.error);
+                              ai.refreshStatuses();
+                            })
+                          }
+                        />
+                      ))}
+                      <div className="border-border mt-1 border-t pt-1.5">
+                        <ModelRow
+                          id={RERANKER_MODEL_ID}
+                          status={ai.statuses[RERANKER_MODEL_ID]}
+                          onDownload={() =>
+                            ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
+                              if (!r.ok) notifyError(r.error);
+                              ai.refreshStatuses();
+                            })
+                          }
+                        />
+                      </div>
+                      <p className="text-muted-foreground mt-1 text-2xs leading-snug">
+                        FilDOS picks the right model per file automatically — a text model for documents
+                        and CLIP for images. Both download when AI is enabled. The reranker is optional
+                        and improves search precision when downloaded.
+                      </p>
                     </div>
                   )}
+                </div>
+
+                {/* Test embed */}
+                <div className={cn('border-border border-t pt-4', disabled && 'pointer-events-none opacity-50')}>
+                  <div className="flex items-center gap-3">
+                    <Button size="sm" variant="secondary" onClick={handleTestEmbed} disabled={embedding || disabled}>
+                      {embedding ? 'Embedding…' : 'Test embed'}
+                    </Button>
+                    {embedResult && (
+                      <code className="text-muted-foreground truncate font-mono text-2xs">
+                        {embedResult}
+                      </code>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground mt-2 text-2xs leading-snug">
+                    Embeds a sample string with the text model to verify it end-to-end. The first run
+                    downloads the model if needed.
+                  </p>
+                </div>
+              </Section>
+
+              {/* Indexing */}
+              <Section
+                icon="search"
+                title="Indexing"
+                subtitle="Builds the search index from your files in the background"
+                className={cn(!ai.enabled && 'pointer-events-none opacity-50')}
+                action={
+                  indexRunning ? (
+                    <Button size="sm" variant="secondary" onClick={indexing.pause}>
+                      Pause
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => void indexing.start()}
+                      disabled={!ai.ready}
+                      title={!ai.ready ? 'Download the model first' : undefined}
+                    >
+                      Start
+                    </Button>
+                  )
+                }
+              >
+                {/* Progress */}
+                <div className="border-border rounded-lg border px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-foreground text-sm">{indexTitle}</div>
+                      {indexSubtitle && (
+                        <div className="text-muted-foreground mt-0.5 text-2xs">{indexSubtitle}</div>
+                      )}
+                    </div>
+                    {!!ix?.errors && ix.state !== 'error' && (
+                      <span
+                        className="text-muted-foreground shrink-0 text-2xs"
+                        title="Files that couldn't be indexed — see the app log for per-file reasons. They retry on the next scan."
+                      >
+                        {ix.errors} failed
+                      </span>
+                    )}
+                  </div>
+                  {indexRunning && (
+                    <>
+                      <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
+                        <div
+                          className="bg-foreground/50 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${indexPct}%` }}
+                        />
+                      </div>
+                      {ix?.currentFile && (
+                        <div className="text-muted-foreground mt-1.5 truncate font-mono text-3xs">
+                          {ix.currentFile}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Rescan cadence */}
+                <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-foreground text-sm">Rescan every</div>
+                    <div className="text-muted-foreground text-2xs">
+                      How often the background scan checks for new or changed files
+                    </div>
+                  </div>
+                  <select
+                    value={indexing.intervalMinutes}
+                    onChange={(e) => indexing.setIntervalMinutes(Number(e.target.value))}
+                    className="border-border bg-card text-foreground shrink-0 rounded-lg border px-2 py-1 text-sm"
+                  >
+                    {[5, 15, 30, 60].map((m) => (
+                      <option key={m} value={m}>
+                        {m < 60 ? `${m} min` : '1 hour'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ambient mode */}
+                <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-foreground text-sm">Continue in the background</div>
+                    <div className="text-muted-foreground text-2xs">
+                      Keep indexing from the menu bar / tray after the last window closes
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={indexing.ambient}
+                    onChange={(v) => void indexing.setAmbient(v)}
+                    label="Continue indexing in the background"
+                  />
+                </div>
+
+                {/* Extension exclusions */}
+                <SkipTypesRow />
+
+                <button
+                  onClick={() => void indexing.clear()}
+                  className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
+                >
+                  Clear index
+                </button>
+              </Section>
+            </>
+          )}
+
+          {tab === 'assistant' && (
+            <>
+              <Section
+                icon="sparkles"
+                accent="mint"
+                title="Assistant"
+                subtitle="On-device chat models — download, tune, and pick what fits your machine"
+              >
+                {/* What this machine can run. */}
+                <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-foreground text-sm">This machine</div>
+                    <div className="text-muted-foreground mt-0.5 truncate font-mono text-2xs">
+                      {chat.specs ? specsLine(chat.specs) : 'Detecting hardware…'}
+                    </div>
+                  </div>
+                  {chat.recommendedId && (
+                    <span className="bg-mint/15 text-mint shrink-0 rounded-full px-2 py-0.5 text-3xs font-medium">
+                      Best fit: {chat.modelDef(chat.recommendedId)?.label}
+                    </span>
+                  )}
+                </div>
+
+                <ChatModelBrowser />
+              </Section>
+
+              <Section
+                icon="cloud"
+                title="Add a model from the internet"
+                subtitle="Bring any GGUF chat model — Hugging Face repo or direct link"
+              >
+                <AddModelRow />
+              </Section>
+            </>
+          )}
+
+          {tab === 'privacy' && (
+            <Section
+              icon="eye-off"
+              title="Hide from AI"
+              subtitle="Files and folders AI features never read, index, or search"
+              action={
+                <Button size="sm" variant="secondary" onClick={() => void indexing.pickExcludes()}>
+                  <Icon name="plus" size={13} /> Add
+                </Button>
+              }
+            >
+              {indexing.excludes.length === 0 ? (
+                <div className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center">
+                  <Icon name="eye-off" size={18} className="text-muted-foreground" />
+                  <p className="text-muted-foreground max-w-sm text-2xs leading-snug">
+                    Nothing is hidden. Right-click any file or folder and choose{' '}
+                    <span className="text-foreground">Hide from AI</span>, or add one here.
+                    Hidden items are removed from the index immediately and never re-indexed.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    {indexing.excludes.map((path) => (
+                      <HiddenPathRow
+                        key={path}
+                        path={path}
+                        onRemove={() => void indexing.removeExclude(path)}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-muted-foreground text-2xs leading-snug">
+                    Hidden items are removed from the index immediately and never re-indexed —
+                    semantic search and the Assistant can't see them.
+                  </p>
                 </>
               )}
-            </div>
-
-            {/* Rescan cadence */}
-            <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-foreground text-sm">Rescan every</div>
-                <div className="text-muted-foreground text-2xs">
-                  How often the background scan checks for new or changed files
-                </div>
-              </div>
-              <select
-                value={indexing.intervalMinutes}
-                onChange={(e) => indexing.setIntervalMinutes(Number(e.target.value))}
-                className="border-border bg-card text-foreground shrink-0 rounded-lg border px-2 py-1 text-sm"
-              >
-                {[5, 15, 30, 60].map((m) => (
-                  <option key={m} value={m}>
-                    {m < 60 ? `${m} min` : '1 hour'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Ambient mode */}
-            <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-foreground text-sm">Continue in the background</div>
-                <div className="text-muted-foreground text-2xs">
-                  Keep indexing from the menu bar / tray after the last window closes
-                </div>
-              </div>
-              <Toggle
-                checked={indexing.ambient}
-                onChange={(v) => void indexing.setAmbient(v)}
-                label="Continue indexing in the background"
-              />
-            </div>
-
-            {/* Extension exclusions */}
-            <SkipTypesRow />
-
-            <button
-              onClick={() => void indexing.clear()}
-              className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
-            >
-              Clear index
-            </button>
-          </Section>
-
-          {/* Hide from AI */}
-          <Section
-            icon="eye-off"
-            title="Hide from AI"
-            subtitle="Files and folders AI features never read, index, or search"
-            action={
-              <Button size="sm" variant="secondary" onClick={() => void indexing.pickExcludes()}>
-                <Icon name="plus" size={13} /> Add
-              </Button>
-            }
-          >
-            {indexing.excludes.length === 0 ? (
-              <div className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center">
-                <Icon name="eye-off" size={18} className="text-muted-foreground" />
-                <p className="text-muted-foreground max-w-sm text-2xs leading-snug">
-                  Nothing is hidden. Right-click any file or folder and choose{' '}
-                  <span className="text-foreground">Hide from AI</span>, or add one here.
-                  Hidden items are removed from the index immediately and never re-indexed.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  {indexing.excludes.map((path) => (
-                    <HiddenPathRow
-                      key={path}
-                      path={path}
-                      onRemove={() => void indexing.removeExclude(path)}
-                    />
-                  ))}
-                </div>
-                <p className="text-muted-foreground text-2xs leading-snug">
-                  Hidden items are removed from the index immediately and never re-indexed —
-                  semantic search and the Assistant can't see them.
-                </p>
-              </>
-            )}
-          </Section>
+            </Section>
+          )}
         </div>
       </div>
     </div>
