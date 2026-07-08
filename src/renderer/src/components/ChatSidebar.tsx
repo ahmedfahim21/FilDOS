@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AiModelState, ChatMention, ChatSessionMeta, Entry, SemanticHit } from '@shared/types';
+import type {
+  AiModelState,
+  ChatMention,
+  ChatSessionMeta,
+  ChatToolCall,
+  Entry,
+  SemanticHit,
+} from '@shared/types';
 import { CHAT_COMMANDS, resolveLlmConfig } from '@shared/llmModels';
 import { useChat, type ChatMessage } from '@/state/chat';
 import { useNavigation } from '@/state/navigation';
@@ -130,6 +137,45 @@ function SourcesCard({ hits, onOpen }: { hits: SemanticHit[]; onOpen: (hit: Sema
   );
 }
 
+/** Icon per file tool (see `@shared/chatTools`). */
+const TOOL_ICONS: Record<string, React.ComponentProps<typeof Icon>['name']> = {
+  create_file: 'file-plus',
+  create_folder: 'new-folder',
+  copy_files: 'copy',
+  move_files: 'forward',
+  rename_file: 'rename',
+  delete_files: 'trash',
+  list_folder: 'list',
+  read_file: 'eye',
+};
+
+/**
+ * One file action the Assistant performed — an activity chip above the answer.
+ * Success ticks mint; a failed action shows why in strawberry.
+ */
+function ToolCallRow({ call }: { call: ChatToolCall }) {
+  return (
+    <div className="border-border bg-muted/40 flex w-fit max-w-full items-center gap-1.5 rounded-lg border px-2 py-1">
+      <Icon
+        name={TOOL_ICONS[call.name] ?? 'sparkles'}
+        size={12}
+        className={cn('shrink-0', call.ok ? 'text-mint' : 'text-strawberry')}
+      />
+      <span
+        className={cn('truncate text-2xs', call.ok ? 'text-foreground' : 'text-strawberry')}
+        title={call.paths?.join('\n')}
+      >
+        {call.summary}
+      </span>
+      <Icon
+        name={call.ok ? 'check' : 'close'}
+        size={10}
+        className={cn('shrink-0', call.ok ? 'text-mint' : 'text-strawberry')}
+      />
+    </div>
+  );
+}
+
 /** The mint "thinking" indicator: three softly bouncing dots. */
 function TypingDots() {
   return (
@@ -187,9 +233,16 @@ function Message({ message, onOpenSource }: { message: ChatMessage; onOpenSource
     );
   }
 
-  const thinking = message.status === 'streaming' && !message.content;
+  const thinking = message.status === 'streaming' && !message.content && !message.toolCalls?.length;
   return (
     <div className="group flex flex-col items-start">
+      {!!message.toolCalls?.length && (
+        <div className="mb-1.5 flex w-full flex-col gap-1">
+          {message.toolCalls.map((call, ix) => (
+            <ToolCallRow key={ix} call={call} />
+          ))}
+        </div>
+      )}
       {thinking ? (
         <TypingDots />
       ) : (
@@ -275,6 +328,11 @@ function ModelChip() {
                   <span className={cn('absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-popover', STATE_DOT[s])} />
                 </div>
                 <span className="text-sm font-medium">{def.label}</span>
+                {def.modality === 'vision' && (
+                  <span className="bg-blueberry/15 text-blueberry rounded-full px-1.5 py-px text-3xs font-medium">
+                    Vision
+                  </span>
+                )}
                 {def.id === recommendedId && (
                   <span className="bg-mint/15 text-mint rounded-full px-1.5 py-px text-3xs font-medium">
                     Recommended
@@ -615,7 +673,9 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
             <div className="space-y-1.5">
               <div className="text-foreground text-sm font-medium">Ask your files anything</div>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Answers come from a model running entirely on this device — nothing leaves your system.
+                Answers come from a model running entirely on this device — nothing leaves your
+                system. It can also act for you: create, copy, move, rename, or delete files on
+                request (deletes go to the Trash).
               </p>
             </div>
             {/* Syntax legend as keycaps. */}

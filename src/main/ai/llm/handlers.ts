@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { ipcMain } from 'electron';
+import { homedir } from 'node:os';
+import { sep } from 'node:path';
+import { ipcMain, shell } from 'electron';
 import { Channels, Events } from '@shared/channels';
 import type {
   AppError,
   ChatSendPayload,
   ChatSessionMeta,
   ChatStreamEvent,
+  ChatToolCall,
   ChatTurn,
   LlmModelStatus,
   Result,
@@ -22,9 +25,12 @@ import {
 import { getPrefs } from '../../prefs';
 import { listDir } from '../../fs/service';
 import * as chats from '../../db/chats';
+import { remapPaths } from '../../db';
+import * as aiIndex from '../../db/aiIndex';
 import { extractText } from '../index/extract';
 import { searchIndex } from '../index/handlers';
 import { buildChat, type ChatContextDeps } from './context';
+import { executeChatTool, type ChatToolDeps } from './tools';
 import { LlmManager } from './manager';
 
 /**
@@ -57,6 +63,26 @@ const contextDeps: ChatContextDeps = {
   list: listDir,
   search: (query, k) => searchIndex(query, { k }),
 };
+
+/** Real environment for the file tools (tests inject fakes via executeChatTool). */
+const toolDeps: ChatToolDeps = {
+  trashItem: (path) => shell.trashItem(path),
+  remap: (oldPath, newPath) => remapPaths(oldPath, newPath, sep),
+  // Mirrors the fs trash handler: drop index rows for the path + descendants.
+  dropIndex: async (path) => {
+    const under = (await aiIndex.statesUnder(path)).map((s) => s.path);
+    if (under.length) await aiIndex.remove(under);
+  },
+  extract: extractText,
+  home: homedir,
+};
+
+/** Appended to the system prompt when the file tools are available. */
+const TOOLS_SYSTEM = [
+  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, and read files.',
+  'Only call a function when the user clearly asks for that action — never delete, move, or modify anything they did not ask about.',
+  'Prefer paths from the message or the current folder. After acting, briefly confirm what you did, naming the files.',
+].join(' ');
 
 /** Most prior turns replayed to the model, each capped, so context stays bounded. */
 const MAX_HISTORY_TURNS = 8;
@@ -144,10 +170,28 @@ export function registerLlmHandlers(): void {
         const offChunk = manager.onChunk((rid, text) => {
           if (rid === requestId) send({ requestId, type: 'chunk', text });
         });
+        // File tools: execute what the model asks for, surface each action to
+        // the renderer as it happens, and hand the outcome back to generation.
+        const toolCalls: ChatToolCall[] = [];
+        const offTool = manager.onToolCall((rid, callId, name, params) => {
+          if (rid !== requestId) return;
+          void executeChatTool(
+            name,
+            (params ?? {}) as Record<string, unknown>,
+            payload.cwd,
+            toolDeps,
+          ).then(({ call, result }) => {
+            toolCalls.push(call);
+            send({ requestId, type: 'tool', call });
+            manager.toolResult(callId, result);
+          });
+        });
         // The user's standing instructions ride along with the system prompt.
-        const system = config.systemPrompt
-          ? `${built.system}\n\nAdditional instructions from the user: ${config.systemPrompt}`
-          : built.system;
+        let system = `${built.system} ${TOOLS_SYSTEM}`;
+        if (payload.cwd) system += `\nThe folder currently open in the browser: ${payload.cwd}`;
+        if (config.systemPrompt) {
+          system += `\n\nAdditional instructions from the user: ${config.systemPrompt}`;
+        }
         let answer: string;
         try {
           answer = await manager.chat({
@@ -157,14 +201,17 @@ export function registerLlmHandlers(): void {
             history: capHistory(payload.history),
             prompt: built.prompt,
             config,
+            tools: true,
           });
         } finally {
           offChunk();
+          offTool();
         }
         await chats.appendMessage(sessionId, {
           role: 'assistant',
           content: answer,
           sources: built.hits,
+          toolCalls,
         });
         await chats.touchSession(sessionId, modelId);
         send({ requestId, type: 'done' });

@@ -441,6 +441,21 @@ export interface ChatSendPayload {
   cwd?: string;
 }
 
+/**
+ * One file action the Assistant performed via its tools (see
+ * `@shared/chatTools`), surfaced as an activity chip in the conversation and
+ * stored with the answer it belongs to.
+ */
+export interface ChatToolCall {
+  /** Tool name, e.g. 'create_file'. */
+  name: string;
+  /** Display-ready one-liner, e.g. 'Created "notes.md"'. */
+  summary: string;
+  ok: boolean;
+  /** Primary path(s) the call touched, for future affordances (reveal, open). */
+  paths?: string[];
+}
+
 /** A saved conversation, listed in the Assistant's history. */
 export interface ChatSessionMeta {
   id: string;
@@ -460,6 +475,8 @@ export interface StoredChatMessage {
   command?: string;
   mentions?: ChatMention[];
   sources?: SemanticHit[];
+  /** File actions the Assistant performed while producing this answer. */
+  toolCalls?: ChatToolCall[];
   createdAt: number;
 }
 
@@ -478,6 +495,7 @@ export interface ChatsApi {
 export type ChatStreamEvent = { requestId: string } & (
   | { type: 'chunk'; text: string }
   | { type: 'sources'; hits: SemanticHit[] }
+  | { type: 'tool'; call: ChatToolCall }
   | { type: 'done' }
   | { type: 'error'; error: AppError }
 );

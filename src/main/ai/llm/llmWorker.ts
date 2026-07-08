@@ -28,9 +28,16 @@
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
-import type { ChatHistoryItem, Llama, LlamaModel } from 'node-llama-cpp';
+import type {
+  ChatHistoryItem,
+  ChatSessionModelFunctions,
+  GbnfJsonSchema,
+  Llama,
+  LlamaModel,
+} from 'node-llama-cpp';
 import type * as LlamaCpp from 'node-llama-cpp';
 import type { ChatTurn, LlmModelStatus } from '@shared/types';
+import { CHAT_TOOLS } from '@shared/chatTools';
 import {
   getLlmModelDef,
   LLM_MODELS,
@@ -209,6 +216,61 @@ const aborts = new Map<string, AbortController>();
 /** Chats run one at a time — small machines can't juggle parallel generations. */
 let chatChain: Promise<unknown> = Promise.resolve();
 
+// ---------------------------------------------------------------------------
+// File tools (function calling)
+// ---------------------------------------------------------------------------
+
+/**
+ * The worker never touches the disk. Each tool's handler RPCs the call to the
+ * main process (`toolCall` out, `toolResult` in) and hands the outcome back to
+ * the model, so generation continues with real results. A lost reply resolves
+ * as an error after a timeout instead of hanging generation forever.
+ */
+const TOOL_TIMEOUT_MS = 30_000;
+let toolSeq = 0;
+const pendingTools = new Map<string, (result: unknown) => void>();
+
+function requestTool(requestId: string, name: string, params: unknown): Promise<unknown> {
+  const callId = `${requestId}:${toolSeq++}`;
+  return new Promise((resolve) => {
+    pendingTools.set(callId, resolve);
+    post({ type: 'toolCall', requestId, callId, name, params });
+    setTimeout(() => {
+      if (pendingTools.delete(callId)) resolve({ ok: false, error: 'The action timed out.' });
+    }, TOOL_TIMEOUT_MS).unref?.();
+  });
+}
+
+function resolveTool(callId: string, result: unknown): void {
+  const resolve = pendingTools.get(callId);
+  if (!resolve) return;
+  pendingTools.delete(callId);
+  resolve(result);
+}
+
+/** Session functions for one request, built from the shared tool catalog. */
+function buildToolFunctions(lib: Lib, requestId: string, used: { count: number }): ChatSessionModelFunctions {
+  // The library's generics infer the params type from a schema literal; ours
+  // come from the shared catalog at runtime, so narrow the signature instead.
+  const define = lib.defineChatSessionFunction as (options: {
+    description: string;
+    params: GbnfJsonSchema;
+    handler: (params: unknown) => Promise<unknown>;
+  }) => ChatSessionModelFunctions[string];
+  const fns: Record<string, ChatSessionModelFunctions[string]> = {};
+  for (const def of CHAT_TOOLS) {
+    fns[def.name] = define({
+      description: def.description,
+      params: def.params as GbnfJsonSchema,
+      handler: (params) => {
+        used.count++;
+        return requestTool(requestId, def.name, params);
+      },
+    });
+  }
+  return fns;
+}
+
 interface ChatArgs {
   modelId: string;
   requestId: string;
@@ -217,9 +279,11 @@ interface ChatArgs {
   prompt: string;
   /** Resolved generation settings (defaults applied by the caller). */
   config?: Partial<LlmModelConfig>;
+  /** Expose the file tools to the model for this request. */
+  tools?: boolean;
 }
 
-async function runChat({ modelId, requestId, system, history, prompt, config }: ChatArgs): Promise<string> {
+async function runChat({ modelId, requestId, system, history, prompt, config, tools }: ChatArgs): Promise<string> {
   const abort = new AbortController();
   aborts.set(requestId, abort);
   try {
@@ -245,15 +309,32 @@ async function runChat({ modelId, requestId, system, history, prompt, config }: 
           ),
         ]);
       }
-      return await session.prompt(prompt, {
+      const options = {
         temperature: cfg.temperature,
         topP: cfg.topP,
         maxTokens: cfg.maxTokens,
         signal: abort.signal,
         // On stop, end generation gracefully and keep the partial answer.
         stopOnAbortSignal: true,
-        onTextChunk: (text) => post({ type: 'chunk', requestId, text }),
-      });
+        onTextChunk: (text: string) => post({ type: 'chunk', requestId, text }),
+      };
+      if (tools) {
+        const used = { count: 0 };
+        try {
+          return await session.prompt(prompt, {
+            ...options,
+            functions: buildToolFunctions(lib, requestId, used),
+          });
+        } catch (err) {
+          // Some chat wrappers can't drive function calling. As long as no
+          // tool actually ran, fall back to a plain generation — an answer
+          // without tools beats an error. (A grammar/template failure throws
+          // before any text streams, so restarting is safe.)
+          if (used.count > 0 || abort.signal.aborted) throw err;
+          return await session.prompt(prompt, options);
+        }
+      }
+      return await session.prompt(prompt, options);
     } finally {
       await context.dispose();
     }
@@ -279,6 +360,14 @@ interface InMessage {
   history?: ChatTurn[];
   prompt?: string;
   config?: Partial<LlmModelConfig>;
+  tools?: boolean;
+}
+
+/** Main's reply to a `toolCall` we emitted — no id, routed by callId. */
+interface ToolResultMessage {
+  type: 'toolResult';
+  callId: string;
+  result: unknown;
 }
 
 async function handle(msg: InMessage): Promise<unknown> {
@@ -301,6 +390,7 @@ async function handle(msg: InMessage): Promise<unknown> {
         history: msg.history ?? [],
         prompt: msg.prompt ?? '',
         config: msg.config,
+        tools: msg.tools,
       };
       const run = chatChain.catch(() => {}).then(() => runChat(args));
       chatChain = run;
@@ -314,7 +404,12 @@ async function handle(msg: InMessage): Promise<unknown> {
   }
 }
 
-process.parentPort.on('message', (e: { data: InMessage }) => {
+process.parentPort.on('message', (e: { data: InMessage | ToolResultMessage }) => {
+  // Tool results answer a call we made — not a request; route and return.
+  if (e.data.type === 'toolResult') {
+    resolveTool(e.data.callId, e.data.result);
+    return;
+  }
   const { id } = e.data;
   handle(e.data)
     .then((data) => post({ id, ok: true, data }))

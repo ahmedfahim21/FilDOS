@@ -136,6 +136,12 @@ const MIGRATIONS: string[] = [
   ALTER TABLE index_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
   CREATE INDEX idx_index_jobs_priority ON index_jobs(status, priority, enqueued_at);
   `,
+
+  // File actions the Assistant performed while producing an answer (chat
+  // tools), stored as a JSON ChatToolCall[] snapshot on assistant messages.
+  `
+  ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT;
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

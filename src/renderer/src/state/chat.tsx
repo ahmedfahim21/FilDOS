@@ -11,6 +11,7 @@ import {
 import type {
   ChatMention,
   ChatSessionMeta,
+  ChatToolCall,
   ChatTurn,
   LlmModelStatus,
   SemanticHit,
@@ -36,6 +37,8 @@ export interface ChatMessage {
   command?: string;
   /** Semantic hits backing a /find answer (assistant messages). */
   sources?: SemanticHit[];
+  /** File actions the Assistant performed while answering (assistant messages). */
+  toolCalls?: ChatToolCall[];
   /** Assistant messages stream in; errors keep any partial text. */
   status?: 'streaming' | 'done' | 'error';
   error?: string;
@@ -161,6 +164,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 return { ...m, content: m.content + event.text };
               case 'sources':
                 return { ...m, sources: event.hits };
+              case 'tool':
+                return { ...m, toolCalls: [...(m.toolCalls ?? []), event.call] };
               case 'done':
                 return { ...m, status: 'done' as const };
               case 'error':
@@ -370,6 +375,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           command: m.command,
           mentions: m.mentions,
           sources: m.sources,
+          toolCalls: m.toolCalls,
           status: 'done' as const,
         })),
       );
