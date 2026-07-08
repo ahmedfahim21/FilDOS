@@ -129,7 +129,10 @@ const indexApi: IndexApi = {
   addExclude: (path) => ipcRenderer.invoke(Channels.indexAddExclude, path),
   removeExclude: (path) => ipcRenderer.invoke(Channels.indexRemoveExclude, path),
   listExcludes: () => ipcRenderer.invoke(Channels.indexListExcludes),
+  pickExcludes: () => ipcRenderer.invoke(Channels.indexPickExcludes),
+  setExcludeExtensions: (exts) => ipcRenderer.invoke(Channels.indexSetExcludeExtensions, exts),
   setInterval: (minutes) => ipcRenderer.invoke(Channels.indexSetInterval, minutes),
+  setAmbient: (enabled) => ipcRenderer.invoke(Channels.indexSetAmbient, enabled),
   search: (query, opts) => ipcRenderer.invoke(Channels.indexSearch, query, opts),
   searchFile: (path, opts) => ipcRenderer.invoke(Channels.indexSearchFile, path, opts),
   onProgress: (cb: (progress: IndexProgress) => void) => {

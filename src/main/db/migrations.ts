@@ -128,6 +128,14 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_chat_messages_session ON chat_messages(session_id, id);
   `,
+
+  // Cost-classed indexing queue: cheap text first, images next, heavy
+  // documents (PDF/DOCX parse + hundreds of chunks) last — so a fresh index
+  // surfaces useful results in minutes instead of grinding through books first.
+  `
+  ALTER TABLE index_jobs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX idx_index_jobs_priority ON index_jobs(status, priority, enqueued_at);
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

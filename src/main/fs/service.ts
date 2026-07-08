@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import type { Entry, FileInfo, SearchHit } from '@shared/types';
+import { nameMatchTier, normalizeForMatch } from '@shared/searchMatch';
+import { isIgnoredForNameSearch } from '../ai/index/ignore';
 
 /**
  * Pure file-system logic. Functions here throw on failure; the IPC handlers
@@ -282,27 +284,43 @@ export async function folderSize(targetPath: string): Promise<number> {
   return total;
 }
 
-/** Recursive, case-insensitive name search under rootPath. Capped result set. */
+/**
+ * Recursive, case-insensitive name search under rootPath. A name matches when
+ * every whitespace-separated query token appears in the separator-normalized
+ * name. The walk is breadth-first so the time budget covers shallow files
+ * everywhere before deep corners of one subtree, and it skips junk trees
+ * (dotfolders, dependency dirs, system dirs — relative to the root, so a search
+ * rooted inside such a folder still works). Capped result set.
+ */
 export async function search(rootPath: string, query: string): Promise<SearchHit[]> {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return [];
+  const needle = normalizeForMatch(query);
+  const tokens = needle.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
 
-  const LIMIT = 1000;
+  const LIMIT = 300;
   const MAX_DEPTH = 32;
+  // Walk budget: a broad root (the home dir) can hold hundreds of thousands of
+  // directories — return what we have rather than spin for tens of seconds.
+  const deadline = Date.now() + 3000;
   const hits: SearchHit[] = [];
 
-  async function walk(dir: string, depth: number): Promise<void> {
-    if (hits.length >= LIMIT || depth > MAX_DEPTH) return;
+  // Breadth-first queue, consumed by index (shift() is O(n) at this scale).
+  const queue: { dir: string; depth: number }[] = [{ dir: rootPath, depth: 0 }];
+  let qi = 0;
+
+  while (qi < queue.length && hits.length < LIMIT && Date.now() <= deadline) {
+    const { dir, depth } = queue[qi++];
     let dirents;
     try {
       dirents = await fs.readdir(dir, { withFileTypes: true });
     } catch {
-      return;
+      continue;
     }
     for (const dirent of dirents) {
-      if (hits.length >= LIMIT) return;
+      if (hits.length >= LIMIT || Date.now() > deadline) break;
       const full = join(dir, dirent.name);
-      if (dirent.name.toLowerCase().includes(needle)) {
+      const name = normalizeForMatch(dirent.name);
+      if (tokens.every((t) => name.includes(t))) {
         try {
           const info = await getInfo(full);
           hits.push({ ...info, relativePath: relative(rootPath, full) });
@@ -310,12 +328,23 @@ export async function search(rootPath: string, query: string): Promise<SearchHit
           /* skip */
         }
       }
-      if (dirent.isDirectory() && !dirent.isSymbolicLink()) {
-        await walk(full, depth + 1);
+      // Entries at any visited level always match (a hidden file like .zshrc is
+      // findable), but junk trees are not descended into.
+      if (
+        dirent.isDirectory() &&
+        !dirent.isSymbolicLink() &&
+        depth < MAX_DEPTH &&
+        !isIgnoredForNameSearch(relative(rootPath, full))
+      ) {
+        queue.push({ dir: full, depth: depth + 1 });
       }
     }
   }
 
-  await walk(rootPath, 0);
-  return hits;
+  // Rank: exact name, then prefix, then token match; ties go to shallower paths.
+  return hits.sort(
+    (a, b) =>
+      nameMatchTier(b.name, query) - nameMatchTier(a.name, query) ||
+      a.path.length - b.path.length,
+  );
 }

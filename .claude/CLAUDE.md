@@ -87,8 +87,19 @@ rather than hand-rolling.
 
 - `index.ts` — app lifecycle, BrowserWindow, restores/saves window bounds via prefs.
 - `fs/service.ts` — pure fs logic: listDir, getInfo, create/rename/copy/move/duplicate,
-  folderSize, recursive search. Helpers: `assertValidPath`, `assertValidName`,
-  `uniqueDestination` (" copy" suffixing).
+  folderSize, recursive name search. The search **tokenizes**: query and names
+  are separator-normalized (`_-.,()` → space) and every query token must appear
+  ("modern angular" matches `Modern_Angular_….pdf`); the walk is **breadth-first**
+  under a 3s deadline + 300-hit cap so shallow files everywhere beat deep
+  corners of one subtree; junk trees are skipped via
+  `ai/index/ignore.ts#isIgnoredForNameSearch` (softer than the index's list —
+  tmp/temp/Applications stay searchable) relative to the search root; ranking is
+  exact > prefix > token match (tiers in `@shared/searchMatch.ts`, shared with
+  the renderer). The overlay sweeps the folder in view first when scope is
+  "Everywhere" and renders **one fused result list** — filename evidence anchors
+  the rank, semantic score is discounted against it, both-lane hits get a bump —
+  never separate "semantic vs name" sections. Helpers: `assertValidPath`,
+  `assertValidName`, `uniqueDestination` (" copy" suffixing).
 - `fs/handlers.ts` — registers every `ipcMain.handle`; `wrap()` + `toAppError()`.
 - `fs/watch.ts` — single non-recursive `fs.watch` on the focused dir, debounced,
   emits `Events.dirChanged` to the renderer.
@@ -131,19 +142,56 @@ worker points `wasmPaths` at its own `__dirname` to stay offline. Models cache t
 **Indexer (`src/main/ai/index/`).** The background pipeline that turns files into
 searchable vectors. `extract.ts` (text/code/data by extension; binary + size-cap
 skip) → `chunk.ts` (~512-token char-approx windows) → the active provider's
-`embed()` → `db/vectorStore.sqlite.ts` (Float32 BLOBs, brute-force cosine).
+`embed()` → `db/vectorStore.sqlite.ts` (Float32 BLOBs; brute-force cosine over
+an **in-memory vector cache** — vectors only, no texts — warmed on first search
+and kept coherent by upsert/remove/remap/clear, so queries never re-read every
+BLOB; all chunk-row deletions must route through `vectorStore.remove`, not
+`aiIndex.remove` directly. No ANN/vector DB: dot products over a personal-scale
+index are tens of ms; the cache was the fix). `search.ts` fuses vector + BM25
+(RRF), reranks only the top 16 candidates at 600 chars each (the cross-encoder
+runs on WASM — more would take seconds), and gates the CLIP image lane on the
+model already being downloaded.
+PDFs parse through a **byte-range file transport** (no whole-file buffering —
+book-size PDFs up to 512 MB extract with bounded memory, capped at 300 K chars:
+a book's search identity is its front matter, and every 2 KB chunk is an
+inference). The queue is **cost-classed** (`index_jobs.priority`: removals +
+text first, images next, pdf/docx last) so a fresh index is useful in minutes,
+and the pipeline is **duty-cycled** via an injected `pace()` (powerMonitor:
+~full speed when the user is away, ~half while active, gentler on battery).
+Files whose content still can't be extracted (corrupt/scanned docs) are
+never dropped from the index: they get a single **filename-fallback chunk**
+(humanized basename) so name queries still find them through both lanes —
+that's `INDEX_VERSION` 2, and `isStale` migrates v1 rows selectively (only
+'skipped' ones) instead of re-embedding the world.
 `indexer.ts` is the orchestrator: it crawls the configured roots (default the
-home dir; `ignore.ts` skips dotfiles/`node_modules`/caches/bundles + user
-exclusions), compares `fs.stat` to `index_state` so unchanged files are no-ops,
-and drains the persistent `index_jobs` queue one file at a time (yielding between
-files; a failed file is marked errored, never fatal). `watcher.ts` keeps it fresh
-— a recursive `fs.watch` per root (mac/Windows; Linux falls back) plus a periodic
-reconcile timer. `index/handlers.ts` owns the singleton indexer + watcher, the
-`index:*` channels (`start`/`pause`/`clear`/`status` + exclusion management) and
-`Events.indexProgress`; startup resumes leftover jobs, quit tears watches down.
-Renderer: `state/indexing.tsx` + the Indexing section in `SettingsView.tsx`, and
-a "Exclude from AI index" context-menu action. Dependencies are injected into
-`Indexer`/`IndexWatcher` so tests drive them with a fake provider, no Electron.
+home dir; `ignore.ts` skips dotfiles, system trees (Library/AppData/Windows/…),
+`node_modules`/caches/bundles + the user's "Hide from AI" list), compares
+`fs.stat` to `index_state` so unchanged files are no-ops, and drains the
+persistent `index_jobs` queue as a two-stage pipeline — `prepare` (stat/hash/
+extract/chunk I/O) runs one file ahead of `commit` (embed + persist), yielding
+between files; a failed file is marked errored, never fatal. **Codebases** (a
+dir with a marker like `.git`/`package.json`/`Cargo.toml`, see
+`CODEBASE_MARKERS` in `ignore.ts`) are indexed docs-only (md/rst/txt/pdf/docx)
+— source files of checked-out repos would drown search; build output inside a
+codebase (dist/out/build/target/…, `isCodebaseBuildDir`) is never descended, and
+a crawl root itself is never treated as a codebase. Users can also exclude whole
+**file extensions** (`prefs.index.excludeExtensions`; "Skip file types" chips in
+Settings → Indexing — setting it kicks a reconcile that prunes existing entries). The embed worker runs multi-threaded WASM
+(`numThreads` capped at half the cores) at low OS priority (`setPriority` in
+`providers/embedded.ts`) so indexing doesn't fight foreground work. `watcher.ts`
+keeps it fresh — a recursive `fs.watch` per root (mac/Windows; Linux falls back)
+plus a periodic reconcile timer. `index/handlers.ts` owns the singleton indexer
++ watcher, the `index:*` channels (`start`/`pause`/`clear`/`status` + Hide-from-
+AI management + `setAmbient`) and `Events.indexProgress`; startup resumes
+leftover jobs, quit tears watches down. **Ambient mode** (`prefs.index.ambient`,
+default on): when the last window closes with indexing enabled, the app stays
+resident in the menu bar / system tray (`src/main/tray.ts`, wired in
+`main/index.ts#window-all-closed`; the tray icon rasterises the brand mark, its
+menu shows live progress) and keeps indexing; on macOS the Dock icon hides too.
+Renderer: `state/indexing.tsx` + the Indexing and "Hide from AI" sections in
+`SettingsView.tsx`, and a "Hide from AI" context-menu action (native picker via
+`index:pickExcludes`). Dependencies are injected into `Indexer`/`IndexWatcher`
+so tests drive them with a fake provider, no Electron.
 
 **Assistant chat (`src/main/ai/llm/`).** The "Ask AI" panel: chat with your
 files via a fully on-device LLM. The engine is **node-llama-cpp** (llama.cpp

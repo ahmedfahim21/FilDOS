@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
@@ -8,6 +8,7 @@ import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
 import * as aiIndex from '../../db/aiIndex';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
+import { updateTrayStatus } from '../../tray';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
@@ -38,7 +39,9 @@ async function indexConfig(): Promise<IndexConfig> {
     enabled: ix.enabled ?? false,
     roots: ix.roots?.length ? ix.roots : [homedir()],
     excludes: ix.excludes ?? [],
+    excludeExtensions: ix.excludeExtensions ?? [],
     intervalMinutes: ix.intervalMinutes ?? 15,
+    ambient: ix.ambient ?? true,
   };
 }
 
@@ -64,16 +67,40 @@ function broadcast(progress: IndexProgress): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.webContents.isDestroyed()) win.webContents.send(Events.indexProgress, progress);
   }
+  updateTrayStatus(progress); // no-op unless the app is resident in the tray
+}
+
+/**
+ * Duty-cycle the indexing pipeline. After a unit of embedding work that took
+ * `elapsedMs`, rest proportionally: barely at all when the user is away, about
+ * half speed while they're actively using the machine, and gentler still on
+ * battery — a background index run must never heat a laptop someone is
+ * actively typing on.
+ */
+async function pace(elapsedMs: number): Promise<void> {
+  let factor = 0.15; // user away: ~87% duty cycle
+  try {
+    if (powerMonitor.getSystemIdleTime() < 60) factor = 1; // active: ~50% duty
+    if (powerMonitor.isOnBatteryPower()) factor += 0.5;
+  } catch {
+    // power status unavailable — keep the conservative default
+  }
+  const delay = Math.min(2000, elapsedMs * factor);
+  if (delay > 5) await new Promise((r) => setTimeout(r, delay));
 }
 
 const indexer = new Indexer({
   provider: () => activeAiProvider(),
   textModel: TEXT_MODEL_ID,
   imageModel: IMAGE_MODEL_ID,
-  config: async () => ({ roots: (await indexConfig()).roots, excludes: await effectiveExcludes() }),
+  config: async () => {
+    const c = await indexConfig();
+    return { roots: c.roots, excludes: await effectiveExcludes(), excludeExtensions: c.excludeExtensions };
+  },
   vectorStore,
   keywordStore,
   emit: broadcast,
+  pace,
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -132,18 +159,44 @@ export function registerIndexHandlers(): void {
 
   ipcMain.handle(Channels.indexStatus, () => wrap<IndexProgress>(async () => indexer.status()));
 
+  /** Hide one path from AI: persist it and purge anything already indexed under it. */
+  async function addExcludePath(path: string): Promise<void> {
+    const p = assertValidPath(path);
+    const cfg = await indexConfig();
+    if (!cfg.excludes.includes(p)) await patchConfig({ excludes: [...cfg.excludes, p] });
+    const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
+    if (under.length) {
+      // Through the vector store so its in-memory cache drops the rows too.
+      await vectorStore.remove(under);
+      keywordStore.remove(under);
+    }
+  }
+
   ipcMain.handle(Channels.indexAddExclude, (_e, path: string) =>
     wrap<void>(async () => {
-      const p = assertValidPath(path);
-      const cfg = await indexConfig();
-      if (!cfg.excludes.includes(p)) await patchConfig({ excludes: [...cfg.excludes, p] });
-      // Drop anything already indexed at or under the excluded path.
-      const under = (await aiIndex.statesUnder(p)).map((s) => s.path);
-      if (under.length) {
-        await aiIndex.remove(under);
-        keywordStore.remove(under);
-      }
+      await addExcludePath(path);
       await watcher.refresh(); // teach the watcher to ignore the new exclusion
+    }),
+  );
+
+  ipcMain.handle(Channels.indexPickExcludes, (e) =>
+    wrap<string[]>(async () => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      // macOS supports one dialog for both; Windows/Linux dialogs can't mix
+      // file and folder selection, so offer the folder picker there.
+      const properties: Array<'openFile' | 'openDirectory' | 'multiSelections'> =
+        process.platform === 'darwin'
+          ? ['openFile', 'openDirectory', 'multiSelections']
+          : ['openDirectory', 'multiSelections'];
+      const opts = { title: 'Hide from AI', buttonLabel: 'Hide', properties };
+      const { canceled, filePaths } = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts);
+      if (!canceled) {
+        for (const p of filePaths) await addExcludePath(p);
+        await watcher.refresh();
+      }
+      return (await indexConfig()).excludes;
     }),
   );
 
@@ -163,6 +216,28 @@ export function registerIndexHandlers(): void {
     wrap<void>(async () => {
       await patchConfig({ intervalMinutes: Math.max(1, Math.min(1440, Math.round(minutes))) });
       await watcher.refresh(); // apply the new cadence immediately
+    }),
+  );
+
+  ipcMain.handle(Channels.indexSetAmbient, (_e, enabled: boolean) =>
+    wrap<void>(async () => patchConfig({ ambient: !!enabled })),
+  );
+
+  ipcMain.handle(Channels.indexSetExcludeExtensions, (_e, exts: string[]) =>
+    wrap<string[]>(async () => {
+      // Normalize: lowercase, no leading dot, alphanumeric, deduped.
+      const clean = [
+        ...new Set(
+          (Array.isArray(exts) ? exts : [])
+            .map((x) => String(x).trim().toLowerCase().replace(/^\.+/, ''))
+            .filter((x) => /^[a-z0-9]{1,10}$/.test(x)),
+        ),
+      ].sort();
+      await patchConfig({ excludeExtensions: clean });
+      // A silent reconcile prunes already-indexed files of the excluded types
+      // (they're no longer "seen" by the crawl) and picks up re-included ones.
+      void indexer.reconcile();
+      return clean;
     }),
   );
 

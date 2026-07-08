@@ -479,6 +479,113 @@ function AddModelRow() {
   );
 }
 
+/**
+ * "Skip file types" — removable extension chips plus an inline input. Enter,
+ * comma, or space commits what's typed; backspace on an empty input removes
+ * the last chip. Normalization (lowercase, no dot, dedupe) happens in the main
+ * process, which also prunes already-indexed files of the excluded types.
+ */
+function SkipTypesRow() {
+  const indexing = useIndexing();
+  const [draft, setDraft] = useState('');
+
+  const commit = () => {
+    const parts = draft.split(/[\s,]+/).filter(Boolean);
+    if (parts.length) {
+      void indexing.setExcludeExtensions([...indexing.excludeExtensions, ...parts]);
+    }
+    setDraft('');
+  };
+
+  return (
+    <div className="border-border rounded-lg border px-3 py-2.5">
+      <div className="text-foreground text-sm">Skip file types</div>
+      <div className="text-muted-foreground mb-2 text-2xs">
+        The index never reads these extensions; existing entries are removed
+      </div>
+      <div className="border-border bg-card flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1.5">
+        {indexing.excludeExtensions.map((ext) => (
+          <span
+            key={ext}
+            className="bg-muted text-foreground flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-2xs"
+          >
+            .{ext}
+            <button
+              onClick={() =>
+                void indexing.setExcludeExtensions(
+                  indexing.excludeExtensions.filter((x) => x !== ext),
+                )
+              }
+              aria-label={`Index .${ext} files again`}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Icon name="close" size={10} />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+              e.preventDefault();
+              commit();
+            } else if (e.key === 'Backspace' && !draft && indexing.excludeExtensions.length) {
+              void indexing.setExcludeExtensions(indexing.excludeExtensions.slice(0, -1));
+            }
+          }}
+          onBlur={commit}
+          placeholder={indexing.excludeExtensions.length ? '' : 'e.g. log, mp3, svg'}
+          aria-label="Add a file type to skip"
+          className="text-foreground placeholder:text-muted-foreground min-w-24 flex-1 bg-transparent text-sm outline-none"
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One entry in the "Hide from AI" list: icon + name with its location beneath,
+ * and a remove affordance revealed on hover. The folder-vs-file icon comes from
+ * a one-shot stat; a path that no longer exists gets a generic file icon.
+ */
+function HiddenPathRow({ path, onRemove }: { path: string; onRemove: () => void }) {
+  const [isDir, setIsDir] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    window.fsapi.getInfo(path).then((r) => {
+      if (alive && r.ok) setIsDir(r.data.isDirectory);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+
+  const sepIx = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  const name = sepIx >= 0 ? path.slice(sepIx + 1) : path;
+  const parent = sepIx > 0 ? path.slice(0, sepIx) : '';
+
+  return (
+    <div className="group border-border hover:bg-accent/50 flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors">
+      <Icon name={isDir ? 'folder' : 'file'} size={15} className="text-muted-foreground shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground truncate text-sm">{name}</div>
+        {parent && (
+          <div className="text-muted-foreground truncate font-mono text-3xs">{parent}</div>
+        )}
+      </div>
+      <button
+        onClick={onRemove}
+        aria-label={`Stop hiding ${name} from AI`}
+        title="Show to AI again"
+        className="text-muted-foreground hover:text-foreground shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <Icon name="close" size={14} />
+      </button>
+    </div>
+  );
+}
+
 export function SettingsView({ onBack }: { onBack: () => void }) {
   const ai = useAi();
   const chat = useChat();
@@ -553,7 +660,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
     if (ix.state === 'error') {
       return {
         indexTitle: ix.message ?? 'Indexing failed',
-        indexSubtitle: ix.errors > 0 ? `${ix.errors} file${ix.errors !== 1 ? 's' : ''} skipped` : null,
+        indexSubtitle: ix.errors > 0 ? `${ix.errors} file${ix.errors !== 1 ? 's' : ''} failed` : null,
       };
     }
     // idle
@@ -800,7 +907,12 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   )}
                 </div>
                 {!!ix?.errors && ix.state !== 'error' && (
-                  <span className="text-muted-foreground shrink-0 text-2xs">{ix.errors} skipped</span>
+                  <span
+                    className="text-muted-foreground shrink-0 text-2xs"
+                    title="Files that couldn't be indexed — see the app log for per-file reasons. They retry on the next scan."
+                  >
+                    {ix.errors} failed
+                  </span>
                 )}
               </div>
               {indexRunning && (
@@ -841,35 +953,23 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               </select>
             </div>
 
-            {/* Exclusions */}
-            <div>
-              <SubLabel>Excluded from indexing</SubLabel>
-              {indexing.excludes.length === 0 ? (
-                <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
-                  Nothing excluded. Right-click a file or folder to exclude it.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {indexing.excludes.map((path) => (
-                    <div
-                      key={path}
-                      className="border-border flex items-center gap-3 rounded-lg border px-3 py-2"
-                    >
-                      <code className="text-foreground min-w-0 flex-1 truncate font-mono text-2xs">
-                        {path}
-                      </code>
-                      <button
-                        onClick={() => indexing.removeExclude(path)}
-                        aria-label={`Stop excluding ${path}`}
-                        className="text-muted-foreground hover:text-foreground shrink-0"
-                      >
-                        <Icon name="close" size={14} />
-                      </button>
-                    </div>
-                  ))}
+            {/* Ambient mode */}
+            <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-foreground text-sm">Continue in the background</div>
+                <div className="text-muted-foreground text-2xs">
+                  Keep indexing from the menu bar / tray after the last window closes
                 </div>
-              )}
+              </div>
+              <Toggle
+                checked={indexing.ambient}
+                onChange={(v) => void indexing.setAmbient(v)}
+                label="Continue indexing in the background"
+              />
             </div>
+
+            {/* Extension exclusions */}
+            <SkipTypesRow />
 
             <button
               onClick={() => void indexing.clear()}
@@ -877,6 +977,45 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
             >
               Clear index
             </button>
+          </Section>
+
+          {/* Hide from AI */}
+          <Section
+            icon="eye-off"
+            title="Hide from AI"
+            subtitle="Files and folders AI features never read, index, or search"
+            action={
+              <Button size="sm" variant="secondary" onClick={() => void indexing.pickExcludes()}>
+                <Icon name="plus" size={13} /> Add
+              </Button>
+            }
+          >
+            {indexing.excludes.length === 0 ? (
+              <div className="border-border flex flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center">
+                <Icon name="eye-off" size={18} className="text-muted-foreground" />
+                <p className="text-muted-foreground max-w-sm text-2xs leading-snug">
+                  Nothing is hidden. Right-click any file or folder and choose{' '}
+                  <span className="text-foreground">Hide from AI</span>, or add one here.
+                  Hidden items are removed from the index immediately and never re-indexed.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  {indexing.excludes.map((path) => (
+                    <HiddenPathRow
+                      key={path}
+                      path={path}
+                      onRemove={() => void indexing.removeExclude(path)}
+                    />
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-2xs leading-snug">
+                  Hidden items are removed from the index immediately and never re-indexed —
+                  semantic search and the Assistant can't see them.
+                </p>
+              </>
+            )}
           </Section>
         </div>
       </div>
