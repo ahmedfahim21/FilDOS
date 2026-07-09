@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { AiModelStatus, Result } from '@shared/types';
-import { getModelDef, IMAGE_MODEL_ID, INDEX_MODEL_IDS, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import { getModelDef, IMAGE_MODEL_ID, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
 
 interface AiContextValue {
   /** Whether the user has enabled the AI features. */
@@ -48,7 +48,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
   const autoStarted = useRef<Set<string>>(new Set());
 
   const refreshStatuses = useCallback(async () => {
-    const allIds = [...INDEX_MODEL_IDS, RERANKER_MODEL_ID];
+    const allIds = [...INDEX_MODEL_IDS, RERANKER_MODEL_ID, NER_MODEL_ID];
     const entries = await Promise.all(
       allIds.map(async (id) => {
         const res = await window.ai.status(id);

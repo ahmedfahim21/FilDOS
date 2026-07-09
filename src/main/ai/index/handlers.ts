@@ -75,9 +75,10 @@ function broadcast(progress: IndexProgress): void {
  * `elapsedMs`, rest proportionally: barely at all when the user is away, about
  * half speed while they're actively using the machine, and gentler still on
  * battery — a background index run must never heat a laptop someone is
- * actively typing on.
+ * actively typing on. Exported for the knowledge-graph builder, which runs
+ * under the same budget (../graph/handlers.ts).
  */
-async function pace(elapsedMs: number): Promise<void> {
+export async function pace(elapsedMs: number): Promise<void> {
   let factor = 0.15; // user away: ~87% duty cycle
   try {
     if (powerMonitor.getSystemIdleTime() < 60) factor = 1; // active: ~50% duty

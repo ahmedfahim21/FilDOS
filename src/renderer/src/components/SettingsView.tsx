@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AiModelStatus, Theme } from '@shared/types';
-import { getModelDef, INDEX_MODEL_IDS, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID } from '@shared/aiModels';
 import {
   HF_GGUF_MODELS_URL,
   LLM_CONFIG_LIMITS,
@@ -1085,6 +1085,46 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                 >
                   Clear index
                 </button>
+              </Section>
+
+              {/* Knowledge graph (the Canvas view) */}
+              <Section
+                icon="brain"
+                accent="mint"
+                title="Canvas"
+                subtitle="The knowledge graph behind the Canvas view — connections by meaning, entities and time"
+                className={cn(!ai.enabled && 'pointer-events-none opacity-50')}
+                action={
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      window.graph.build().then((r) => {
+                        if (!r.ok) notifyError(r.error);
+                      })
+                    }
+                    title="Recompute similarity edges and entities from scratch"
+                  >
+                    Rebuild
+                  </Button>
+                }
+              >
+                <div className="flex flex-col gap-1.5">
+                  <ModelRow
+                    id={NER_MODEL_ID}
+                    status={ai.statuses[NER_MODEL_ID]}
+                    onDownload={() =>
+                      ai.downloadModel(NER_MODEL_ID).then((r) => {
+                        if (!r.ok) notifyError(r.error);
+                        ai.refreshStatuses();
+                      })
+                    }
+                  />
+                  <p className="text-muted-foreground mt-1 text-2xs leading-snug">
+                    Optional. Without it the Canvas still maps similarity, tags and work sessions;
+                    with it, people, places and organizations appear as their own nodes.
+                  </p>
+                </div>
               </Section>
             </>
           )}

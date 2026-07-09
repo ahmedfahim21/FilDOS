@@ -1,4 +1,12 @@
-import { blob, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  blob,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 
 /**
  * Drizzle table definitions mirroring the SQL migrations in ./index.ts. The
@@ -122,6 +130,54 @@ export const chatMessages = sqliteTable(
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('idx_chat_messages_session').on(t.sessionId, t.id)],
+);
+
+/** Distinct extracted entities (people/orgs/places), unique per (name, type). */
+export const entities = sqliteTable('entities', {
+  id: integer('id').primaryKey(),
+  name: text('name').notNull(),
+  type: text('type').notNull(),
+});
+
+/** Entity ↔ file mentions with an occurrence count (see db/graphStore.ts). */
+export const fileEntities = sqliteTable(
+  'file_entities',
+  {
+    path: text('path')
+      .notNull()
+      .references(() => indexState.path, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    entityId: integer('entity_id')
+      .notNull()
+      .references(() => entities.id, { onDelete: 'cascade' }),
+    count: integer('count').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.path, t.entityId] }),
+    index('idx_file_entities_entity').on(t.entityId),
+  ],
+);
+
+/** Per-file NER bookkeeping: the index_state.indexed_at NER last ran against. */
+export const entityState = sqliteTable('entity_state', {
+  path: text('path')
+    .primaryKey()
+    .references(() => indexState.path, { onUpdate: 'cascade', onDelete: 'cascade' }),
+  indexedAt: integer('indexed_at').notNull(),
+});
+
+/** Cached kNN similarity edges between file centroids (see db/graphStore.ts). */
+export const graphEdges = sqliteTable(
+  'graph_edges',
+  {
+    src: text('src')
+      .notNull()
+      .references(() => indexState.path, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    dst: text('dst')
+      .notNull()
+      .references(() => indexState.path, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    weight: real('weight').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.src, t.dst] }), index('idx_graph_edges_dst').on(t.dst)],
 );
 
 /** Persistent indexing queue; one pending job per path (see db/indexJobs.ts). */

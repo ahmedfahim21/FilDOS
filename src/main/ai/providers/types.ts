@@ -10,6 +10,7 @@
  */
 import type { AiModelStatus } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
+import type { EntitySpan } from '@shared/graphTypes';
 
 export type { AiModelState, AiModelStatus } from '@shared/types';
 
@@ -41,6 +42,12 @@ export interface AiProvider {
    * triggering a download on the query path.
    */
   rerank?(modelId: string, query: string, passages: string[]): Promise<number[]>;
+  /**
+   * Named-entity recognition: one EntitySpan[] per input text (people, orgs,
+   * places for the knowledge graph). Same contract as `rerank`: callers must
+   * check `provider.status(modelId)` first so a build never triggers a download.
+   */
+  extractEntities?(modelId: string, texts: string[]): Promise<EntitySpan[][]>;
   /** Optional text generation (not used by the foundation; future hosted seam). */
   generate?(prompt: string): Promise<string>;
   /** Optional subscription to download/state progress; returns an unsubscribe fn. */

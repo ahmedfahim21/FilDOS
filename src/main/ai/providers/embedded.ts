@@ -3,6 +3,7 @@ import { setPriority } from 'node:os';
 import { join } from 'node:path';
 import type { AiModelStatus } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
+import type { EntitySpan } from '@shared/graphTypes';
 import type { AiProvider } from './types';
 
 interface Pending {
@@ -112,5 +113,9 @@ export class EmbeddedAiProvider implements AiProvider {
 
   async rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
     return this.request<number[]>('rerank', { modelId, query, passages });
+  }
+
+  async extractEntities(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
+    return this.request<EntitySpan[][]>('extractEntities', { modelId, texts });
   }
 }
