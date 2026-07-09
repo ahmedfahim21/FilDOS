@@ -30,7 +30,7 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
         <div className="ml-auto flex items-center gap-0.5">
           <button
             onClick={() => nav.openPage({ kind: 'chat' })}
-            className="text-muted-foreground hover:bg-accent hover:text-foreground grid size-7 place-items-center rounded-md"
+className="text-muted-foreground hover:bg-accent hover:text-foreground grid size-8 place-items-center rounded-md"
             title="Maximize to research view"
             aria-label="Maximize to research view"
           >
