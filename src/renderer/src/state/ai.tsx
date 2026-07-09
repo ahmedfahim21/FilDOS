@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -42,6 +43,9 @@ export function AiProvider({ children }: { children: ReactNode }) {
   const [activeProvider, setActiveProvider] = useState('embedded');
   const [statuses, setStatuses] = useState<Record<string, AiModelStatus>>({});
   const [busy, setBusy] = useState(false);
+  // Required models we've already kicked off, so the auto-download effect fires
+  // once per model instead of on every status tick.
+  const autoStarted = useRef<Set<string>>(new Set());
 
   const refreshStatuses = useCallback(async () => {
     const allIds = [...INDEX_MODEL_IDS, RERANKER_MODEL_ID];
@@ -87,6 +91,18 @@ export function AiProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Once enabled, start any not-yet-downloaded required model automatically —
+  // no manual "Download" step. Errors are left for the retry button.
+  useEffect(() => {
+    if (!enabled) return;
+    for (const id of INDEX_MODEL_IDS) {
+      if (statuses[id]?.state === 'absent' && !autoStarted.current.has(id)) {
+        autoStarted.current.add(id);
+        window.ai.download(id).then(() => refreshStatuses()).catch(() => {});
+      }
+    }
+  }, [enabled, statuses, refreshStatuses]);
+
   const persist = useCallback((next: { enabled: boolean; activeProvider: string }) => {
     // Merge over the stored ai prefs so fields owned elsewhere (e.g. the chat
     // model picked in state/chat.tsx) survive an enable/provider change.
@@ -100,9 +116,9 @@ export function AiProvider({ children }: { children: ReactNode }) {
     (value: boolean) => {
       setEnabledState(value);
       persist({ enabled: value, activeProvider });
-      if (value) downloadModels(); // auto-fetch both models on enable
+      // Required models auto-download via the effect above once `enabled` flips.
     },
-    [activeProvider, persist, downloadModels],
+    [activeProvider, persist],
   );
 
   const setProvider = useCallback(

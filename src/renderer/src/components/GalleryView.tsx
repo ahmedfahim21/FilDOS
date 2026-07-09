@@ -99,7 +99,7 @@ export function GalleryView({
 
   return (
     <div
-      className="flex-1 overflow-y-auto p-2"
+      className="flex-1 overflow-y-auto p-2 [scrollbar-gutter:stable]"
       ref={scrollRef}
       onClick={onBackgroundClick}
       onContextMenu={(e) => {

@@ -63,7 +63,7 @@ export function InfoPanel({
   }, [path, info?.isDirectory]);
 
   return (
-    <aside className="border-border bg-card flex w-70 shrink-0 flex-col overflow-y-auto border-l">
+    <aside className="border-border bg-card flex w-70 shrink-0 flex-col overflow-y-auto border-l [scrollbar-gutter:stable]">
       <div className="border-border flex items-center justify-between border-b px-3 py-2.5 text-sm font-semibold">
         <span>Info</span>
         <Button

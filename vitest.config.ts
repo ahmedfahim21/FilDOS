@@ -20,5 +20,9 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     environment: 'node',
     environmentMatchGlobs: [['src/renderer/**', 'jsdom']],
+    // The document-extractor tests cold-import the multi-MB pdfjs legacy build
+    // and mammoth on first use; on a loaded Windows CI runner that one-time
+    // import alone can exceed the 5s default, so give the suite real headroom.
+    testTimeout: 20_000,
   },
 });

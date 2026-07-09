@@ -118,6 +118,7 @@ export const chatMessages = sqliteTable(
     command: text('command'),
     mentions: text('mentions'),
     sources: text('sources'),
+    toolCalls: text('tool_calls'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('idx_chat_messages_session').on(t.sessionId, t.id)],

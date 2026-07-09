@@ -326,7 +326,7 @@ export function CloudConnectView({ onAccountsChanged }: { onAccountsChanged: () 
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-2xl px-8 py-10">
         <header className="mb-8 flex items-start justify-between gap-4">
           <div>

@@ -2,8 +2,10 @@ import type { HugeiconsProps } from '@hugeicons/react';
 import type React from 'react';
 import {
   AlertCircleIcon,
+  ArrowExpand01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  ArrowShrink01Icon,
   ArrowUp01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
@@ -40,6 +42,7 @@ import {
   Sun01Icon,
   Tag01Icon,
   Tick01Icon,
+  ToolsIcon,
   Upload01Icon,
   ViewOffIcon,
 } from 'hugeicons-react';
@@ -73,6 +76,8 @@ type IconName =
   | 'gallery'
   | 'columns'
   | 'restore'
+  | 'maximize'
+  | 'minimize'
   | 'tag'
   | 'clock'
   | 'check'
@@ -88,6 +93,7 @@ type IconName =
   | 'alert-circle'
   | 'check-circle'
   | 'offline'
+  | 'tool'
   | 'more';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
@@ -118,6 +124,8 @@ const ICONS: Record<IconName, HugeIcon> = {
   gallery: Image02Icon,
   columns: LayoutThreeColumnIcon,
   restore: RotateLeft01Icon,
+  maximize: ArrowExpand01Icon,
+  minimize: ArrowShrink01Icon,
   tag: Tag01Icon,
   clock: Clock01Icon,
   check: Tick01Icon,
@@ -132,6 +140,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   monitor: ComputerIcon,
   'alert-circle': AlertCircleIcon,
   'check-circle': CheckmarkCircle01Icon,
+  tool: ToolsIcon,
   offline: NoInternetIcon,
   more: More01Icon,
 };

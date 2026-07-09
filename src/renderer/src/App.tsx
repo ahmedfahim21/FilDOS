@@ -37,6 +37,8 @@ const OAUTH_PROVIDERS = new Set([
 import { Sidebar } from '@/components/Sidebar';
 import { TopBar } from '@/components/TopBar';
 import { ChatSidebar } from '@/components/ChatSidebar';
+import { ChatPage } from '@/components/ChatPage';
+import { Mark } from '@/components/Logo';
 import { Toolbar } from '@/components/Toolbar';
 import { FileList } from '@/components/FileList';
 import { GridView } from '@/components/GridView';
@@ -532,6 +534,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Settings';
+  } else if (page?.kind === 'chat') {
+    pageTitle = (
+      <>
+        <Mark className="size-4" /> Ask AI
+      </>
+    );
+    pageLabel = 'Ask AI';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -591,6 +600,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
                 <CloudConnectView onAccountsChanged={() => setSidebarCloudKey((k) => k + 1)} />
               ) : nav.page?.kind === 'settings' ? (
                 <SettingsView onBack={nav.back} />
+              ) : nav.page?.kind === 'chat' ? (
+                <ChatPage
+                  onRestore={() => {
+                    setChatOpen(true);
+                    nav.back();
+                  }}
+                />
               ) : nav.page?.kind === 'tag' ? (
                 pageTag && (
                   <TagFilesView
@@ -640,7 +656,9 @@ function Browser({ initialView }: { initialView: ViewState }) {
           />
         </div>
 
-        {chatOpen && <ChatSidebar onClose={() => setChatOpen(false)} />}
+        {chatOpen && nav.page?.kind !== 'chat' && (
+          <ChatSidebar onClose={() => setChatOpen(false)} />
+        )}
       </div>
 
       {menu && (() => {

@@ -1,5 +1,11 @@
 import { count, desc, eq, sql } from 'drizzle-orm';
-import type { ChatMention, ChatSessionMeta, SemanticHit, StoredChatMessage } from '@shared/types';
+import type {
+  ChatMention,
+  ChatSessionMeta,
+  ChatToolCall,
+  SemanticHit,
+  StoredChatMessage,
+} from '@shared/types';
 import { db } from './index';
 import { chatMessages, chatSessions } from './schema';
 
@@ -54,6 +60,7 @@ export async function appendMessage(
     command?: string;
     mentions?: ChatMention[];
     sources?: SemanticHit[];
+    toolCalls?: ChatToolCall[];
   },
 ): Promise<void> {
   await db().insert(chatMessages).values({
@@ -63,6 +70,7 @@ export async function appendMessage(
     command: message.command ?? null,
     mentions: message.mentions?.length ? JSON.stringify(message.mentions) : null,
     sources: message.sources?.length ? JSON.stringify(message.sources) : null,
+    toolCalls: message.toolCalls?.length ? JSON.stringify(message.toolCalls) : null,
     createdAt: Date.now(),
   });
 }
@@ -109,6 +117,7 @@ export async function listMessages(sessionId: string): Promise<StoredChatMessage
     command: r.command ?? undefined,
     mentions: parseJson<ChatMention[]>(r.mentions),
     sources: parseJson<SemanticHit[]>(r.sources),
+    toolCalls: parseJson<ChatToolCall[]>(r.toolCalls),
     createdAt: r.createdAt,
   }));
 }

@@ -11,8 +11,16 @@ interface Pending {
 type WorkerReply =
   | { type: 'progress'; status: LlmModelStatus }
   | { type: 'chunk'; requestId: string; text: string }
+  | { type: 'toolCall'; requestId: string; callId: string; name: string; params: unknown }
   | { id: number; ok: true; data: unknown }
   | { id: number; ok: false; error: { code?: string; message?: string } };
+
+export type LlmToolCallListener = (
+  requestId: string,
+  callId: string,
+  name: string,
+  params: unknown,
+) => void;
 
 /**
  * Bridge to the chat LLM worker (`llmWorker.js`, built beside this file into
@@ -26,6 +34,7 @@ export class LlmManager {
   private readonly pending = new Map<number, Pending>();
   private readonly progressListeners = new Set<(status: LlmModelStatus) => void>();
   private readonly chunkListeners = new Set<(requestId: string, text: string) => void>();
+  private readonly toolCallListeners = new Set<LlmToolCallListener>();
 
   onProgress(cb: (status: LlmModelStatus) => void): () => void {
     this.progressListeners.add(cb);
@@ -35,6 +44,18 @@ export class LlmManager {
   onChunk(cb: (requestId: string, text: string) => void): () => void {
     this.chunkListeners.add(cb);
     return () => this.chunkListeners.delete(cb);
+  }
+
+  /** The model wants a file tool run; answer with {@link toolResult}. */
+  onToolCall(cb: LlmToolCallListener): () => void {
+    this.toolCallListeners.add(cb);
+    return () => this.toolCallListeners.delete(cb);
+  }
+
+  /** Deliver a tool's outcome back to the generation waiting on it. */
+  toolResult(callId: string, result: unknown): void {
+    // No ensureWorker: a reply is only meaningful to the worker that asked.
+    this.worker?.postMessage({ type: 'toolResult', callId, result });
   }
 
   private ensureWorker(): UtilityProcess {
@@ -58,6 +79,9 @@ export class LlmManager {
         for (const listener of this.progressListeners) listener(msg.status);
       } else if (msg.type === 'chunk') {
         for (const listener of this.chunkListeners) listener(msg.requestId, msg.text);
+      } else if (msg.type === 'toolCall') {
+        for (const listener of this.toolCallListeners)
+          listener(msg.requestId, msg.callId, msg.name, msg.params);
       }
       return;
     }
@@ -102,7 +126,8 @@ export class LlmManager {
     return this.request<LlmSystemSpecs>('specs');
   }
 
-  /** Run one generation; tokens stream via `onChunk`, resolves with the full text. */
+  /** Run one generation; tokens stream via `onChunk`, tool calls via
+   * `onToolCall` (when `tools` is set), resolves with the full text. */
   chat(args: {
     modelId: string;
     requestId: string;
@@ -110,6 +135,7 @@ export class LlmManager {
     history: ChatTurn[];
     prompt: string;
     config?: Partial<LlmModelConfig>;
+    tools?: boolean;
   }): Promise<string> {
     return this.request<string>('chat', { ...args });
   }

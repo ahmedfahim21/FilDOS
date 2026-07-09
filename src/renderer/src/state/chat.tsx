@@ -6,11 +6,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from 'react';
 import type {
   ChatMention,
   ChatSessionMeta,
+  ChatToolCall,
   ChatTurn,
   LlmModelStatus,
   SemanticHit,
@@ -36,6 +39,8 @@ export interface ChatMessage {
   command?: string;
   /** Semantic hits backing a /find answer (assistant messages). */
   sources?: SemanticHit[];
+  /** File actions the Assistant performed while answering (assistant messages). */
+  toolCalls?: ChatToolCall[];
   /** Assistant messages stream in; errors keep any partial text. */
   status?: 'streaming' | 'done' | 'error';
   error?: string;
@@ -82,9 +87,20 @@ interface ChatContextValue {
     mentions: ChatMention[];
     command?: string;
     cwd?: string;
+    /** 'research' from the maximized page; 'chat' (default) from the rail. */
+    mode?: 'chat' | 'research';
   }) => Promise<void>;
   /** Abort the in-flight answer (its partial text is kept). */
   stop: () => void;
+  // Composer state lives here (not in ChatSurface) so an in-progress draft,
+  // its attached mentions, and the Research toggle survive maximizing/
+  // restoring — the rail and page mount separate ChatSurface instances.
+  composerDraft: string;
+  setComposerDraft: Dispatch<SetStateAction<string>>;
+  composerMentions: ChatMention[];
+  setComposerMentions: Dispatch<SetStateAction<ChatMention[]>>;
+  composerResearch: boolean;
+  setComposerResearch: Dispatch<SetStateAction<boolean>>;
   /** Start a fresh conversation (the old one stays saved). */
   newChat: () => void;
   /** Reload the saved-session list. */
@@ -117,7 +133,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [specs, setSpecs] = useState<LlmSystemSpecs | null>(null);
   const [configs, setConfigs] = useState<Record<string, Partial<LlmModelConfig>>>({});
   const [customModels, setCustomModels] = useState<LlmModelDef[]>([]);
+  // Composer draft/mentions/Research toggle — persisted across the rail↔page swap.
+  const [composerDraft, setComposerDraft] = useState('');
+  const [composerMentions, setComposerMentions] = useState<ChatMention[]>([]);
+  const [composerResearch, setComposerResearch] = useState(false);
   const activeRequest = useRef<string | null>(null);
+  // Whether the user has a saved model pick; until then we auto-follow the
+  // machine's recommendation once specs are probed (first-run gets a capable
+  // model instead of the tiny catalog default).
+  const userPickedModel = useRef(false);
 
   const refreshStatuses = useCallback(async () => {
     const res = await window.llm.models();
@@ -129,7 +153,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     window.prefs
       .get()
       .then((prefs) => {
-        if (prefs.ai?.llmModelId) setModelIdState(prefs.ai.llmModelId);
+        if (prefs.ai?.llmModelId) {
+          userPickedModel.current = true;
+          setModelIdState(prefs.ai.llmModelId);
+        }
         if (prefs.ai?.llmConfigs) setConfigs(prefs.ai.llmConfigs);
         if (prefs.ai?.llmCustomModels) setCustomModels(prefs.ai.llmCustomModels);
       })
@@ -139,6 +166,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (res.ok) setSpecs(res.data);
     });
   }, [refreshStatuses]);
+
+  // First run (no saved pick): follow the machine's recommendation once specs
+  // land. Not persisted — it stays a suggestion until the user actively picks.
+  useEffect(() => {
+    if (specs && !userPickedModel.current) setModelIdState(recommendLlmModel(specs));
+  }, [specs]);
 
   // Live download progress, keyed by model id.
   useEffect(
@@ -161,6 +194,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 return { ...m, content: m.content + event.text };
               case 'sources':
                 return { ...m, sources: event.hits };
+              case 'tool':
+                return { ...m, toolCalls: [...(m.toolCalls ?? []), event.call] };
               case 'done':
                 return { ...m, status: 'done' as const };
               case 'error':
@@ -179,6 +214,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const setModelId = useCallback((id: string) => {
+    userPickedModel.current = true;
     setModelIdState(id);
     // Merge into the existing ai prefs — a plain patch would clobber the
     // enable toggle and provider that state/ai.tsx owns.
@@ -294,7 +330,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async ({ text, mentions, command, cwd }: { text: string; mentions: ChatMention[]; command?: string; cwd?: string }) => {
+    async ({ text, mentions, command, cwd, mode }: { text: string; mentions: ChatMention[]; command?: string; cwd?: string; mode?: 'chat' | 'research' }) => {
       const requestId = crypto.randomUUID();
       // History = completed exchanges so far, oldest first.
       const history: ChatTurn[] = messages
@@ -319,6 +355,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         mentions,
         command,
         cwd,
+        mode,
       });
       if (res.ok) {
         setSessionId(res.data.sessionId);
@@ -350,6 +387,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (busy) return;
     setMessages([]);
     setSessionId(null);
+    setComposerDraft('');
+    setComposerMentions([]);
   }, [busy]);
 
   const refreshSessions = useCallback(async () => {
@@ -370,6 +409,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           command: m.command,
           mentions: m.mentions,
           sources: m.sources,
+          toolCalls: m.toolCalls,
           status: 'done' as const,
         })),
       );
@@ -419,6 +459,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         removeModel,
         send,
         stop,
+        composerDraft,
+        setComposerDraft,
+        composerMentions,
+        setComposerMentions,
+        composerResearch,
+        setComposerResearch,
         newChat,
         refreshSessions,
         openSession,

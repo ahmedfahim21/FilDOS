@@ -37,6 +37,38 @@ export const MAX_FOLDER_ENTRIES = 100;
 /** Hits fetched for /find. */
 export const FIND_HITS = 8;
 
+/**
+ * The maximized research page runs with a wider context window (see
+ * handlers.ts), so it can afford larger budgets — more file content, more
+ * folder entries, and more /find hits per turn.
+ */
+export const RESEARCH_BUDGETS = {
+  content: 24_000,
+  folderEntries: 200,
+  findHits: 16,
+} as const;
+
+/** Rough chars-per-token for sizing the content budget against the window. */
+const CHARS_PER_TOKEN = 4;
+/**
+ * Chars the rest of the turn (history + system prompt + generated answer) is
+ * expected to consume. The content budget is capped to the window minus this,
+ * so a wide research budget can't push the whole prompt past the model's
+ * context window and get silently truncated.
+ */
+const PROMPT_OVERHEAD_CHARS = 22_000;
+
+/** Per-message budgets, widened for research and clamped to the context window. */
+function budgetsFor(mode: ChatSendPayload['mode'], contextTokens?: number) {
+  const base =
+    mode === 'research'
+      ? { content: RESEARCH_BUDGETS.content, folderEntries: RESEARCH_BUDGETS.folderEntries, findHits: RESEARCH_BUDGETS.findHits }
+      : { content: CONTENT_BUDGET, folderEntries: MAX_FOLDER_ENTRIES, findHits: FIND_HITS };
+  if (!contextTokens) return base;
+  const cap = Math.max(CONTENT_BUDGET, contextTokens * CHARS_PER_TOKEN - PROMPT_OVERHEAD_CHARS);
+  return { ...base, content: Math.min(base.content, cap) };
+}
+
 const SYSTEM_PROMPT = [
   'You are the FilDOS Assistant, built into the FilDOS file browser.',
   'You answer questions about the user\'s files using only the file content, folder listings and search results provided in the message.',
@@ -85,7 +117,12 @@ async function fileBlock(deps: ChatContextDeps, path: string, name: string, budg
 }
 
 /** One mentioned folder rendered as a listing block. */
-async function folderBlock(deps: ChatContextDeps, path: string, name: string): Promise<string> {
+async function folderBlock(
+  deps: ChatContextDeps,
+  path: string,
+  name: string,
+  maxEntries: number,
+): Promise<string> {
   let entries: Entry[];
   try {
     entries = await deps.list(path);
@@ -93,13 +130,13 @@ async function folderBlock(deps: ChatContextDeps, path: string, name: string): P
     return `Folder: ${name} (${path})\n[Could not be read.]`;
   }
   const visible = entries.filter((e) => !e.isHidden);
-  const lines = visible.slice(0, MAX_FOLDER_ENTRIES).map((e) =>
+  const lines = visible.slice(0, maxEntries).map((e) =>
     e.isDirectory
       ? `- ${e.name}/ (folder)`
       : `- ${e.name} — ${fmtSize(e.size)}, modified ${fmtDate(e.modified)}`,
   );
-  if (visible.length > MAX_FOLDER_ENTRIES) {
-    lines.push(`…and ${visible.length - MAX_FOLDER_ENTRIES} more entries`);
+  if (visible.length > maxEntries) {
+    lines.push(`…and ${visible.length - maxEntries} more entries`);
   }
   return `Folder: ${name} (${path}) — ${visible.length} entries\n${lines.join('\n')}`;
 }
@@ -112,10 +149,17 @@ function hitsBlock(hits: SemanticHit[]): string {
   return `Search results (best first):\n${lines.join('\n')}`;
 }
 
-/** Build the system + prompt (and /find hits) for one chat message. */
-export async function buildChat(payload: ChatSendPayload, deps: ChatContextDeps): Promise<BuiltChat> {
+/** Build the system + prompt (and /find hits) for one chat message.
+ *  `contextTokens` (the model's resolved window) clamps the content budget so
+ *  the whole turn fits — pass it from the handler's resolved config. */
+export async function buildChat(
+  payload: ChatSendPayload,
+  deps: ChatContextDeps,
+  opts: { contextTokens?: number } = {},
+): Promise<BuiltChat> {
   const { command, cwd } = payload;
   const prompt = payload.prompt.trim();
+  const budgets = budgetsFor(payload.mode, opts.contextTokens);
   const blocks: string[] = [];
   let hits: SemanticHit[] | undefined;
 
@@ -127,20 +171,20 @@ export async function buildChat(payload: ChatSendPayload, deps: ChatContextDeps)
         { code: 'EUNSUPPORTED' },
       );
     }
-    hits = await deps.search(prompt, FIND_HITS);
+    hits = await deps.search(prompt, budgets.findHits);
     blocks.push(hitsBlock(hits));
   }
 
   // Mentioned folders first (cheap listings), then files sharing the budget.
   const folders = payload.mentions.filter((m) => m.kind === 'folder');
   const files = payload.mentions.filter((m) => m.kind === 'file');
-  for (const f of folders) blocks.push(await folderBlock(deps, f.path, f.name));
-  const perFile = Math.floor(CONTENT_BUDGET / Math.max(1, files.length));
+  for (const f of folders) blocks.push(await folderBlock(deps, f.path, f.name, budgets.folderEntries));
+  const perFile = Math.floor(budgets.content / Math.max(1, files.length));
   for (const f of files) blocks.push(await fileBlock(deps, f.path, f.name, perFile));
 
   // A subject-taking command with nothing mentioned falls back to the current folder.
   if (command && command !== 'find' && !payload.mentions.length && cwd) {
-    blocks.push(await folderBlock(deps, cwd, cwd.split(/[\\/]/).pop() || cwd));
+    blocks.push(await folderBlock(deps, cwd, cwd.split(/[\\/]/).pop() || cwd, budgets.folderEntries));
   }
 
   const instruction = command ? COMMAND_INSTRUCTIONS[command] : undefined;
