@@ -66,7 +66,7 @@ const FEATURES: Array<{
       <Search key="b" className="size-6 text-ink/70" />,
     ],
     title: "Search by meaning",
-    desc: "Ask for 'receipts from tax season' or 'photos from Japan trip'. FilDOS finds files by meaning, not just filenames.",
+    desc: "Ask for ‘receipts from tax season’ or ‘photos from Japan trip’. FilDOS finds files by meaning, not just filenames.",
   },
   {
     blend: "grapeBlueberry",

@@ -214,7 +214,7 @@ export function LandingHero() {
                 href={DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-ink/85 sm:text-base"
+                className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-ink/85 sm:text-base"
               >
                 <Download className="size-4" />
                 Download FilDOS
@@ -223,7 +223,7 @@ export function LandingHero() {
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-cloud sm:text-base"
+                className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-cloud sm:text-base"
               >
                 <Star className="size-4 fill-mango text-mango" />
                 Star on GitHub

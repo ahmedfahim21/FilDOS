@@ -208,7 +208,7 @@ export function Roadmap() {
                 href={`${GITHUB_URL}/issues`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white transition-all hover:-translate-y-0.5 hover:bg-ink/85"
+                className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white transition hover:-translate-y-0.5 hover:bg-ink/85"
               >
                 Request a feature
                 <ArrowUpRight className="size-4" />
@@ -217,7 +217,7 @@ export function Roadmap() {
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full border border-ink/15 bg-white px-6 py-3 text-sm font-medium text-ink transition-all hover:-translate-y-0.5 hover:bg-cloud"
+                className="flex items-center gap-2 rounded-full border border-ink/15 bg-white px-6 py-3 text-sm font-medium text-ink transition hover:-translate-y-0.5 hover:bg-cloud"
               >
                 <Github className="size-4" />
                 Star on GitHub

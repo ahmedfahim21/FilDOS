@@ -202,7 +202,7 @@ export function Sidebar({
                     {drive.removable && (
                       <button
                         className={cn(
-                          'text-muted-foreground grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100',
+                          'text-muted-foreground grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100',
                           ejectingPath === drive.path && 'cursor-wait opacity-100',
                         )}
                         title={`Eject ${drive.name}`}
@@ -218,7 +218,7 @@ export function Sidebar({
                       <div className="bg-muted h-1 w-full overflow-hidden rounded-full">
                         <div
                           className={cn(
-                            'h-full rounded-full transition-all',
+                            'h-full rounded-full transition-[width,background-color]',
                             pct >= 90 ? 'bg-destructive/70' : 'bg-foreground/30',
                           )}
                           style={{ width: `${pct}%` }}
@@ -266,7 +266,7 @@ export function Sidebar({
                 </div>
               </button>
               <button
-                className="text-muted-foreground absolute right-1 grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                className="text-muted-foreground absolute right-1 grid size-6 shrink-0 place-items-center rounded opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                 title={`Disconnect ${account.label}`}
                 onClick={() => setPendingDisconnect(account)}
               >

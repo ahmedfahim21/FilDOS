@@ -164,7 +164,7 @@ export function Message({
         </div>
       )}
       {message.status === 'done' && message.content && (
-        <div className="mt-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <div className="mt-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
           <CopyButton text={message.content} />
         </div>
       )}

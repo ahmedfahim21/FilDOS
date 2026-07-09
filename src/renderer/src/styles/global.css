@@ -118,9 +118,9 @@
 
   /* FilDOS type system: Inter for UI/display, Space Mono for the
    * wordmark, file paths, CIDs and other technical/code text. */
-  /* --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace; */
-  
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
+
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-fluid: cubic-bezier(0.77, 0, 0.175, 1);
 
