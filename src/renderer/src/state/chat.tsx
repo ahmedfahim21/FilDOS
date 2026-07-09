@@ -85,6 +85,8 @@ interface ChatContextValue {
     mentions: ChatMention[];
     command?: string;
     cwd?: string;
+    /** 'research' from the maximized page; 'chat' (default) from the rail. */
+    mode?: 'chat' | 'research';
   }) => Promise<void>;
   /** Abort the in-flight answer (its partial text is kept). */
   stop: () => void;
@@ -121,6 +123,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [configs, setConfigs] = useState<Record<string, Partial<LlmModelConfig>>>({});
   const [customModels, setCustomModels] = useState<LlmModelDef[]>([]);
   const activeRequest = useRef<string | null>(null);
+  // Whether the user has a saved model pick; until then we auto-follow the
+  // machine's recommendation once specs are probed (first-run gets a capable
+  // model instead of the tiny catalog default).
+  const userPickedModel = useRef(false);
 
   const refreshStatuses = useCallback(async () => {
     const res = await window.llm.models();
@@ -132,7 +138,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     window.prefs
       .get()
       .then((prefs) => {
-        if (prefs.ai?.llmModelId) setModelIdState(prefs.ai.llmModelId);
+        if (prefs.ai?.llmModelId) {
+          userPickedModel.current = true;
+          setModelIdState(prefs.ai.llmModelId);
+        }
         if (prefs.ai?.llmConfigs) setConfigs(prefs.ai.llmConfigs);
         if (prefs.ai?.llmCustomModels) setCustomModels(prefs.ai.llmCustomModels);
       })
@@ -142,6 +151,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (res.ok) setSpecs(res.data);
     });
   }, [refreshStatuses]);
+
+  // First run (no saved pick): follow the machine's recommendation once specs
+  // land. Not persisted — it stays a suggestion until the user actively picks.
+  useEffect(() => {
+    if (specs && !userPickedModel.current) setModelIdState(recommendLlmModel(specs));
+  }, [specs]);
 
   // Live download progress, keyed by model id.
   useEffect(
@@ -184,6 +199,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const setModelId = useCallback((id: string) => {
+    userPickedModel.current = true;
     setModelIdState(id);
     // Merge into the existing ai prefs — a plain patch would clobber the
     // enable toggle and provider that state/ai.tsx owns.
@@ -299,7 +315,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async ({ text, mentions, command, cwd }: { text: string; mentions: ChatMention[]; command?: string; cwd?: string }) => {
+    async ({ text, mentions, command, cwd, mode }: { text: string; mentions: ChatMention[]; command?: string; cwd?: string; mode?: 'chat' | 'research' }) => {
       const requestId = crypto.randomUUID();
       // History = completed exchanges so far, oldest first.
       const history: ChatTurn[] = messages
@@ -324,6 +340,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         mentions,
         command,
         cwd,
+        mode,
       });
       if (res.ok) {
         setSessionId(res.data.sessionId);

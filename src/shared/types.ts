@@ -439,6 +439,10 @@ export interface ChatSendPayload {
   command?: string;
   /** The folder currently open in the browser — the default subject for commands. */
   cwd?: string;
+  /** Conversation surface: the docked rail ('chat') or the maximized research
+   * page ('research'). Research widens the file-context budget, bumps the
+   * context window, and leans on the agentic search tool. Defaults to 'chat'. */
+  mode?: 'chat' | 'research';
 }
 
 /**

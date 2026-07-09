@@ -499,9 +499,17 @@ function ChatModelBrowser() {
     (d) => chat.statuses[d.id]?.state === 'ready',
   ).length;
 
+  // The machine's recommended pick, surfaced at the top of the default view.
+  // Hidden while searching/filtering (then it's just badged in its family
+  // group) so the featured block always reflects an unfiltered "best fit".
+  const recDef = chat.recommendedId ? chat.modelDef(chat.recommendedId) : undefined;
+  const featured =
+    recDef && !query.trim() && modality === 'all' && !onlyDownloaded ? recDef : undefined;
+
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const visible = chat.allModels.filter((def) => {
+      if (featured && def.id === featured.id) return false; // shown in the featured block
       if (q && !`${def.label} ${def.description} ${def.family}`.toLowerCase().includes(q)) return false;
       if (modality !== 'all' && (def.modality ?? 'text') !== modality) return false;
       if (onlyDownloaded && chat.statuses[def.id]?.state !== 'ready') return false;
@@ -511,7 +519,7 @@ function ChatModelBrowser() {
       family,
       models: visible.filter((d) => d.family === family),
     })).filter((g) => g.models.length > 0);
-  }, [chat.allModels, chat.statuses, query, modality, onlyDownloaded]);
+  }, [chat.allModels, chat.statuses, query, modality, onlyDownloaded, featured]);
 
   const chip = (active: boolean) =>
     cn(
@@ -569,6 +577,19 @@ function ChatModelBrowser() {
           </button>
         </div>
       </div>
+
+      {/* Recommended for this machine — the top of the library. */}
+      {featured && (
+        <div className="border-mint/40 bg-mint/[0.04] mb-4 rounded-xl border p-2.5">
+          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
+            <Icon name="sparkles" size={13} className="text-mint shrink-0" />
+            <span className="text-foreground text-2xs font-medium tracking-wider uppercase">
+              Recommended for your machine
+            </span>
+          </div>
+          <ChatModelCard def={featured} recommended />
+        </div>
+      )}
 
       {groups.length === 0 ? (
         <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-6 text-center text-2xs">

@@ -2,8 +2,10 @@ import type { HugeiconsProps } from '@hugeicons/react';
 import type React from 'react';
 import {
   AlertCircleIcon,
+  ArrowExpand01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  ArrowShrink01Icon,
   ArrowUp01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
@@ -74,6 +76,8 @@ type IconName =
   | 'gallery'
   | 'columns'
   | 'restore'
+  | 'maximize'
+  | 'minimize'
   | 'tag'
   | 'clock'
   | 'check'
@@ -120,6 +124,8 @@ const ICONS: Record<IconName, HugeIcon> = {
   gallery: Image02Icon,
   columns: LayoutThreeColumnIcon,
   restore: RotateLeft01Icon,
+  maximize: ArrowExpand01Icon,
+  minimize: ArrowShrink01Icon,
   tag: Tag01Icon,
   clock: Clock01Icon,
   check: Tick01Icon,

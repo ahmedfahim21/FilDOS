@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSendPayload, Entry, SemanticHit } from '@shared/types';
-import { buildChat, CONTENT_BUDGET, MAX_FOLDER_ENTRIES, type ChatContextDeps } from './context';
+import {
+  buildChat,
+  CONTENT_BUDGET,
+  MAX_FOLDER_ENTRIES,
+  RESEARCH_BUDGETS,
+  type ChatContextDeps,
+} from './context';
 
 /** Minimal Entry factory for folder listings. */
 function entry(name: string, overrides: Partial<Entry> = {}): Entry {
@@ -79,6 +85,35 @@ describe('buildChat', () => {
     expect(built.prompt.length).toBeLessThan(CONTENT_BUDGET + 3_000);
     expect(built.prompt).toContain('File: a.txt');
     expect(built.prompt).toContain('File: b.txt');
+  });
+
+  it('research mode keeps content the chat budget would truncate', async () => {
+    // Sized between the two budgets: truncated in chat, intact in research.
+    const text = 'z'.repeat(CONTENT_BUDGET + 5_000);
+    const mentions = [{ kind: 'file' as const, path: '/tmp/big.txt', name: 'big.txt' }];
+    const chat = await buildChat(payload({ mentions }), deps({ extract: async () => text }));
+    const research = await buildChat(
+      payload({ mentions, mode: 'research' }),
+      deps({ extract: async () => text }),
+    );
+    expect(chat.prompt).toContain('[…truncated]');
+    expect(research.prompt).not.toContain('[…truncated]');
+    expect(research.prompt.length).toBeGreaterThan(chat.prompt.length);
+    expect(research.prompt.length).toBeLessThan(RESEARCH_BUDGETS.content + 3_000);
+  });
+
+  it('research mode fetches more /find hits', async () => {
+    let requested = 0;
+    await buildChat(
+      payload({ command: 'find', prompt: 'q', mode: 'research' }),
+      deps({
+        search: async (_q, k) => {
+          requested = k;
+          return [];
+        },
+      }),
+    );
+    expect(requested).toBe(RESEARCH_BUDGETS.findHits);
   });
 
   it('marks binary files as unreadable instead of failing', async () => {

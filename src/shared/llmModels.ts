@@ -543,7 +543,12 @@ export const LLM_MODELS: LlmModelDef[] = [
   },
 ];
 
-export const DEFAULT_LLM_MODEL_ID = 'llama-3.2-1b';
+/**
+ * The model pre-selected before the machine is probed (and before the user
+ * picks one). A capable-but-modest 4B so first impressions aren't "too basic";
+ * {@link recommendLlmModel} then steers to the right tier once specs load.
+ */
+export const DEFAULT_LLM_MODEL_ID = 'qwen3-4b';
 
 export function getLlmModelDef(id: string): LlmModelDef | undefined {
   return LLM_MODELS.find((m) => m.id === id);
@@ -626,18 +631,29 @@ export interface LlmSystemSpecs {
 }
 
 /**
- * The catalog model this machine should run: the largest one that fits its
- * memory with comfortable headroom for the OS, the app, and the context
- * buffer. GPU machines budget against VRAM (unified memory on Apple Silicon);
- * CPU-only machines against RAM.
+ * The catalog model this machine should run — the most capable one that stays
+ * comfortable alongside the OS, the app, the embedding worker and a large KV
+ * cache. Keyed on total system memory (the resident model shares it), by tier:
+ *
+ *   Memory      Recommended     Class            Good for
+ *   ≥ 96 GB     Gemma 4 31B     workstation      near cloud-quality local chat
+ *   ≥ 48 GB     Qwen 3.5 27B    power user       large projects, technical docs
+ *   ≥ 32 GB     Qwen 3 8B       mainstream       best speed/quality balance
+ *   ≥ 16 GB     Qwen 3 4B       budget laptop    daily document chat
+ *   ≥ 8 GB      Qwen 3 1.7B     ultra low-end    small PDFs, notes, snippets
+ *   < 8 GB      Qwen 3 0.6B     below spec        the smallest that still runs
+ *
+ * A discrete GPU can only lift the tier (its VRAM carries the model), never
+ * lower it; on Apple Silicon VRAM ≈ unified RAM, so RAM alone is the budget.
  */
 export function recommendLlmModel(specs: LlmSystemSpecs): string {
-  const budgetGb = (specs.gpu ? Math.max(specs.vramMb, specs.ramMb / 2) : specs.ramMb) / 1024;
-  if (budgetGb >= 24) return 'llama-3.1-8b';
-  if (budgetGb >= 16) return 'llama-3.2-3b';
-  if (budgetGb >= 11) return 'gemma-2-2b';
-  if (budgetGb >= 8) return 'qwen-2.5-1.5b';
-  return 'llama-3.2-1b';
+  const budgetGb = Math.max(specs.ramMb, specs.vramMb) / 1024;
+  if (budgetGb >= 96) return 'gemma-4-31b';
+  if (budgetGb >= 48) return 'qwen3.5-27b';
+  if (budgetGb >= 32) return 'qwen3-8b';
+  if (budgetGb >= 16) return 'qwen3-4b';
+  if (budgetGb >= 8) return 'qwen3-1.7b';
+  return 'qwen3-0.6b';
 }
 
 // ---------------------------------------------------------------------------

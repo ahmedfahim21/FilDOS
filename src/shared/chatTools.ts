@@ -120,4 +120,19 @@ export const CHAT_TOOLS: ChatToolDef[] = [
       },
     },
   },
+  {
+    name: 'search_index',
+    description:
+      'Semantic + keyword search across the user\'s indexed files. Returns the most relevant files (name, path, snippet). Use this to locate files before reading them; you can search repeatedly to research a topic across many files.',
+    params: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What to search for, in natural language.' },
+        k: {
+          oneOf: [{ type: 'null' }, { type: 'integer' }],
+          description: 'How many results to return (default 8, max 16). null = default.',
+        },
+      },
+    },
+  },
 ];

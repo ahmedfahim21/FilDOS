@@ -224,15 +224,32 @@ per-model customize panel (temperature/top-p/max tokens/context/custom
 instructions) stored as partials in `prefs.ai.llmConfigs` and resolved+clamped
 by `resolveLlmConfig()` on both sides of the IPC boundary; the chat picker
 lists only downloaded models with their config summary. The built-in catalog
-spans 1B–9B; users can also **add any GGUF from the internet** (Settings →
-"Add a model from the internet"): `parseCustomModelInput()` accepts
-`hf:owner/repo[:quant]`, `owner/repo`, or a direct `.gguf` URL and the defs
-persist in `prefs.ai.llmCustomModels` — handlers resolve defs from catalog ∪
-prefs and pass the `uri` to the worker, which no longer validates against the
-static catalog. Every def carries a `family` key ('llama'/'qwen'/'gemma'/
-'phi'/'mistral'/'smollm'/'custom') for future per-family logos. Adding a
-built-in chat model = one `LLM_MODELS` entry. Adding a slash command = a
-`CHAT_COMMANDS` entry + an instruction in `context.ts`.
+spans 0.6B–35B (every URI verified against the HF API), grouped by family in
+Settings' **Assistant tab** (searchable, filterable by text/vision modality —
+`LlmModelDef.modality`, badge-only until image input lands); users can also
+**add any GGUF from the internet** (Settings → "Add a model from the
+internet", with a link to HF's trending GGUF list): `parseCustomModelInput()`
+accepts `hf:owner/repo[:quant]`, `owner/repo`, or a direct `.gguf` URL and the
+defs persist in `prefs.ai.llmCustomModels` — handlers resolve defs from
+catalog ∪ prefs and pass the `uri` to the worker, which no longer validates
+against the static catalog. Every def carries a `family` key ('llama'/'qwen'/
+'gemma'/'phi'/'mistral'/'smollm'/'deepseek'/'granite'/'lfm'/'custom') mapped
+to a logo in `lib/modelLogo.ts`. Adding a built-in chat model = one
+`LLM_MODELS` entry. Adding a slash command = a `CHAT_COMMANDS` entry + an
+instruction in `context.ts`.
+**Chat tools:** the model can act on files via node-llama-cpp function
+calling. `@shared/chatTools.ts` is the tool catalog (create/copy/move/rename/
+delete-to-Trash/list/read, GBNF JSON schemas); the worker builds session
+functions whose handlers RPC each call to main (`toolCall` out → `toolResult`
+in, 30s timeout, plus a no-tools retry when a chat wrapper can't drive
+function calling); `llm/tools.ts` executes them against fs/service with
+injected env deps (Trash, remap, index-drop, extract — tested against a temp
+dir in `tools.test.ts`). Every action is recoverable: deletes go to the OS
+Trash, creations/copies never overwrite. Calls stream to the renderer as
+`{type:'tool'}` events on `Events.chatStream` (activity chips in
+`ChatSidebar`) and persist as a `tool_calls` JSON snapshot on
+`chat_messages`. `SettingsView` is tabbed: General / AI & Search / Assistant
+(model library) / Privacy (Hide from AI).
 
 ### The database layer (`src/main/db/`)
 

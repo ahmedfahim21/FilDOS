@@ -50,23 +50,31 @@ describe('recommendLlmModel', () => {
     ...over,
   });
 
-  it('recommends the largest models on roomy machines', () => {
-    expect(recommendLlmModel(specs({ vramMb: 32 * 1024, ramMb: 32 * 1024 }))).toBe('llama-3.1-8b');
-    expect(recommendLlmModel(specs({ vramMb: 16 * 1024, ramMb: 16 * 1024 }))).toBe('llama-3.2-3b');
+  it('recommends heavyweight models on workstation-class machines', () => {
+    expect(recommendLlmModel(specs({ vramMb: 128 * 1024, ramMb: 128 * 1024 }))).toBe('gemma-4-31b');
+    expect(recommendLlmModel(specs({ vramMb: 64 * 1024, ramMb: 64 * 1024 }))).toBe('qwen3.5-27b');
   });
 
-  it('recommends mid-size models on typical machines', () => {
-    expect(recommendLlmModel(specs({ vramMb: 12 * 1024, ramMb: 12 * 1024 }))).toBe('gemma-2-2b');
-    expect(recommendLlmModel(specs({ vramMb: 8 * 1024, ramMb: 8 * 1024 }))).toBe('qwen-2.5-1.5b');
+  it('recommends a capable mid-size model on mainstream machines', () => {
+    expect(recommendLlmModel(specs({ vramMb: 32 * 1024, ramMb: 32 * 1024 }))).toBe('qwen3-8b');
+    expect(recommendLlmModel(specs({ vramMb: 16 * 1024, ramMb: 16 * 1024 }))).toBe('qwen3-4b');
   });
 
-  it('recommends the smallest model on tight machines', () => {
-    expect(recommendLlmModel(specs({ vramMb: 4 * 1024, ramMb: 4 * 1024 }))).toBe('llama-3.2-1b');
+  it('recommends a small-but-useful model on tight machines', () => {
+    expect(recommendLlmModel(specs({ vramMb: 8 * 1024, ramMb: 8 * 1024 }))).toBe('qwen3-1.7b');
+    expect(recommendLlmModel(specs({ vramMb: 4 * 1024, ramMb: 4 * 1024 }))).toBe('qwen3-0.6b');
   });
 
   it('budgets against RAM when there is no GPU backend', () => {
-    expect(recommendLlmModel(specs({ gpu: null, vramMb: 0, ramMb: 16 * 1024 }))).toBe('llama-3.2-3b');
-    expect(recommendLlmModel(specs({ gpu: null, vramMb: 0, ramMb: 6 * 1024 }))).toBe('llama-3.2-1b');
+    expect(recommendLlmModel(specs({ gpu: null, vramMb: 0, ramMb: 32 * 1024 }))).toBe('qwen3-8b');
+    expect(recommendLlmModel(specs({ gpu: null, vramMb: 0, ramMb: 8 * 1024 }))).toBe('qwen3-1.7b');
+  });
+
+  it('lets a discrete GPU lift the tier above what RAM alone would give', () => {
+    // 16 GB RAM but a 24 GB card → power-user tier, not budget.
+    expect(recommendLlmModel(specs({ gpu: 'cuda', vramMb: 48 * 1024, ramMb: 16 * 1024 }))).toBe(
+      'qwen3.5-27b',
+    );
   });
 });
 

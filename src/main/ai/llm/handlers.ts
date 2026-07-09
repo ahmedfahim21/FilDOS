@@ -74,13 +74,15 @@ const toolDeps: ChatToolDeps = {
     if (under.length) await aiIndex.remove(under);
   },
   extract: extractText,
+  search: (query, k) => searchIndex(query, { k }),
   home: homedir,
 };
 
 /** Appended to the system prompt when the file tools are available. */
 const TOOLS_SYSTEM = [
-  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, and read files.',
-  'Only call a function when the user clearly asks for that action — never delete, move, or modify anything they did not ask about.',
+  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, read files, and search the index.',
+  'Only call an action that changes files (create/copy/move/rename/delete) when the user clearly asks for it — never delete, move, or modify anything they did not ask about.',
+  'To research or answer questions about the user\'s files, use search_index to find relevant files, then read_file to read them; you may search several times to gather what you need before answering.',
   'Prefer paths from the message or the current folder. After acting, briefly confirm what you did, naming the files.',
 ].join(' ');
 
@@ -150,6 +152,12 @@ export function registerLlmHandlers(): void {
       const modelId = payload.modelId ?? prefs.ai?.llmModelId ?? DEFAULT_LLM_MODEL_ID;
       // The user's per-model settings (Settings → Assistant), defaults applied.
       const config = resolveLlmConfig(modelId, prefs.ai?.llmConfigs?.[modelId]);
+      // Research (the maximized page) leans on context: open the window as wide
+      // as the model and the config bounds allow so more file content fits.
+      if (payload.mode === 'research') {
+        const ctxCap = Math.min(8192, (await modelDefOf(modelId))?.ctx ?? 8192);
+        config.contextSize = Math.max(config.contextSize, ctxCap);
+      }
 
       // Persist the user's message up front (a fresh conversation mints its
       // session here); the assistant's reply lands when generation settles.

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, isAbsolute, join, normalize } from 'node:path';
-import type { ChatToolCall } from '@shared/types';
+import type { ChatToolCall, SemanticHit } from '@shared/types';
 import {
   createFolder,
   copy,
@@ -34,6 +34,8 @@ export interface ChatToolDeps {
   dropIndex(path: string): Promise<void>;
   /** Extract a file's text (index/extract.extractText in prod). */
   extract(path: string): Promise<string | null>;
+  /** Semantic + keyword search over the AI index (index/handlers.searchIndex). */
+  search(query: string, k: number): Promise<SemanticHit[]>;
   /** The user's home directory, for `~` expansion. */
   home(): string;
 }
@@ -241,6 +243,32 @@ async function run(
         result: {
           ok: true,
           content: text.length > READ_CAP ? `${text.slice(0, READ_CAP)}\n[…truncated]` : text,
+        },
+      };
+    }
+
+    case 'search_index': {
+      const query = str(params.query);
+      if (!query) throw new ChatToolError('No search query given.');
+      const k =
+        typeof params.k === 'number' && params.k > 0 ? Math.min(16, Math.floor(params.k)) : 8;
+      const hits = await deps.search(query, k);
+      return {
+        call: {
+          name,
+          summary: hits.length
+            ? `Searched "${query}" — ${hits.length} result${hits.length === 1 ? '' : 's'}`
+            : `Searched "${query}" — no matches`,
+          ok: true,
+          paths: hits.map((h) => h.path),
+        },
+        result: {
+          ok: true,
+          results: hits.map((h) => ({
+            name: h.name,
+            path: h.path,
+            snippet: h.snippet.replace(/\s+/g, ' ').slice(0, 200),
+          })),
         },
       };
     }

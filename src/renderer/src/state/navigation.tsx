@@ -35,7 +35,8 @@ export type NavLocation =
   | { kind: 'recents' }
   | { kind: 'tag'; tagId: number }
   | { kind: 'cloud-connect' }
-  | { kind: 'settings' };
+  | { kind: 'settings' }
+  | { kind: 'chat' };
 
 /** A non-folder location — what `<main>` renders instead of the file browser. */
 export type NavPage = Exclude<NavLocation, { kind: 'folder' }>;

@@ -37,6 +37,24 @@ export const MAX_FOLDER_ENTRIES = 100;
 /** Hits fetched for /find. */
 export const FIND_HITS = 8;
 
+/**
+ * The maximized research page runs with a wider context window (see
+ * handlers.ts), so it can afford larger budgets — more file content, more
+ * folder entries, and more /find hits per turn.
+ */
+export const RESEARCH_BUDGETS = {
+  content: 24_000,
+  folderEntries: 200,
+  findHits: 16,
+} as const;
+
+/** Per-message budgets, widened for the research surface. */
+function budgetsFor(mode: ChatSendPayload['mode']) {
+  return mode === 'research'
+    ? { content: RESEARCH_BUDGETS.content, folderEntries: RESEARCH_BUDGETS.folderEntries, findHits: RESEARCH_BUDGETS.findHits }
+    : { content: CONTENT_BUDGET, folderEntries: MAX_FOLDER_ENTRIES, findHits: FIND_HITS };
+}
+
 const SYSTEM_PROMPT = [
   'You are the FilDOS Assistant, built into the FilDOS file browser.',
   'You answer questions about the user\'s files using only the file content, folder listings and search results provided in the message.',
@@ -85,7 +103,12 @@ async function fileBlock(deps: ChatContextDeps, path: string, name: string, budg
 }
 
 /** One mentioned folder rendered as a listing block. */
-async function folderBlock(deps: ChatContextDeps, path: string, name: string): Promise<string> {
+async function folderBlock(
+  deps: ChatContextDeps,
+  path: string,
+  name: string,
+  maxEntries: number,
+): Promise<string> {
   let entries: Entry[];
   try {
     entries = await deps.list(path);
@@ -93,13 +116,13 @@ async function folderBlock(deps: ChatContextDeps, path: string, name: string): P
     return `Folder: ${name} (${path})\n[Could not be read.]`;
   }
   const visible = entries.filter((e) => !e.isHidden);
-  const lines = visible.slice(0, MAX_FOLDER_ENTRIES).map((e) =>
+  const lines = visible.slice(0, maxEntries).map((e) =>
     e.isDirectory
       ? `- ${e.name}/ (folder)`
       : `- ${e.name} — ${fmtSize(e.size)}, modified ${fmtDate(e.modified)}`,
   );
-  if (visible.length > MAX_FOLDER_ENTRIES) {
-    lines.push(`…and ${visible.length - MAX_FOLDER_ENTRIES} more entries`);
+  if (visible.length > maxEntries) {
+    lines.push(`…and ${visible.length - maxEntries} more entries`);
   }
   return `Folder: ${name} (${path}) — ${visible.length} entries\n${lines.join('\n')}`;
 }
@@ -116,6 +139,7 @@ function hitsBlock(hits: SemanticHit[]): string {
 export async function buildChat(payload: ChatSendPayload, deps: ChatContextDeps): Promise<BuiltChat> {
   const { command, cwd } = payload;
   const prompt = payload.prompt.trim();
+  const budgets = budgetsFor(payload.mode);
   const blocks: string[] = [];
   let hits: SemanticHit[] | undefined;
 
@@ -127,20 +151,20 @@ export async function buildChat(payload: ChatSendPayload, deps: ChatContextDeps)
         { code: 'EUNSUPPORTED' },
       );
     }
-    hits = await deps.search(prompt, FIND_HITS);
+    hits = await deps.search(prompt, budgets.findHits);
     blocks.push(hitsBlock(hits));
   }
 
   // Mentioned folders first (cheap listings), then files sharing the budget.
   const folders = payload.mentions.filter((m) => m.kind === 'folder');
   const files = payload.mentions.filter((m) => m.kind === 'file');
-  for (const f of folders) blocks.push(await folderBlock(deps, f.path, f.name));
-  const perFile = Math.floor(CONTENT_BUDGET / Math.max(1, files.length));
+  for (const f of folders) blocks.push(await folderBlock(deps, f.path, f.name, budgets.folderEntries));
+  const perFile = Math.floor(budgets.content / Math.max(1, files.length));
   for (const f of files) blocks.push(await fileBlock(deps, f.path, f.name, perFile));
 
   // A subject-taking command with nothing mentioned falls back to the current folder.
   if (command && command !== 'find' && !payload.mentions.length && cwd) {
-    blocks.push(await folderBlock(deps, cwd, cwd.split(/[\\/]/).pop() || cwd));
+    blocks.push(await folderBlock(deps, cwd, cwd.split(/[\\/]/).pop() || cwd, budgets.folderEntries));
   }
 
   const instruction = command ? COMMAND_INSTRUCTIONS[command] : undefined;
