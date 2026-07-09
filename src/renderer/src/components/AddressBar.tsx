@@ -138,7 +138,7 @@ export function AddressBar({ pageTitle }: { pageTitle?: ReactNode }) {
         );
       })}
       <button
-        className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-[5px] border-0 bg-transparent px-1.5 py-0.5 opacity-0 group-hover:opacity-100"
+        className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-[5px] border-0 bg-transparent px-1.5 py-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
         onClick={startEdit}
         title="Edit path (⌘L)"
       >

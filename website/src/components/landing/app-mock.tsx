@@ -497,7 +497,7 @@ export function AppMock({
           type="button"
           onClick={() => setOverlay("search")}
           className={cn(
-            "group flex h-7 w-full max-w-[300px] items-center gap-2 rounded-md border px-2.5 text-mist transition-all duration-150 ease-out hover:border-ink/15 hover:bg-cloud",
+            "group flex h-7 w-full max-w-[300px] items-center gap-2 rounded-md border px-2.5 text-mist transition duration-150 ease-out hover:border-ink/15 hover:bg-cloud",
             searchPressed
               ? "scale-[0.97] border-mint/50 bg-mint/10 text-ink ring-2 ring-mint/30"
               : "border-ink/10 bg-cloud/70"
@@ -528,7 +528,7 @@ export function AppMock({
             onClick={() => setOverlay((o) => (o === "ai" ? "none" : "ai"))}
             aria-pressed={overlay === "ai"}
             className={cn(
-              "flex items-center gap-1 rounded-md bg-ink px-2.5 py-1.5 text-[10px] font-medium text-white transition-all hover:bg-ink/85",
+              "flex items-center gap-1 rounded-md bg-ink px-2.5 py-1.5 text-[10px] font-medium text-white transition hover:bg-ink/85",
               overlay === "ai" && "ring-2 ring-mint/50 ring-offset-1"
             )}
           >
@@ -630,7 +630,7 @@ export function AppMock({
               <div
                 key={name}
                 className={cn(
-                  "group flex flex-col items-center gap-1 rounded-lg p-1.5 pt-2.5 ring-1 ring-inset transition-all",
+                  "group flex flex-col items-center gap-1 rounded-lg p-1.5 pt-2.5 ring-1 ring-inset transition",
                   selected
                     ? "bg-ink/[0.08] ring-ink/20"
                     : "ring-transparent hover:-translate-y-0.5 hover:bg-ink/[0.05] hover:ring-ink/10"

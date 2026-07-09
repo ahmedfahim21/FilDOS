@@ -193,7 +193,7 @@ function ModelRow({
         {state === 'downloading' && (
           <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
             <div
-              className="bg-foreground/50 h-full rounded-full transition-all"
+              className="bg-foreground/50 h-full rounded-full transition-[width]"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -326,7 +326,7 @@ function ChatModelCard({ def, recommended }: { def: LlmModelDef; recommended: bo
           {state === 'downloading' && (
             <div className="bg-muted mt-1.5 h-1 w-full overflow-hidden rounded-full">
               <div
-                className="bg-mint h-full rounded-full transition-all"
+                className="bg-mint h-full rounded-full transition-[width]"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -1027,7 +1027,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                     <>
                       <div className="bg-muted mt-2 h-1 w-full overflow-hidden rounded-full">
                         <div
-                          className="bg-foreground/50 h-full rounded-full transition-all duration-300"
+                          className="bg-foreground/50 h-full rounded-full transition-[width] duration-300"
                           style={{ width: `${indexPct}%` }}
                         />
                       </div>

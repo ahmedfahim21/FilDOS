@@ -138,7 +138,7 @@ function pseudoEntry(path: string, name: string, modified: number): Entry {
 
 /** Base classes shared by every filter chip. */
 const CHIP_BASE =
-  'flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-2xs transition-all duration-150 ease-snappy active:scale-[0.97]';
+  'flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-2xs transition duration-150 ease-snappy active:scale-[0.97]';
 const CHIP_IDLE =
   'border-border/70 text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground';
 
@@ -586,7 +586,7 @@ export function SearchOverlay({
                     key={s}
                     onClick={() => setScope(s)}
                     className={cn(
-                      'ease-snappy h-5 rounded-full px-2 transition-all duration-150',
+                      'ease-snappy h-5 rounded-full px-2 transition duration-150',
                       scope === s
                         ? 'bg-background text-foreground font-medium shadow-sm'
                         : 'text-muted-foreground hover:text-foreground',
