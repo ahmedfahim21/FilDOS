@@ -58,17 +58,21 @@ export function highlightSegments(text: string, mentions: ChatMention[]): Segmen
   return segments;
 }
 
+// Colour only — never a weight/letter-spacing change. The mirror sits behind a
+// transparent-text textarea, and the native caret is placed by the textarea's
+// (normal-weight) layout; any glyph-width difference here would drift the caret
+// away from the visible text, so tokens must render at the same metrics.
 const KIND_CLASS: Record<HighlightKind, string> = {
-  command: 'text-mint font-medium',
-  file: 'text-blueberry font-medium',
-  folder: 'text-grape font-medium',
+  command: 'text-mint',
+  file: 'text-blueberry',
+  folder: 'text-grape',
 };
 
 /**
  * The colored mirror painted behind a transparent-text textarea. It must share
- * the textarea's exact box metrics (font, padding, wrapping) so the glyphs line
- * up; the Composer syncs its scrollTop. A trailing newline gets a zero-width
- * space so the mirror's height tracks the textarea's.
+ * the textarea's exact box metrics (font, weight, padding, wrapping) so the
+ * glyphs line up; the Composer syncs its scrollTop. A trailing newline gets a
+ * zero-width space so the mirror's height tracks the textarea's.
  */
 export const PromptHighlight = forwardRef<
   HTMLDivElement,

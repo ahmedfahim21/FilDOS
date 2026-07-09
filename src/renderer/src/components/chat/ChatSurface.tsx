@@ -229,7 +229,7 @@ export function ChatSurface({
 
   if (view === 'history') {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <HistoryView onOpen={onOpenSession} />
       </div>
     );
@@ -393,7 +393,9 @@ export function ChatSurface({
                 }}
                 placeholder={page ? 'Ask to research across your files…' : 'Ask about your files…'}
                 className={cn(
-                  'placeholder:text-muted-foreground caret-foreground relative w-full resize-none border-0 bg-transparent text-transparent outline-none',
+                  // `break-words` matches the overlay's wrapping so the caret can't
+                  // drift from the visible (mirrored) text on a long unbroken name.
+                  'placeholder:text-muted-foreground caret-foreground relative w-full resize-none border-0 bg-transparent break-words text-transparent outline-none',
                   page ? 'max-h-50' : 'max-h-30',
                   FIELD_BOX,
                 )}
