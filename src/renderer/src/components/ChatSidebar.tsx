@@ -26,7 +26,7 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
     <aside className="border-border bg-card animate-in slide-in-from-right-4 fade-in-0 flex w-96 shrink-0 flex-col border-l duration-200">
       <header className="border-border flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Mark className="size-4" />
-        <span className="text-foreground text-sm font-medium">Assistant</span>
+        <span className="text-foreground text-sm font-medium">Ask AI</span>
         <div className="ml-auto flex items-center gap-0.5">
           <button
             onClick={() => nav.openPage({ kind: 'chat' })}
@@ -63,8 +63,8 @@ export function ChatSidebar({ onClose }: { onClose: () => void }) {
           <button
             onClick={onClose}
             className="text-muted-foreground hover:bg-accent hover:text-foreground grid size-7 place-items-center rounded-md"
-            title="Close Assistant"
-            aria-label="Close Assistant"
+            title="Close Ask AI"
+            aria-label="Close Ask AI"
           >
             <Icon name="close" size={15} />
           </button>

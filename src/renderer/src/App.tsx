@@ -537,10 +537,10 @@ function Browser({ initialView }: { initialView: ViewState }) {
   } else if (page?.kind === 'chat') {
     pageTitle = (
       <>
-        <Mark className="size-4" /> Assistant
+        <Mark className="size-4" /> Ask AI
       </>
     );
-    pageLabel = 'Assistant';
+    pageLabel = 'Ask AI';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>

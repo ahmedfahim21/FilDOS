@@ -29,29 +29,17 @@ const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[
   { value: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
-interface ProviderOption {
-  id: string;
-  name: string;
-  blurb: string;
-  available: boolean;
-}
-
-const PROVIDERS: ProviderOption[] = [
-  { id: 'embedded', name: 'On-device', blurb: 'Runs locally — private, no API key', available: true },
-  { id: 'cloud', name: 'Hosted', blurb: 'Coming soon', available: false },
-];
-
 /** The Settings pages. Model management gets its own tab — it's the biggest. */
 type SettingsTab = 'general' | 'search' | 'assistant' | 'privacy';
 
 const TABS: { id: SettingsTab; label: string; icon: IconName }[] = [
   { id: 'general', label: 'General', icon: 'sun' },
-  { id: 'search', label: 'AI & Search', icon: 'search' },
-  { id: 'assistant', label: 'Assistant', icon: 'sparkles' },
+  { id: 'search', label: 'Searching', icon: 'search' },
+  { id: 'assistant', label: 'Ask AI', icon: 'sparkles' },
   { id: 'privacy', label: 'Privacy', icon: 'eye-off' },
 ];
 
-/** Display heading + order for each model family in the Assistant tab. */
+/** Display heading + order for each model family in the Ask AI tab. */
 const FAMILY_LABELS: Record<LlmModelFamily, string> = {
   custom: 'Your models',
   llama: 'Llama — Meta',
@@ -578,12 +566,13 @@ function ChatModelBrowser() {
         </div>
       </div>
 
-      {/* Recommended for this machine — the top of the library. */}
+      {/* Recommended for this machine — the top of the library. Styled like a
+          family group (label + card), not a boxed callout, to keep it calm. */}
       {featured && (
-        <div className="border-mint/40 bg-mint/[0.04] mb-4 rounded-xl border p-2.5">
-          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-            <Icon name="sparkles" size={13} className="text-mint shrink-0" />
-            <span className="text-foreground text-2xs font-medium tracking-wider uppercase">
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Icon name="sparkles" size={14} className="text-mint shrink-0" />
+            <span className="text-muted-foreground text-2xs font-medium tracking-wider uppercase">
               Recommended for your machine
             </span>
           </div>
@@ -628,7 +617,7 @@ function ChatModelBrowser() {
 
       <p className="text-muted-foreground mt-3 text-2xs leading-snug">
         Models run fully on this device through llama.cpp — nothing leaves your machine.
-        Downloaded models appear in the Assistant's picker with the parameters you set here.
+        Downloaded models appear in the Ask AI picker with the parameters you set here.
         Vision-capable models answer text today; image input is coming.
       </p>
     </div>
@@ -800,8 +789,6 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const indexing = useIndexing();
   const { notifyError } = useToast();
   const [tab, setTab] = useState<SettingsTab>('general');
-  const [embedding, setEmbedding] = useState(false);
-  const [embedResult, setEmbedResult] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('system');
   const [sounds, setSounds] = useState(soundsEnabled());
 
@@ -827,8 +814,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
     if (value) playToggle(); // confirm with a pip once sounds are back on
   }
 
-  const isCloud = ai.activeProvider === 'cloud';
-  const disabled = !ai.enabled || isCloud;
+  const disabled = !ai.enabled;
 
   const ix = indexing.progress;
   const indexRunning = ix?.state === 'scanning' || ix?.state === 'indexing';
@@ -881,22 +867,11 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
     };
   })();
 
-  async function handleTestEmbed() {
-    setEmbedding(true);
-    setEmbedResult(null);
-    const res = await window.ai.embed(['hello world']);
-    setEmbedding(false);
-    if (!res.ok) {
-      notifyError(res.error);
-      return;
-    }
-    const vec = res.data[0] ?? [];
-    const preview = vec.slice(0, 4).map((v) => v.toFixed(3)).join(', ');
-    setEmbedResult(`dim ${vec.length} · [${preview}${vec.length > 4 ? ', …' : ''}]`);
-  }
-
   return (
-    <div className="h-full overflow-y-auto">
+    // `scrollbar-gutter: stable` reserves the scrollbar's width, so switching
+    // between a short and a tall tab doesn't shove the centered column sideways
+    // when the scrollbar appears/disappears.
+    <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-2xl px-8 py-10">
         <header className="mb-6">
           <h1 className="text-foreground mb-1 text-xl font-medium">Settings</h1>
@@ -907,7 +882,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
         {/* Page tabs — model management is its own page, it's the biggest. */}
         <nav
-          className="border-border bg-muted/50 mb-6 flex w-fit items-center gap-1 rounded-xl border p-1"
+          className="border-border mb-6 flex w-full items-center gap-6 border-b"
           role="tablist"
           aria-label="Settings sections"
         >
@@ -918,10 +893,10 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors',
+                '-mb-px flex items-center gap-1.5 border-b-2 pb-2.5 text-sm transition-colors',
                 tab === t.id
-                  ? 'bg-card text-foreground ring-border shadow-sm ring-1'
-                  : 'text-muted-foreground hover:text-foreground',
+                  ? 'border-foreground text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
               <Icon name={t.icon} size={14} />
@@ -965,103 +940,44 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
           {tab === 'search' && (
             <>
-              {/* AI features */}
+              {/* Embeddings */}
               <Section
                 icon="sparkles"
                 accent="mint"
-                title="AI features"
-                subtitle="Semantic search and smart organization (foundation)"
-                action={<Toggle checked={ai.enabled} onChange={ai.setEnabled} label="Enable AI features" />}
+                title="Embeddings"
+                subtitle="On-device models that power semantic search"
+                action={<Toggle checked={ai.enabled} onChange={ai.setEnabled} label="Enable embeddings" />}
               >
-                {/* Provider selector */}
-                <div className={cn(!ai.enabled && 'pointer-events-none opacity-50')}>
-                  <SubLabel>Provider</SubLabel>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PROVIDERS.map((p) => (
-                      <button
-                        key={p.id}
-                        disabled={!p.available}
-                        onClick={() => ai.setProvider(p.id)}
-                        className={cn(
-                          'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
-                          ai.activeProvider === p.id
-                            ? 'border-border bg-foreground/[0.08] ring-1 ring-inset ring-foreground/20'
-                            : 'border-border hover:bg-accent',
-                          !p.available && 'cursor-not-allowed opacity-60 hover:bg-transparent',
-                        )}
-                      >
-                        <div className="flex w-full items-center justify-between gap-2">
-                          <span className="text-foreground text-sm">{p.name}</span>
-                          {!p.available && (
-                            <span className="text-muted-foreground border-border rounded-md border border-dashed px-1.5 py-0.5 text-3xs">
-                              Soon
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-muted-foreground text-2xs">{p.blurb}</span>
-                      </button>
-                    ))}
+                {/* Models download automatically once enabled — status only. */}
+                <div className={cn('flex flex-col gap-1.5', disabled && 'pointer-events-none opacity-50')}>
+                  {INDEX_MODEL_IDS.map((id) => (
+                    <ModelRow
+                      key={id}
+                      id={id}
+                      status={ai.statuses[id]}
+                      onDownload={() =>
+                        ai.downloadModel(id).then((r) => {
+                          if (!r.ok) notifyError(r.error);
+                          ai.refreshStatuses();
+                        })
+                      }
+                    />
+                  ))}
+                  <div className="border-border mt-1 border-t pt-1.5">
+                    <ModelRow
+                      id={RERANKER_MODEL_ID}
+                      status={ai.statuses[RERANKER_MODEL_ID]}
+                      onDownload={() =>
+                        ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
+                          if (!r.ok) notifyError(r.error);
+                          ai.refreshStatuses();
+                        })
+                      }
+                    />
                   </div>
-                </div>
-
-                {/* Models — managed automatically (no user choice). */}
-                <div className={cn(disabled && 'pointer-events-none opacity-50')}>
-                  <SubLabel>Models</SubLabel>
-                  {isCloud ? (
-                    <p className="text-muted-foreground border-border rounded-lg border border-dashed px-3 py-3 text-center text-2xs">
-                      Switch to On-device to use models.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-1.5">
-                      {INDEX_MODEL_IDS.map((id) => (
-                        <ModelRow
-                          key={id}
-                          id={id}
-                          status={ai.statuses[id]}
-                          onDownload={() =>
-                            ai.downloadModel(id).then((r) => {
-                              if (!r.ok) notifyError(r.error);
-                              ai.refreshStatuses();
-                            })
-                          }
-                        />
-                      ))}
-                      <div className="border-border mt-1 border-t pt-1.5">
-                        <ModelRow
-                          id={RERANKER_MODEL_ID}
-                          status={ai.statuses[RERANKER_MODEL_ID]}
-                          onDownload={() =>
-                            ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
-                              if (!r.ok) notifyError(r.error);
-                              ai.refreshStatuses();
-                            })
-                          }
-                        />
-                      </div>
-                      <p className="text-muted-foreground mt-1 text-2xs leading-snug">
-                        FilDOS picks the right model per file automatically — a text model for documents
-                        and CLIP for images. Both download when AI is enabled. The reranker is optional
-                        and improves search precision when downloaded.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Test embed */}
-                <div className={cn('border-border border-t pt-4', disabled && 'pointer-events-none opacity-50')}>
-                  <div className="flex items-center gap-3">
-                    <Button size="sm" variant="secondary" onClick={handleTestEmbed} disabled={embedding || disabled}>
-                      {embedding ? 'Embedding…' : 'Test embed'}
-                    </Button>
-                    {embedResult && (
-                      <code className="text-muted-foreground truncate font-mono text-2xs">
-                        {embedResult}
-                      </code>
-                    )}
-                  </div>
-                  <p className="text-muted-foreground mt-2 text-2xs leading-snug">
-                    Embeds a sample string with the text model to verify it end-to-end. The first run
-                    downloads the model if needed.
+                  <p className="text-muted-foreground mt-1 text-2xs leading-snug">
+                    These download automatically when embeddings are enabled. The reranker is optional
+                    and sharpens search precision.
                   </p>
                 </div>
               </Section>
@@ -1178,7 +1094,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               <Section
                 icon="sparkles"
                 accent="mint"
-                title="Assistant"
+                title="Ask AI"
                 subtitle="On-device chat models — download, tune, and pick what fits your machine"
               >
                 {/* What this machine can run. */}
@@ -1242,7 +1158,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   </div>
                   <p className="text-muted-foreground text-2xs leading-snug">
                     Hidden items are removed from the index immediately and never re-indexed —
-                    semantic search and the Assistant can't see them.
+                    semantic search and Ask AI can't see them.
                   </p>
                 </>
               )}
