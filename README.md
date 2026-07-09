@@ -28,16 +28,8 @@
   <a href="https://github.com/ahmedfahim21/FilDOS/issues">Issues</a> 
 </p>
 
-<p align="center">
-  <video src="public/fildos.mp4"
-        controls
-        autoplay
-        muted
-        loop
-        width="900"
-        >
-  </video>
-</p>
+  https://github.com/user-attachments/assets/0db212bb-82be-494d-aabd-fbb224d211fd
+
 
 ## Why FilDOS
 
