@@ -1,9 +1,11 @@
 import type { CSSProperties } from "react";
-import { Download } from "lucide-react";
-import { GithubIcon } from "../icons";
+import { Download, Star } from "lucide-react";
+import { DiscordIcon } from "../icons";
 
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
 const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
+// TODO: replace with the real invite once the server is live.
+const DISCORD_URL = "https://discord.gg/fildos";
 
 const SCOOPS = ["#f26d6d", "#f286b4", "#f9a85c", "#6e9bee", "#4fc9b8", "#a585e0"];
 
@@ -48,10 +50,10 @@ export function LandingCta() {
 
         <div className="relative space-y-3 text-center">
           <h2 className="text-3xl font-medium tracking-tight text-ink sm:text-4xl">
-            Ready to meet your files again?
+            Stop searching. Start seeing.
           </h2>
           <p className="mx-auto max-w-md text-balance text-sm text-mist sm:text-base">
-            Download FilDOS and experience a file browser that understands your files—not just where they&apos;re stored.
+            Free, open-source, and runs entirely on your machine.
           </p>
         </div>
 
@@ -63,7 +65,7 @@ export function LandingCta() {
             className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-ink/85"
           >
             <Download className="size-4" />
-            Download for free
+            Download FilDOS
           </a>
           <a
             href={GITHUB_URL}
@@ -71,10 +73,20 @@ export function LandingCta() {
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-cloud"
           >
-            <GithubIcon className="size-4" />
+            <Star className="size-4 fill-mango text-mango" />
             Star on GitHub
           </a>
         </div>
+
+        <a
+          href={DISCORD_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="relative flex items-center gap-2 text-sm text-mist transition-colors hover:text-ink"
+        >
+          <DiscordIcon className="size-4 text-[#5865F2]" />
+          Tried FilDOS? Tell us what you think on Discord
+        </a>
 
         <span className="relative font-mono text-2xs text-mist">
           macOS · Windows · Linux

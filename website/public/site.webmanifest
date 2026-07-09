@@ -1,7 +1,7 @@
 {
-  "name": "FilDOS - AI-Native Decentralized Storage",
+  "name": "FilDOS - Open source file browser with AI",
   "short_name": "FilDOS",
-  "description": "A secure, AI-native, meaning-first decentralized drive built on Filecoin",
+  "description": "An open source file browser with AI capabilities",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

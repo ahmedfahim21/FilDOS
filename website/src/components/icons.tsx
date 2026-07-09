@@ -26,6 +26,22 @@ export function GithubIcon({ className, title }: IconProps) {
   );
 }
 
+export function DiscordIcon({ className, title }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      role={title ? "img" : undefined}
+      aria-label={title}
+      aria-hidden={title ? undefined : true}
+      className={className}
+    >
+      {title && <title>{title}</title>}
+      <path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.78 13.78 0 0 0-.64 1.28 18.27 18.27 0 0 0-5.5 0 12.64 12.64 0 0 0-.64-1.28c-1.71.29-3.37.8-4.93 1.51C.56 9.05-.29 13.61.13 18.11a19.9 19.9 0 0 0 6.07 3.03c.49-.66.93-1.37 1.3-2.1a12.88 12.88 0 0 1-2.05-.98c.17-.12.34-.25.5-.38 3.93 1.8 8.18 1.8 12.06 0 .17.13.33.26.5.38-.65.39-1.34.71-2.05.98.38.73.81 1.44 1.3 2.1a19.84 19.84 0 0 0 6.08-3.03c.5-5.22-.85-9.74-3.52-13.74ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.95-2.42 2.16-2.42 1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.22 0 2.18 1.09 2.16 2.42 0 1.34-.94 2.42-2.16 2.42Z" />
+    </svg>
+  );
+}
+
 export function XIcon({ className, title }: IconProps) {
   return (
     <svg

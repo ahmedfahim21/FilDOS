@@ -8,10 +8,10 @@ import {
   LayoutGrid,
   List,
   Lock,
+  MessageCircle,
   Search,
   ShieldCheck,
   Sparkles,
-  Tag,
 } from "lucide-react";
 import { Grainient, type ScoopBlend } from "./grainient";
 import { GithubIcon } from "../icons";
@@ -47,6 +47,11 @@ function TagDotsChip() {
   );
 }
 
+/** The chat composer's slash-command trigger, as it appears in the app. */
+function SlashChip() {
+  return <span className="font-mono text-xl font-bold text-mint">/</span>;
+}
+
 const FEATURES: Array<{
   blend: ScoopBlend;
   chips: ReactNode[];
@@ -61,7 +66,7 @@ const FEATURES: Array<{
       <Search key="b" className="size-6 text-ink/70" />,
     ],
     title: "Search by meaning",
-    desc: "Ask for 'receipts from tax season' or 'photos from Japan trip' — FilDOS finds files by meaning, not filenames.",
+    desc: "Ask for 'receipts from tax season' or 'photos from Japan trip'. FilDOS finds files by meaning, not just filenames.",
   },
   {
     blend: "grapeBlueberry",
@@ -76,11 +81,12 @@ const FEATURES: Array<{
   {
     blend: "strawberryBubblegum",
     chips: [
-      <Tag key="a" className="size-6 text-strawberry" />,
+      <MessageCircle key="a" className="size-6 text-strawberry" />,
       <TagDotsChip key="b" />,
+      <SlashChip key="c" />,
     ],
-    title: "Smart organization",
-    desc: "Colour-coded tags with AI grouping related files automatically.",
+    title: "Chat with your files",
+    desc: "Ask questions across your documents and get answers with citations. Tag files, use slash commands.",
   },
   {
     blend: "mangoStrawberry",
@@ -110,7 +116,7 @@ const FEATURES: Array<{
       <Heart key="b" className="size-6 text-strawberry" />,
     ],
     title: "Open source",
-    desc: "Built in the open on GitHub. No accounts, no subscriptions, no telemetry — just an app that's yours.",
+    desc: "Built in the open on GitHub. No accounts, no subscriptions, no telemetry.",
   },
 ];
 

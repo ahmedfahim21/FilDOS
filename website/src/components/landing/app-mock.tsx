@@ -18,6 +18,8 @@ import {
   Send,
   Settings,
   Sparkles,
+  Tag,
+  Waypoints,
   X,
 } from "lucide-react";
 import { Logo, Mark } from "../logo";
@@ -162,16 +164,17 @@ const TYPE_CHIPS = [
   { label: "Code", dot: "bg-mint" },
 ];
 
-const BEST_MATCHES: Array<{ icon: ReactNode; name: string; sub: string; badge: string }> = [
-  { icon: <ImageIcon className="size-5" />, name: "receipt-scan.png", sub: "scanned grocery receipt · March 2026", badge: "Best" },
-  { icon: <PdfIcon className="size-5" />, name: "lease-agreement.pdf", sub: "annual lease — rent receipts attached", badge: "92" },
-  { icon: <SpreadsheetIcon className="size-5" />, name: "tax-summary.xlsx", sub: "itemised deductions and receipts", badge: "88" },
-  { icon: <PdfIcon className="size-5" />, name: "clinic-invoice.pdf", sub: "medical receipt · reimbursable", badge: "81" },
-];
-
-const NAME_MATCHES: Array<{ icon: ReactNode; name: string; sub: string }> = [
-  { icon: <FolderGlyph a="#4fc9b8" className="size-5" />, name: "Receipts", sub: "Home › Documents › Finance" },
-  { icon: <ImageIcon className="size-5" />, name: "receipt-scan.png", sub: "Home › Documents › Finance" },
+/**
+ * One fused result list, like the real overlay: filename evidence anchors the
+ * rank, semantic hits join it, and only the single strongest match gets a
+ * "Best" pill — no pseudo-percentage scores.
+ */
+const RESULTS: Array<{ icon: ReactNode; name: string; sub: string; best?: boolean }> = [
+  { icon: <ImageIcon className="size-5" />, name: "receipt-scan.png", sub: "scanned grocery receipt · March 2026", best: true },
+  { icon: <FolderGlyph a="#4fc9b8" className="size-5" />, name: "Receipts", sub: "~/Documents/Finance" },
+  { icon: <SpreadsheetIcon className="size-5" />, name: "tax-summary.xlsx", sub: "itemised deductions and receipts" },
+  { icon: <PdfIcon className="size-5" />, name: "lease-agreement.pdf", sub: "annual lease — rent receipts attached" },
+  { icon: <PdfIcon className="size-5" />, name: "clinic-invoice.pdf", sub: "medical receipt · reimbursable" },
 ];
 
 /** Chat transcript — reference only. */
@@ -299,15 +302,23 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
               {c.label}
             </span>
           ))}
+          <span className="flex items-center gap-1 rounded-full border border-ink/12 px-2 py-0.5 text-[9px] text-mist">
+            <Tag className="size-2" />
+            Tag
+          </span>
+          <span className="flex items-center gap-1 rounded-full border border-ink/12 px-2 py-0.5 text-[9px] text-mist">
+            <Clock className="size-2" />
+            Any time
+          </span>
         </div>
 
-        {/* Results */}
+        {/* Results — one fused list, matching the real overlay */}
         <div className="max-h-[280px] overflow-hidden py-1.5">
           <div className="flex items-center gap-1.5 px-4 pb-1 pt-2 font-semibold text-[8px] uppercase tracking-wider text-mist">
             <Sparkles className="size-2.5 text-mint" />
-            Best matches
+            Results
           </div>
-          {BEST_MATCHES.map((r, i) => (
+          {RESULTS.map((r, i) => (
             <div
               key={r.name}
               className={cn(
@@ -320,28 +331,11 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
                 <div className="truncate text-[11px] text-ink">{r.name}</div>
                 <div className="truncate text-[9px] text-mist">{r.sub}</div>
               </div>
-              <span
-                className={cn(
-                  "shrink-0 rounded-sm px-1.5 py-0.5 text-[8px] font-medium tabular-nums",
-                  r.badge === "Best" ? "bg-mint/15 text-mint" : "bg-cloud text-mist"
-                )}
-              >
-                {r.badge}
-              </span>
-            </div>
-          ))}
-
-          <div className="flex items-center gap-1.5 px-4 pb-1 pt-2.5 font-semibold text-[8px] uppercase tracking-wider text-mist">
-            <Search className="size-2.5 text-blueberry" />
-            Name matches
-          </div>
-          {NAME_MATCHES.map((r) => (
-            <div key={r.name} className="mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5">
-              <span className="shrink-0">{r.icon}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[11px] text-ink">{r.name}</div>
-                <div className="truncate text-[9px] text-mist">{r.sub}</div>
-              </div>
+              {r.best && (
+                <span className="shrink-0 rounded-sm bg-mint/15 px-1.5 py-0.5 text-[8px] font-medium text-mint">
+                  Best
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -366,17 +360,17 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
   return (
     <aside
       role="dialog"
-      aria-label="Assistant"
+      aria-label="Ask AI"
       className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-ink/8 bg-white shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200"
     >
       {/* Header */}
       <header className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
         <Sparkles className="size-3.5 text-mint" />
-        <span className="text-[11px] font-medium text-ink">Assistant</span>
+        <span className="text-[11px] font-medium text-ink">Ask AI</span>
         <span className="size-1.5 rounded-full bg-mint" />
         <button
           onClick={onClose}
-          aria-label="Close Assistant"
+          aria-label="Close Ask AI"
           className="ml-auto grid size-6 place-items-center rounded-md text-mist transition-colors hover:bg-ink/[0.06] hover:text-ink"
         >
           <X className="size-3.5" />
@@ -416,14 +410,23 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
         )}
       </div>
 
-      {/* Composer */}
+      {/* Composer — mirrors the real one: Research toggle + @ # / triggers */}
       <div className="shrink-0 border-t border-ink/8 p-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-ink/10 bg-white px-2.5 py-1.5">
-          <Sparkles className="size-3.5 text-mist" />
-          <span className="flex-1 text-[10px] text-mist">Ask about your files…</span>
-          <span className="grid size-5 place-items-center rounded-md bg-mint text-white">
-            <Send className="size-2.5" />
-          </span>
+        <div className="rounded-lg border border-ink/10 bg-white">
+          <div className="px-2.5 pb-1 pt-2 text-[10px] text-mist">Ask about your files…</div>
+          <div className="flex items-center gap-1 px-1.5 pb-1.5">
+            <span className="flex items-center gap-1 rounded-md bg-mint/15 px-1.5 py-0.5 text-[8.5px] font-medium text-mint">
+              <Search className="size-2.5" />
+              Research
+            </span>
+            <span className="flex-1" />
+            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-blueberry">@</span>
+            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-grape">#</span>
+            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-mint">/</span>
+            <span className="ml-0.5 grid size-4.5 place-items-center rounded-full bg-ink text-white">
+              <Send className="size-2" />
+            </span>
+          </div>
         </div>
       </div>
     </aside>
@@ -590,6 +593,7 @@ export function AppMock({
             ))}
 
             <div className="min-h-2 flex-1" />
+            <SideItem icon={<Waypoints className="size-3" />} label="Canvas" />
             <SideItem icon={<Clock className="size-3" />} label="Recents" />
             <SideItem icon={<Settings className="size-3" />} label="Settings" />
           </div>
