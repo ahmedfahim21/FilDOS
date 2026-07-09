@@ -5,7 +5,7 @@ import type { GraphProgress, GraphSnapshot } from '@shared/graphTypes';
 import { IMAGE_MODEL_ID, NER_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { activeAiProvider } from '../registry';
-import { pace } from '../index/handlers';
+import { pace } from '../pace';
 import { GraphBuilder } from './builder';
 
 /**

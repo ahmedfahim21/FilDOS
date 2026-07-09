@@ -16,6 +16,7 @@ import {
   labelIndices,
   mtimeHistogram,
   MINT,
+  MIST,
   SCOOPS,
 } from './graphViz';
 import { useCosmos } from './useCosmos';
@@ -446,7 +447,7 @@ function DetailPanel({
               node.kind === 'entity'
                 ? MINT
                 : node.kind === 'tag'
-                  ? (node.color ?? MINT)
+                  ? (node.color ?? MIST)
                   : SCOOPS[node.clusterId % SCOOPS.length],
           }}
         />

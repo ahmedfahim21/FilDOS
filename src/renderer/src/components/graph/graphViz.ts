@@ -13,7 +13,7 @@ import type { GraphEdgeKind, GraphSnapshot } from '@shared/graphTypes';
 /** The six scoop accents, in brand order (see .claude/brand-guidelines.md). */
 export const SCOOPS = ['#f26d6d', '#f286b4', '#f9a85c', '#6e9bee', '#4fc9b8', '#a585e0'];
 export const MINT = '#4fc9b8';
-const MIST = '#8a8f9c';
+export const MIST = '#8a8f9c';
 
 /** Edge kind → scoop, matching the filter chips (one scoop, one meaning). */
 export const EDGE_COLORS: Record<GraphEdgeKind, string> = {

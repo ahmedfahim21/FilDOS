@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
@@ -9,6 +9,8 @@ import { activeAiProvider } from '../registry';
 import * as aiIndex from '../../db/aiIndex';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { updateTrayStatus } from '../../tray';
+import { pace } from '../pace';
+import { clearGraph } from '../graph/handlers';
 import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
@@ -68,26 +70,6 @@ function broadcast(progress: IndexProgress): void {
     if (!win.webContents.isDestroyed()) win.webContents.send(Events.indexProgress, progress);
   }
   updateTrayStatus(progress); // no-op unless the app is resident in the tray
-}
-
-/**
- * Duty-cycle the indexing pipeline. After a unit of embedding work that took
- * `elapsedMs`, rest proportionally: barely at all when the user is away, about
- * half speed while they're actively using the machine, and gentler still on
- * battery — a background index run must never heat a laptop someone is
- * actively typing on. Exported for the knowledge-graph builder, which runs
- * under the same budget (../graph/handlers.ts).
- */
-export async function pace(elapsedMs: number): Promise<void> {
-  let factor = 0.15; // user away: ~87% duty cycle
-  try {
-    if (powerMonitor.getSystemIdleTime() < 60) factor = 1; // active: ~50% duty
-    if (powerMonitor.isOnBatteryPower()) factor += 0.5;
-  } catch {
-    // power status unavailable — keep the conservative default
-  }
-  const delay = Math.min(2000, elapsedMs * factor);
-  if (delay > 5) await new Promise((r) => setTimeout(r, delay));
 }
 
 const indexer = new Indexer({
@@ -156,7 +138,17 @@ export function registerIndexHandlers(): void {
 
   ipcMain.handle(Channels.indexPause, () => wrap<void>(async () => indexer.pause()));
 
-  ipcMain.handle(Channels.indexClear, () => wrap<void>(async () => indexer.clear()));
+  ipcMain.handle(
+    Channels.indexClear,
+    () =>
+      wrap<void>(async () => {
+        // Clear both stores together: the graph is derived from the index, so
+        // "Clear index" must also drop entities and the graph watermark (FK
+        // cascades handle edges/mentions, but not the standalone entity rows).
+        await indexer.clear();
+        await clearGraph();
+      }),
+  );
 
   ipcMain.handle(Channels.indexStatus, () => wrap<IndexProgress>(async () => indexer.status()));
 

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import { cn } from '@/lib/utils';
 import { Icon } from '../Icon';
 
@@ -59,6 +65,38 @@ export function TimeScrubber({
     else commit(from, Math.max(f, from));
   };
 
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+  // Keyboard control for each handle: arrows nudge (Shift = larger step),
+  // Home/End jump to the bound, Escape/Backspace resets the whole range. The
+  // "from" handle can't cross "to" and vice versa.
+  const onHandleKey =
+    (handle: 'from' | 'to') =>
+    (e: ReactKeyboardEvent<HTMLButtonElement>): void => {
+      const step = e.shiftKey ? 0.1 : 0.02;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setPlaying(false);
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        if (handle === 'from') commit(clamp(from + dir * step, 0, to), to);
+        else commit(from, clamp(to + dir * step, from, 1));
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setPlaying(false);
+        if (handle === 'from') commit(0, to);
+        else commit(from, from);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setPlaying(false);
+        if (handle === 'from') commit(to, to);
+        else commit(from, 1);
+      } else if (e.key === 'Escape' || e.key === 'Backspace') {
+        e.preventDefault();
+        setPlaying(false);
+        onChange(null);
+      }
+    };
+
   // Replay: sweep the right edge from "just past the left edge" to the end.
   // User-initiated, so it animates regardless of prefers-reduced-motion.
   useEffect(() => {
@@ -99,6 +137,8 @@ export function TimeScrubber({
       </span>
       <div
         ref={barRef}
+        role="group"
+        aria-label="File time range"
         className="relative h-8 min-w-0 flex-1 cursor-ew-resize touch-none select-none"
         data-testid="time-scrubber"
         onPointerDown={onPointerDown}
@@ -129,6 +169,25 @@ export function TimeScrubber({
           className="border-mint/60 pointer-events-none absolute inset-y-0 rounded border-x-2"
           style={{ left: `${from * 100}%`, width: `${Math.max(0.5, (to - from) * 100)}%` }}
         />
+        {/* Focusable slider handles — one per edge, keyboard-accessible */}
+        {([
+          ['from', from, value ? value[0] : min, 'Start of time range'] as const,
+          ['to', to, value ? value[1] : max, 'End of time range'] as const,
+        ]).map(([handle, pos, ts, label]) => (
+          <button
+            key={handle}
+            type="button"
+            role="slider"
+            aria-label={label}
+            aria-valuemin={min}
+            aria-valuemax={max}
+            aria-valuenow={Math.round(ts)}
+            aria-valuetext={fmt(ts)}
+            className="focus-visible:ring-mint absolute inset-y-0 w-2.5 -translate-x-1/2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
+            style={{ left: `${pos * 100}%` }}
+            onKeyDown={onHandleKey(handle)}
+          />
+        ))}
       </div>
       <span className="text-muted-foreground w-16 shrink-0 text-3xs tabular-nums">
         {fmt(value ? value[1] : max)}
