@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { activeToken, completeToken, parseCommand, pruneMentions } from './chatComposer';
+import type { ChatMention } from '@shared/types';
+import {
+  activeToken,
+  completeToken,
+  parseCommand,
+  pruneMentions,
+  tokenBeforeCaret,
+} from './chatComposer';
 
 describe('activeToken', () => {
   it('opens an @ token at the start of the text', () => {
@@ -73,5 +80,51 @@ describe('pruneMentions', () => {
 
   it('dedupes by path', () => {
     expect(pruneMentions('@report.pdf @report.pdf', [file, file])).toEqual([file]);
+  });
+});
+
+describe('tokenBeforeCaret', () => {
+  const file: ChatMention = { kind: 'file', path: '/a/My Report.pdf', name: 'My Report.pdf' };
+  const folder: ChatMention = { kind: 'folder', path: '/a/Docs', name: 'Docs' };
+
+  it('removes a whole file mention (with its trailing space) and reports it', () => {
+    const text = 'summarize @My Report.pdf ';
+    expect(tokenBeforeCaret(text, text.length, [file])).toEqual({
+      start: 'summarize '.length,
+      end: text.length,
+      mention: file,
+    });
+  });
+
+  it('removes a file mention even without a trailing space', () => {
+    const text = 'see @My Report.pdf';
+    expect(tokenBeforeCaret(text, text.length, [file])).toEqual({
+      start: 'see '.length,
+      end: text.length,
+      mention: file,
+    });
+  });
+
+  it('removes a folder mention', () => {
+    const text = '#Docs';
+    expect(tokenBeforeCaret(text, text.length, [folder])).toEqual({
+      start: 0,
+      end: 5,
+      mention: folder,
+    });
+  });
+
+  it('removes a leading /command (no mention)', () => {
+    expect(tokenBeforeCaret('/summarize ', 11, [])).toEqual({ start: 0, end: 11 });
+    expect(tokenBeforeCaret('/find', 5, [])).toEqual({ start: 0, end: 5 });
+  });
+
+  it('leaves a command alone once real text follows it', () => {
+    expect(tokenBeforeCaret('/summarize the files', 20, [])).toBeNull();
+  });
+
+  it('returns null when the caret is not just after a token', () => {
+    expect(tokenBeforeCaret('plain words', 11, [])).toBeNull();
+    expect(tokenBeforeCaret('', 0, [])).toBeNull();
   });
 });

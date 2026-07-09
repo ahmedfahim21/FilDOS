@@ -3,7 +3,13 @@ import type { Entry, SemanticHit } from '@shared/types';
 import { CHAT_COMMANDS } from '@shared/llmModels';
 import { useChat } from '@/state/chat';
 import { useNavigation } from '@/state/navigation';
-import { activeToken, completeToken, parseCommand, pruneMentions } from '@/lib/chatComposer';
+import {
+  activeToken,
+  completeToken,
+  parseCommand,
+  pruneMentions,
+  tokenBeforeCaret,
+} from '@/lib/chatComposer';
 import { fileLogo } from '@/lib/fileLogo';
 import { cn } from '@/lib/utils';
 import type { ChatMention } from '@shared/types';
@@ -200,6 +206,22 @@ export function ChatSurface({
         e.preventDefault();
         setDismissedTokenStart(token?.start ?? null);
         return;
+      }
+    }
+    // Backspace at the end of a completed @file / #folder / /command removes
+    // the whole token (and its chip) — an atomic mention, not plain text.
+    if (e.key === 'Backspace' && !e.shiftKey) {
+      const el = e.currentTarget;
+      if (el.selectionStart != null && el.selectionStart === el.selectionEnd) {
+        const del = tokenBeforeCaret(draft, el.selectionStart, mentions);
+        if (del) {
+          e.preventDefault();
+          setDraft(draft.slice(0, del.start) + draft.slice(del.end));
+          setCaret(del.start);
+          pendingCaret.current = del.start;
+          if (del.mention) setMentions((prev) => prev.filter((m) => m.path !== del.mention!.path));
+          return;
+        }
       }
     }
     if (e.key === 'Enter' && !e.shiftKey) {

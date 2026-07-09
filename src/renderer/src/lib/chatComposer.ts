@@ -78,3 +78,45 @@ export function pruneMentions(text: string, mentions: ChatMention[]): ChatMentio
     return true;
   });
 }
+
+/** A whole token to remove on Backspace, plus the mention it represents (if any). */
+export interface DeletableToken {
+  /** Start index of the span to delete. */
+  start: number;
+  /** End index (the caret). */
+  end: number;
+  /** The mention this token stood for, so its chip can be dropped too. */
+  mention?: ChatMention;
+}
+
+/**
+ * When the caret sits just after a completed `@file` / `#folder` token (with or
+ * without its auto-inserted trailing space) or a leading `/command`, returns the
+ * whole token's span so one Backspace removes all of it — treating a mention
+ * like an atomic chip rather than plain text. Returns null otherwise (normal
+ * character deletion). Pure, so it's unit-tested.
+ */
+export function tokenBeforeCaret(
+  text: string,
+  caret: number,
+  mentions: ChatMention[],
+): DeletableToken | null {
+  if (caret <= 0) return null;
+  const before = text.slice(0, caret);
+
+  // Longest matching mention token wins (an earlier start = a longer match).
+  let best: DeletableToken | null = null;
+  for (const m of mentions) {
+    const token = (m.kind === 'file' ? '@' : '#') + m.name;
+    let start: number | null = null;
+    if (before.endsWith(token + ' ')) start = caret - token.length - 1;
+    else if (before.endsWith(token)) start = caret - token.length;
+    if (start !== null && (!best || start < best.start)) best = { start, end: caret, mention: m };
+  }
+  if (best) return best;
+
+  // A leading /command: only when it (plus an optional trailing space) is the
+  // entire text before the caret — deleting a word mid-prompt stays normal.
+  if (/^\/\S+ ?$/.test(before)) return { start: 0, end: caret };
+  return null;
+}
