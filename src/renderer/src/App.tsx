@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -49,8 +51,13 @@ import { ContextMenu, type ContextMenuState } from '@/components/ContextMenu';
 import { ConfirmDialog, PromptDialog } from '@/components/Dialog';
 import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
-import { PageChromeSlotContext } from '@/components/Page';
+import { PageChromeSlotContext, PageLoader } from '@/components/Page';
 import { RecentsView } from '@/components/RecentsView';
+// Lazy: the Brain view pulls in the WebGL stack (cosmos.gl + luma.gl), which
+// has no business in the startup bundle.
+const GraphView = lazy(() =>
+  import('@/components/graph/GraphView').then((m) => ({ default: m.GraphView })),
+);
 import { SearchOverlay } from '@/components/SearchOverlay';
 import { TagFilesView } from '@/components/TagFilesView';
 import { CloudConnectView } from '@/components/CloudConnectView';
@@ -541,6 +548,13 @@ function Browser({ initialView }: { initialView: ViewState }) {
       </>
     );
     pageLabel = 'Ask AI';
+  } else if (page?.kind === 'graph') {
+    pageTitle = (
+      <>
+        <Icon name="brain" size={15} /> Canvas
+      </>
+    );
+    pageLabel = 'Canvas';
   } else if (page?.kind === 'tag' && pageTag) {
     pageTitle = (
       <>
@@ -577,6 +591,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onDropPath={(path, e) => handleDrop(path, e)}
           onOpenTag={(tag) => nav.openPage({ kind: 'tag', tagId: tag.id })}
           onOpenRecents={() => nav.openPage({ kind: 'recents' })}
+          onOpenBrain={() => nav.openPage({ kind: 'graph' })}
           onOpenCloudConnect={() => nav.openPage({ kind: 'cloud-connect' })}
           onOpenSettings={() => nav.openPage({ kind: 'settings' })}
           onDropOnTag={handleDropOnTag}
@@ -607,6 +622,10 @@ function Browser({ initialView }: { initialView: ViewState }) {
                     nav.back();
                   }}
                 />
+              ) : nav.page?.kind === 'graph' ? (
+                <Suspense fallback={<PageLoader />}>
+                  <GraphView onBack={nav.back} onNavigate={nav.navigate} />
+                </Suspense>
               ) : nav.page?.kind === 'tag' ? (
                 pageTag && (
                   <TagFilesView

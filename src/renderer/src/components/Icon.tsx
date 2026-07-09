@@ -1,6 +1,7 @@
 import type { HugeiconsProps } from '@hugeicons/react';
 import type React from 'react';
 import {
+  AiBrain01Icon,
   AlertCircleIcon,
   ArrowExpand01Icon,
   ArrowLeft01Icon,
@@ -31,7 +32,9 @@ import {
   Moon01Icon,
   More01Icon,
   NoInternetIcon,
+  PauseIcon,
   PencilEdit01Icon,
+  PlayIcon,
   PlusSignIcon,
   Refresh01Icon,
   RotateLeft01Icon,
@@ -94,7 +97,10 @@ type IconName =
   | 'check-circle'
   | 'offline'
   | 'tool'
-  | 'more';
+  | 'more'
+  | 'brain'
+  | 'play'
+  | 'pause';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
 const ICONS: Record<IconName, HugeIcon> = {
@@ -143,6 +149,9 @@ const ICONS: Record<IconName, HugeIcon> = {
   tool: ToolsIcon,
   offline: NoInternetIcon,
   more: More01Icon,
+  brain: AiBrain01Icon,
+  play: PlayIcon,
+  pause: PauseIcon,
 };
 
 export function Icon({

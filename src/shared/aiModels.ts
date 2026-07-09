@@ -25,7 +25,7 @@ export interface AiModelDef {
   /** Embedding dimensionality. */
   dim: number;
   /** How the worker loads/runs it. */
-  kind: 'feature-extraction' | 'clip' | 'reranker';
+  kind: 'feature-extraction' | 'clip' | 'reranker' | 'ner';
   /** Approximate quantized download size in MB (for the UI). */
   sizeMb: number;
   /** One-line description for Settings. */
@@ -126,6 +126,18 @@ export const AI_MODELS: AiModelDef[] = [
     sizeMb: 85,
     description: 'Cross-encoder for search result reranking. Download to improve precision.',
   },
+  {
+    // Token-classification (BIO tags) — feeds the knowledge graph's entity
+    // nodes. Like the reranker, never downloaded automatically: the Canvas
+    // view works without it and entities light up once the user opts in.
+    id: 'Xenova/bert-base-NER',
+    label: 'Entity Extractor',
+    modality: 'text',
+    dim: 0, // no embedding output
+    kind: 'ner',
+    sizeMb: 110,
+    description: 'Finds people, organizations and places in your files for the Canvas view.',
+  },
 ];
 
 /**
@@ -137,6 +149,7 @@ export const AI_MODELS: AiModelDef[] = [
 export const TEXT_MODEL_ID = 'Xenova/bge-base-en-v1.5';
 export const IMAGE_MODEL_ID = 'Xenova/clip-vit-base-patch32';
 export const RERANKER_MODEL_ID = 'Xenova/ms-marco-MiniLM-L-6-v2';
+export const NER_MODEL_ID = 'Xenova/bert-base-NER';
 export const INDEX_MODEL_IDS = [TEXT_MODEL_ID, IMAGE_MODEL_ID] as const;
 
 // Kept for the few callers that need a single text model (e.g. the test-embed).

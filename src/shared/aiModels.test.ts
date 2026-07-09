@@ -12,11 +12,11 @@ describe('AI model catalog', () => {
   });
 
   it('declares a valid kind for every model, and positive dim for embedding models', () => {
-    const KINDS = ['feature-extraction', 'clip', 'reranker'] as const;
+    const KINDS = ['feature-extraction', 'clip', 'reranker', 'ner'] as const;
     for (const m of AI_MODELS) {
       expect(KINDS).toContain(m.kind);
-      // Rerankers produce scores, not embeddings — dim is 0 by convention.
-      if (m.kind !== 'reranker') expect(m.dim).toBeGreaterThan(0);
+      // Rerankers/NER produce scores/tags, not embeddings — dim is 0 by convention.
+      if (m.kind !== 'reranker' && m.kind !== 'ner') expect(m.dim).toBeGreaterThan(0);
     }
   });
 

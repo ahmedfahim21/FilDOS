@@ -4,6 +4,7 @@
  * (the llmModels import below is type-only — erased at compile time).
  */
 import type { LlmModelConfig, LlmModelDef, LlmSystemSpecs } from './llmModels';
+import type { GraphProgress, GraphSnapshot } from './graphTypes';
 
 /** A single directory entry as shown in the file list. */
 export interface Entry {
@@ -171,6 +172,15 @@ export interface Prefs {
     /** Keep indexing (app resident in the tray) after the last window closes. */
     ambient?: boolean;
   };
+  /** Knowledge-graph build bookkeeping (see src/main/ai/graph/builder.ts). */
+  graph?: {
+    /** When the graph was last (re)built, epoch ms. */
+    builtAt?: number;
+    /** max(index_state.indexed_at) the build ran against — the staleness check. */
+    watermark?: number;
+    /** Indexed-file count at build time (catches removals the watermark misses). */
+    files?: number;
+  };
 }
 
 /** Lifecycle of a provider's embedding model. */
@@ -307,6 +317,18 @@ export interface IndexApi {
   searchFile(path: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
   onProgress(cb: (progress: IndexProgress) => void): () => void;
+}
+
+/** The API surface exposed on `window.graph` (the knowledge-graph engine). */
+export interface GraphApi {
+  /** The current graph snapshot, rebuilding stale parts first if needed. */
+  get(opts?: { maxNodes?: number }): Promise<Result<GraphSnapshot>>;
+  /** Force a full rebuild (similarity + entities) from scratch. */
+  build(): Promise<Result<void>>;
+  /** Current build progress snapshot. */
+  status(): Promise<Result<GraphProgress>>;
+  /** Subscribe to build progress; returns an unsubscribe fn. */
+  onProgress(cb: (progress: GraphProgress) => void): () => void;
 }
 
 /** The API surface exposed on `window.fsapi` by the preload bridge. */

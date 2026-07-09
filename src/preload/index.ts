@@ -7,6 +7,7 @@ import type {
   ChatStreamEvent,
   CloudApi,
   FsApi,
+  GraphApi,
   IndexApi,
   IndexProgress,
   LlmApi,
@@ -16,6 +17,7 @@ import type {
   TagsApi,
   ViewsApi,
 } from '@shared/types';
+import type { GraphProgress } from '@shared/graphTypes';
 
 /**
  * The single, explicit API exposed to the renderer. We never hand the renderer
@@ -142,6 +144,19 @@ const indexApi: IndexApi = {
   },
 };
 contextBridge.exposeInMainWorld('index', indexApi);
+
+// The knowledge graph: snapshot fetch, rebuild, and a live build-progress stream.
+const graphApi: GraphApi = {
+  get: (opts) => ipcRenderer.invoke(Channels.graphGet, opts),
+  build: () => ipcRenderer.invoke(Channels.graphBuild),
+  status: () => ipcRenderer.invoke(Channels.graphStatus),
+  onProgress: (cb: (progress: GraphProgress) => void) => {
+    const listener = (_e: IpcRendererEvent, progress: GraphProgress) => cb(progress);
+    ipcRenderer.on(Events.graphProgress, listener);
+    return () => ipcRenderer.removeListener(Events.graphProgress, listener);
+  },
+};
+contextBridge.exposeInMainWorld('graph', graphApi);
 
 // The Assistant chat: model catalog status/download plus streaming generation.
 const llmApi: LlmApi = {

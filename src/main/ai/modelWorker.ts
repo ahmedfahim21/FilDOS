@@ -25,7 +25,9 @@ import { availableParallelism } from 'node:os';
 import { join, sep } from 'node:path';
 import type { ProgressInfo } from '@huggingface/transformers';
 import type { AiModelStatus } from '@shared/types';
+import type { EntitySpan } from '@shared/graphTypes';
 import { getModelDef, promptFor, type EmbedRole } from '@shared/aiModels';
+import { mergeBioSpans, type BioToken } from './graph/ner';
 
 const CACHE_DIR = process.env.FILDOS_MODELS_DIR ?? join(__dirname, 'models');
 
@@ -55,10 +57,18 @@ type ClassifierFn = (
   opts?: { topk: number | null },
 ) => Promise<Array<Array<{ label: string; score: number }>>>;
 
+/**
+ * Token-classification pipeline (NER). One call per text; returns one BIO
+ * subword token at a time — transformers.js has no aggregation strategy, so
+ * spans are assembled by `mergeBioSpans` (pure, unit-tested).
+ */
+type NerFn = (text: string) => Promise<BioToken[]>;
+
 type Loaded =
   | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
   | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall }
-  | { kind: 'reranker'; classify: ClassifierFn };
+  | { kind: 'reranker'; classify: ClassifierFn }
+  | { kind: 'ner'; ner: NerFn };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
 const loaders = new Map<string, Promise<Loaded>>();
@@ -167,6 +177,9 @@ function get(modelId: string): Promise<Loaded> {
         opts,
       )) as unknown as ClassifierFn;
       loaded = { kind: 'reranker', classify };
+    } else if (def.kind === 'ner') {
+      const ner = (await t.pipeline('token-classification', modelId, opts)) as unknown as NerFn;
+      loaded = { kind: 'ner', ner };
     } else {
       // Load the tokenizer separately so countTokens can run without inference.
       // AutoTokenizer.from_pretrained reads the same cached vocab files as the
@@ -268,6 +281,24 @@ async function rerankText(modelId: string, query: string, passages: string[]): P
   });
 }
 
+/**
+ * Named-entity recognition: one EntitySpan[] per input text. Texts run one at
+ * a time — NER input is short file excerpts, and sequential calls keep the
+ * WASM heap bounded the same way EMBED_BATCH does for embeddings.
+ */
+async function extractEntitiesForModel(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
+  const model = await get(modelId);
+  if (model.kind !== 'ner') {
+    throw Object.assign(new Error('This model cannot extract entities.'), { code: 'EUNSUPPORTED' });
+  }
+  const out: EntitySpan[][] = [];
+  for (const text of texts) {
+    const tokens = await model.ner(text);
+    out.push(mergeBioSpans(tokens));
+  }
+  return out;
+}
+
 async function embedImages(modelId: string, paths: string[]): Promise<number[][]> {
   const model = await get(modelId);
   if (model.kind !== 'clip') {
@@ -307,6 +338,8 @@ async function handle(
       return countTokensForModel(modelId, texts ?? []);
     case 'rerank':
       return rerankText(modelId, query ?? '', passages ?? []);
+    case 'extractEntities':
+      return extractEntitiesForModel(modelId, texts ?? []);
     default:
       throw Object.assign(new Error(`Unknown AI request: ${type}`), { code: 'EINVAL' });
   }

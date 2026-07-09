@@ -59,6 +59,9 @@ export const Channels = {
   indexSetAmbient: 'index:setAmbient',
   indexSearch: 'index:search',
   indexSearchFile: 'index:searchFile',
+  graphGet: 'graph:get',
+  graphBuild: 'graph:build',
+  graphStatus: 'graph:status',
   llmModels: 'llm:models',
   llmDownload: 'llm:download',
   llmRemove: 'llm:remove',
@@ -85,4 +88,6 @@ export const Events = {
   llmModelProgress: 'llm:modelProgress',
   /** Streaming chat output; payload is a ChatStreamEvent. */
   chatStream: 'chat:stream',
+  /** Knowledge-graph build progress; payload is a GraphProgress. */
+  graphProgress: 'graph:progress',
 } as const;

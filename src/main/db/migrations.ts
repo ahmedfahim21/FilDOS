@@ -142,6 +142,45 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT;
   `,
+
+  // Knowledge graph: extracted entities, per-file NER bookkeeping, and the
+  // cached embedding-similarity edges. Everything keys on index_state(path)
+  // with cascades, so rename/move (remap) and delete carry these rows the
+  // same way file_chunks follows index_state. Entity/tag/temporal edges are
+  // derived at snapshot time — only the expensive kNN edges are persisted.
+  `
+  CREATE TABLE entities (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL COLLATE NOCASE,
+    type TEXT NOT NULL,                  -- 'PER' | 'ORG' | 'LOC' | 'MISC'
+    UNIQUE (name, type)
+  );
+
+  CREATE TABLE file_entities (
+    path      TEXT NOT NULL
+                REFERENCES index_state(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    count     INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (path, entity_id)
+  );
+  CREATE INDEX idx_file_entities_entity ON file_entities(entity_id);
+
+  CREATE TABLE entity_state (
+    path       TEXT PRIMARY KEY
+                 REFERENCES index_state(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    indexed_at INTEGER NOT NULL          -- index_state.indexed_at when NER last ran
+  );
+
+  CREATE TABLE graph_edges (
+    src    TEXT NOT NULL
+             REFERENCES index_state(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    dst    TEXT NOT NULL
+             REFERENCES index_state(path) ON UPDATE CASCADE ON DELETE CASCADE,
+    weight REAL NOT NULL,                -- cosine similarity of file centroids
+    PRIMARY KEY (src, dst)
+  );
+  CREATE INDEX idx_graph_edges_dst ON graph_edges(dst);
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

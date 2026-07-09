@@ -193,6 +193,36 @@ Renderer: `state/indexing.tsx` + the Indexing and "Hide from AI" sections in
 `index:pickExcludes`). Dependencies are injected into `Indexer`/`IndexWatcher`
 so tests drive them with a fake provider, no Electron.
 
+**Knowledge graph (`src/main/ai/graph/`) — the "Canvas" view.** A relationship
+engine over the index plus a GPU-rendered constellation page. Three signals:
+embedding **similarity** (per-file centroids of the stored chunk vectors →
+partitioned kNN in `similarity.ts`, cached in `graph_edges`), **entities**
+(on-device NER — `kind: 'ner'` in the model catalog / `modelWorker`, BIO-merge +
+normalization in `ner.ts`, persisted to `entities`/`file_entities` with
+per-file staleness in `entity_state`), and **temporal sessions** (`temporal.ts`,
+derived at snapshot time from mtimes — cross-folder star edges only). All graph
+tables FK onto `index_state(path)` with cascades, so rename/move/delete carry
+them like `file_chunks`. `builder.ts` (`GraphBuilder`, deps injected like
+`Indexer`) is **lazy + incremental**: nothing runs until `graph:get`, a prefs
+watermark (`prefs.graph`) marks staleness, rebuilds touch only changed files,
+and the whole thing runs under the indexer's duty-cycle `pace`. The NER model
+(`Xenova/bert-base-NER`) is **opt-in like the reranker** — never
+auto-downloaded; the graph works without it. `snapshot.ts` fuses everything
+into a render-ready `GraphSnapshot` (`@shared/graphTypes`): Louvain communities
+(graphology, seeded rng) → `clusterId`, node cap 4000 by degree.
+`graph/handlers.ts` owns `graph:*` + `Events.graphProgress`; builds are
+fire-and-forget (`graph:get` returns the stored snapshot and kicks a background
+refresh; the renderer re-fetches on the idle transition). Renderer:
+`window.graph` → `components/graph/` — `GraphView` (a lazy-loaded NavLocation
+page, `{ kind: 'graph' }`), `useCosmos` (thin imperative bridge to
+**cosmos.gl** — `@cosmos.gl/graph`, GPU force layout + WebGL rendering), and
+`graphViz.ts` (pure snapshot→typed-array mapping: structure vs. paint split so
+search/scrubber repaints never reheat the simulation; scoop colours per Louvain
+cluster, mint diamonds for entities, tag-coloured stars, edge colours matching
+the filter chips). The page has a search box, edge-kind chips, a click detail
+panel ("why connected"), and an mtime histogram **time scrubber with replay**.
+Settings → Searching → "Canvas": NER download + Rebuild.
+
 **Assistant chat (`src/main/ai/llm/`).** The "Ask AI" panel: chat with your
 files via a fully on-device LLM. The engine is **node-llama-cpp** (llama.cpp
 with prebuilt platform binaries — Metal on Apple Silicon; the one deliberate

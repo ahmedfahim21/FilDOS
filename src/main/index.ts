@@ -17,6 +17,7 @@ import {
   startIndexBackground,
   stopIndexBackground,
 } from './ai/index/handlers';
+import { registerGraphHandlers, stopGraphBackground } from './ai/graph/handlers';
 import { registerLlmHandlers } from './ai/llm/handlers';
 import { closeDb, initDb } from './db';
 import { getPrefs, setPrefs } from './prefs';
@@ -102,6 +103,7 @@ app.whenReady().then(() => {
   registerCloudHandlers();
   registerAiHandlers();
   registerIndexHandlers();
+  registerGraphHandlers();
   registerLlmHandlers();
   createWindow();
   // Resume any indexing left over from last session (no-op unless enabled).
@@ -132,5 +134,6 @@ app.on('window-all-closed', async () => {
 
 app.on('quit', () => {
   stopIndexBackground();
+  stopGraphBackground();
   closeDb();
 });

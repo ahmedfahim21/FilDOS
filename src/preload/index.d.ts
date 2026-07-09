@@ -3,6 +3,7 @@ import type {
   ChatsApi,
   CloudApi,
   FsApi,
+  GraphApi,
   IndexApi,
   LlmApi,
   Prefs,
@@ -50,6 +51,7 @@ declare global {
     cloud: CloudApi;
     ai: AiApi;
     index: IndexApi;
+    graph: GraphApi;
     llm: LlmApi;
     chats: ChatsApi;
   }

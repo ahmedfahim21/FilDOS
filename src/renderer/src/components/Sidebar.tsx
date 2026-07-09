@@ -55,6 +55,7 @@ export function Sidebar({
   onDropPath,
   onOpenTag,
   onOpenRecents,
+  onOpenBrain,
   onOpenCloudConnect,
   onOpenSettings,
   onDropOnTag,
@@ -66,6 +67,7 @@ export function Sidebar({
   onDropPath: (path: string, e: DragEvent) => void;
   onOpenTag: (tag: Tag) => void;
   onOpenRecents: () => void;
+  onOpenBrain: () => void;
   onOpenCloudConnect: () => void;
   onOpenSettings: () => void;
   onDropOnTag: (tag: Tag, e: DragEvent) => void;
@@ -322,6 +324,14 @@ export function Sidebar({
       )}
 
       <div className="min-h-3 flex-1" />
+      <button
+        className={itemClass(activePage?.kind === 'graph')}
+        onClick={onOpenBrain}
+        title="Your storage as a living map — files connected by meaning, people and time"
+      >
+        <Icon name="brain" size={16} />
+        <span>Canvas</span>
+      </button>
       <button
         className={itemClass(activePage?.kind === 'recents')}
         onClick={onOpenRecents}
