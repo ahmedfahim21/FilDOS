@@ -32,6 +32,19 @@ npm install
 npm run dev
 ```
 
+The docs site lives under `docs/` and is a separate Mintlify project:
+
+```bash
+cd docs
+npm install
+npm run dev
+```
+
+Testing the cloud provider integrations (Google Drive, Dropbox, OneDrive, S3,
+IPFS) needs OAuth credentials, which most contributions won't touch. Copy
+`.env.example` to `.env` and fill in the client IDs for the providers you need
+— the comments in that file link to each provider's developer console.
+
 ## Before you open a pull request
 
 Run the full local check suite and make sure it passes:
@@ -47,6 +60,11 @@ For anything that changes behavior, also run `npm run dev` and exercise the
 change by hand. Continuous integration runs lint, typecheck, unit/integration
 tests, and the end-to-end smoke test on Ubuntu, macOS, and Windows, so
 cross-platform correctness matters.
+
+If you touch search ranking, chunking, or embeddings, also run `npm run eval`
+— a recall@k harness (`eval/`) over a fixture corpus. It's intentionally
+excluded from `npm test` to keep CI fast, and works out of the box with
+bag-of-words embeddings (no model download required).
 
 ## Architecture and conventions
 
@@ -68,6 +86,10 @@ layer, and the AI indexer. A few points worth calling out here:
 - **Database changes** are plain-SQL migrations versioned by `PRAGMA
   user_version`, and are append-only. Use `npm run db:generate` to scaffold the
   diff, then review it and add it as a migration entry.
+- **Cloud storage backends** implement the `Provider` interface
+  (`src/main/cloud/provider.ts`) and register in `cloud/registry.ts`; see
+  `cloud/providers/gdrive.ts`, `dropbox.ts`, and the OpenDAL-backed `opendal.ts`
+  (S3, IPFS, OneDrive) for examples of adding a new one.
 
 Match the style of the code around you: the same naming, comment density, and
 idioms. Tests live beside the code as `*.test.ts`; add or update them for any
