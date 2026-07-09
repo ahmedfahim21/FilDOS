@@ -1,22 +1,24 @@
 import { Logo } from "../logo";
-import { GithubIcon, XIcon } from "../icons";
+import { DiscordIcon, GithubIcon, XIcon } from "../icons";
 import { FlowField } from "./flow-field";
 
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
+// TODO: replace with the real invite once the server is live.
+const DISCORD_URL = "https://discord.gg/fildos";
 
 const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: string; external?: boolean }> }> = [
   {
     title: "Product",
     links: [
-      { label: "Roadmap", href: "/roadmap" },
+      // { label: "Roadmap", href: "/roadmap" },
       { label: "Download", href: `${GITHUB_URL}/releases`, external: true },
-      { label: "Old Version", href: `https://old.fildos.cloud`, external: true },
     ],
   },
   {
     title: "Community",
     links: [
       { label: "GitHub", href: GITHUB_URL, external: true },
+      { label: "Discord", href: DISCORD_URL, external: true },
       { label: "Report an issue", href: `${GITHUB_URL}/issues`, external: true },
     ],
   },
@@ -36,8 +38,8 @@ export function LandingFooter() {
           <div className="max-w-sm">
             <Logo className="text-xl" />
             <p className="mt-4 text-sm leading-relaxed text-white/60">
-              The AI-native file browser for your PC. Search by meaning,
-              organize, research — fast, and fully on-device.
+              Open-Source AI-native File Browser for your PC. Search by meaning, 
+              chat with your documents, and see how your work connects. All running locally on-device.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <a
@@ -48,6 +50,15 @@ export function LandingFooter() {
                 className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <GithubIcon className="size-4.5" />
+              </a>
+              <a
+                href={DISCORD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="FilDOS on Discord"
+                className="grid size-9 place-items-center rounded-full border border-white/15 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <DiscordIcon className="size-4.5" />
               </a>
               <a
                 href="https://x.com/ahmedfahim21_"

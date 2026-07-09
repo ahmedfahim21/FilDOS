@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useMotionValueEvent, useScroll, useTransform } from "motion/react";
-import { ArrowDown, Download } from "lucide-react";
+import { ArrowDown, Download, Star } from "lucide-react";
 import { AppMock, MOCK_W } from "./app-mock";
 import { Mark } from "../logo";
 
@@ -96,6 +96,8 @@ const FLOAT_TILES = [
 
 export function LandingHero() {
   const sectionRef = useRef<HTMLElement>(null);
+  // The sticky, viewport-sized frame the whole sequence plays in.
+  const stickyRef = useRef<HTMLDivElement>(null);
   // Un-transformed anchor around the monitor — safe to measure.
   const anchorRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -103,12 +105,20 @@ export function LandingHero() {
 
   useEffect(() => {
     const measure = () => {
+      const sticky = stickyRef.current;
       const anchor = anchorRef.current;
       const screen = screenRef.current;
-      if (!anchor || !screen) return;
+      if (!sticky || !anchor || !screen) return;
       const rect = anchor.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      if (rect.width === 0 || rect.height === 0) return;
+      // Measure against the sticky frame, not the viewport: viewport-relative
+      // numbers are only right at scroll 0, and this re-runs on resize —
+      // which mobile fires on every scroll (URL bar collapse) and desktop can
+      // hit mid-page (or on load with restored scroll). A stale rect.top here
+      // used to fling the screen out of the overflow-hidden frame entirely.
+      const frame = sticky.getBoundingClientRect();
+      const vw = frame.width;
+      const vh = frame.height;
       setFit({
         // Grow into a comfortable app window: bounded by the viewport on
         // small screens and by an absolute width cap on large ones.
@@ -116,8 +126,8 @@ export function LandingHero() {
           1,
           Math.min((vw * 0.96) / rect.width, (vh * 0.86) / rect.height, 1060 / rect.width)
         ),
-        // Drift so the expanded screen ends up centred in the viewport.
-        y: vh / 2 - (rect.top + rect.height / 2),
+        // Drift so the expanded screen ends up centred in the frame.
+        y: vh / 2 - (rect.top - frame.top + rect.height / 2),
         mockScale: screen.offsetWidth / MOCK_W,
       });
     };
@@ -155,7 +165,7 @@ export function LandingHero() {
 
   return (
     <section ref={sectionRef} className="relative h-[280vh] bg-white">
-      <div className="sticky top-0 flex h-screen flex-col overflow-hidden">
+      <div ref={stickyRef} className="sticky top-0 flex h-screen flex-col overflow-hidden">
         {/* Bright background — soft scoop washes + floating tiles, fades on scroll */}
         <motion.div style={{ opacity: bgOpacity }} className="pointer-events-none absolute inset-0">
           <div className="absolute -left-24 -top-24 size-96 rounded-full bg-mint/20 blur-3xl" />
@@ -175,8 +185,8 @@ export function LandingHero() {
           >
             <h1 className="max-w-3xl text-4xl font-medium tracking-tight text-ink sm:text-5xl lg:text-6xl mt-6">
               Your files, finally{" "}
-              <span className="relative inline-block">
-                understood
+              <span className="relative">
+                connected
                 <svg
                   viewBox="0 0 220 14"
                   aria-hidden
@@ -194,8 +204,10 @@ export function LandingHero() {
               </span>
               .
             </h1>
-            <p className="mt-4 max-w-xl text-base text-mist sm:text-lg">
-              FilDOS is an Open-Source AI-native File Browser for your PC. Search semantically, organize, research — fast and fully on-device.
+            <p className="mt-6 max-w-xl text-base text-mist sm:text-lg">
+              FilDOS is an Open-Source AI-native File Browser for your PC.
+              Search by meaning, chat with your documents, and see how your
+              work connects. All running locally on-device.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
               <a
@@ -213,6 +225,7 @@ export function LandingHero() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-cloud sm:text-base"
               >
+                <Star className="size-4 fill-mango text-mango" />
                 Star on GitHub
               </a>
             </div>

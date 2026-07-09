@@ -23,7 +23,7 @@ export function LandingNavbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-4 sm:pt-4">
       <nav className="mx-auto flex h-14 max-w-4xl items-center justify-between rounded-2xl border border-ink/10 bg-white/80 px-4 shadow-[0_2px_20px_rgba(15,17,23,0.07)] backdrop-blur-md sm:px-5">
-        <Link href="/" className="text-lg text-ink" aria-label="FilDOS home">
+        <Link href="/" className="text-lg text-ink my-auto flex" aria-label="FilDOS home">
           <Logo />
         </Link>
 

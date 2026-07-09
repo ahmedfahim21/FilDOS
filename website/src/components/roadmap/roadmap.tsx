@@ -57,10 +57,10 @@ const GROUPS: Group[] = [
     tint: "bg-grape/12",
     title: "Chat & understanding",
     items: [
-      { label: "Chat with your files", status: "planned" },
-      { label: "Folder summaries", status: "planned" },
-      { label: "Related files", status: "planned" },
-      { label: "Knowledge graph & relations", status: "planned" },
+      { label: "Chat with your files", status: "shipped" },
+      { label: "Folder summaries", status: "shipped" },
+      { label: "Related files", status: "shipped" },
+      { label: "Knowledge graph & relations", status: "shipped" },
     ],
   },
   {
@@ -85,7 +85,7 @@ const GROUPS: Group[] = [
       { label: "Cloud storage — Drive, Dropbox, OneDrive", status: "shipped" },
       { label: "Recents & per-folder views", status: "shipped" },
       { label: "In-app file previewer", status: "planned" },
-      { label: "Guided onboarding & intro", status: "planned" },
+      { label: "Guided onboarding & intro", status: "shipped" },
     ],
   },
   {
@@ -96,7 +96,7 @@ const GROUPS: Group[] = [
     items: [
       { label: "On-device embeddings", status: "shipped" },
       { label: "Background indexer & live watch", status: "shipped" },
-      { label: "Offline local LLM", status: "planned" },
+      { label: "Offline local LLM", status: "shipped" },
       { label: "Plugin / provider architecture", status: "planned" },
     ],
   },
