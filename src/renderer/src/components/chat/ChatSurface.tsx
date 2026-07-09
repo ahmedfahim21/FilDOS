@@ -45,10 +45,18 @@ export function ChatSurface({
   const nav = useNavigation();
   const page = variant === 'page';
 
-  const [research, setResearch] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [caret, setCaret] = useState(0);
-  const [mentions, setMentions] = useState<ChatMention[]>([]);
+  // Draft/mentions/research live in ChatProvider so they survive maximizing or
+  // restoring (which unmounts one ChatSurface and mounts the other).
+  const {
+    composerDraft: draft,
+    setComposerDraft: setDraft,
+    composerMentions: mentions,
+    setComposerMentions: setMentions,
+    composerResearch: research,
+    setComposerResearch: setResearch,
+  } = chat;
+  // Caret is transient DOM state; seed it at the end of any restored draft.
+  const [caret, setCaret] = useState(() => draft.length);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [popupIx, setPopupIx] = useState(0);
   // Esc hides the popup for the token being typed; typing again re-opens it.
@@ -141,7 +149,7 @@ export function ChatSurface({
       pendingCaret.current = next.caret;
       setDismissedTokenStart(null);
     },
-    [token, options, draft, caret],
+    [token, options, draft, caret, setDraft, setMentions],
   );
 
   const liveMentions = useMemo(() => pruneMentions(draft, mentions), [draft, mentions]);
@@ -150,7 +158,7 @@ export function ChatSurface({
     setDraft(text);
     setCaret(text.length);
     pendingCaret.current = text.length;
-  }, []);
+  }, [setDraft]);
 
   const submit = useCallback(() => {
     const text = draft.trim();
@@ -166,9 +174,12 @@ export function ChatSurface({
     setDraft('');
     setCaret(0);
     setMentions([]);
-  }, [draft, mentions, chat, nav.currentPath, research]);
+  }, [draft, mentions, chat, nav.currentPath, research, setDraft, setMentions]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // While an IME composition is active, Enter/keys confirm a candidate — let
+    // the IME handle them instead of submitting or driving the popup.
+    if (e.nativeEvent.isComposing) return;
     if (popupOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -213,7 +224,7 @@ export function ChatSurface({
       setCaret(c);
       pendingCaret.current = c;
     },
-    [draft, prefill],
+    [draft, prefill, setDraft],
   );
 
   const openSource = useCallback(

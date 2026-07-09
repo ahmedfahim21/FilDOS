@@ -227,6 +227,44 @@ describe('executeChatTool', () => {
     expect(deps.searched).toEqual([['x', 8], ['y', 16]]);
   });
 
+  it('strips path separators from a new folder name', async () => {
+    const { call } = await executeChatTool(
+      'create_folder',
+      { folder: null, name: '../../escape' },
+      tmp(),
+      fakeDeps(tmp()),
+    );
+    expect(call.ok).toBe(true);
+    // Created inside tmp as "escape", not in a parent directory.
+    expect(await namesIn(tmp())).toEqual(['escape']);
+  });
+
+  it('strips path separators from a rename target', async () => {
+    await fs.writeFile(join(tmp(), 'a.txt'), 'x');
+    const { call } = await executeChatTool(
+      'rename_file',
+      { path: 'a.txt', new_name: '../b.txt' },
+      tmp(),
+      fakeDeps(tmp()),
+    );
+    expect(call.ok).toBe(true);
+    expect(await namesIn(tmp())).toEqual(['b.txt']);
+  });
+
+  it('blocks tool access to protected credential directories', async () => {
+    const home = tmp();
+    const deps = fakeDeps(home);
+    const { call, result } = await executeChatTool(
+      'read_file',
+      { path: '~/.ssh/id_rsa' },
+      home,
+      deps,
+    );
+    expect(call.ok).toBe(false);
+    expect(call.summary).toMatch(/protected/i);
+    expect(result).toMatchObject({ ok: false });
+  });
+
   it('rejects relative paths when no folder is open', async () => {
     const { call } = await executeChatTool(
       'read_file',

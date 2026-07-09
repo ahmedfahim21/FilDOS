@@ -102,6 +102,19 @@ describe('buildChat', () => {
     expect(research.prompt.length).toBeLessThan(RESEARCH_BUDGETS.content + 3_000);
   });
 
+  it('clamps the research content budget to the context window', async () => {
+    const text = 'z'.repeat(50_000);
+    const mentions = [{ kind: 'file' as const, path: '/tmp/big.txt', name: 'big.txt' }];
+    const built = await buildChat(
+      payload({ mentions, mode: 'research' }),
+      deps({ extract: async () => text }),
+      { contextTokens: 8192 },
+    );
+    // The 24k research budget is capped so the turn fits an 8k-token window.
+    expect(built.prompt).toContain('[…truncated]');
+    expect(built.prompt.length).toBeLessThan(8192 * 4);
+  });
+
   it('research mode fetches more /find hits', async () => {
     let requested = 0;
     await buildChat(

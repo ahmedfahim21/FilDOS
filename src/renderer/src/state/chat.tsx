@@ -6,7 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from 'react';
 import type {
   ChatMention,
@@ -90,6 +92,15 @@ interface ChatContextValue {
   }) => Promise<void>;
   /** Abort the in-flight answer (its partial text is kept). */
   stop: () => void;
+  // Composer state lives here (not in ChatSurface) so an in-progress draft,
+  // its attached mentions, and the Research toggle survive maximizing/
+  // restoring — the rail and page mount separate ChatSurface instances.
+  composerDraft: string;
+  setComposerDraft: Dispatch<SetStateAction<string>>;
+  composerMentions: ChatMention[];
+  setComposerMentions: Dispatch<SetStateAction<ChatMention[]>>;
+  composerResearch: boolean;
+  setComposerResearch: Dispatch<SetStateAction<boolean>>;
   /** Start a fresh conversation (the old one stays saved). */
   newChat: () => void;
   /** Reload the saved-session list. */
@@ -122,6 +133,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [specs, setSpecs] = useState<LlmSystemSpecs | null>(null);
   const [configs, setConfigs] = useState<Record<string, Partial<LlmModelConfig>>>({});
   const [customModels, setCustomModels] = useState<LlmModelDef[]>([]);
+  // Composer draft/mentions/Research toggle — persisted across the rail↔page swap.
+  const [composerDraft, setComposerDraft] = useState('');
+  const [composerMentions, setComposerMentions] = useState<ChatMention[]>([]);
+  const [composerResearch, setComposerResearch] = useState(false);
   const activeRequest = useRef<string | null>(null);
   // Whether the user has a saved model pick; until then we auto-follow the
   // machine's recommendation once specs are probed (first-run gets a capable
@@ -372,6 +387,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (busy) return;
     setMessages([]);
     setSessionId(null);
+    setComposerDraft('');
+    setComposerMentions([]);
   }, [busy]);
 
   const refreshSessions = useCallback(async () => {
@@ -442,6 +459,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         removeModel,
         send,
         stop,
+        composerDraft,
+        setComposerDraft,
+        composerMentions,
+        setComposerMentions,
+        composerResearch,
+        setComposerResearch,
         newChat,
         refreshSessions,
         openSession,

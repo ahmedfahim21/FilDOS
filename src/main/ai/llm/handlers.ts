@@ -173,7 +173,7 @@ export function registerLlmHandlers(): void {
       });
 
       try {
-        const built = await buildChat(payload, contextDeps);
+        const built = await buildChat(payload, contextDeps, { contextTokens: config.contextSize });
         if (built.hits) send({ requestId, type: 'sources', hits: built.hits });
         const offChunk = manager.onChunk((rid, text) => {
           if (rid === requestId) send({ requestId, type: 'chunk', text });

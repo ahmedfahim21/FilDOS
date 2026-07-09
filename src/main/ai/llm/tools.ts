@@ -86,10 +86,35 @@ function describe(paths: string[]): string {
 export class ChatToolError extends Error {}
 
 /**
+ * Directories that hold credentials/keys — never a legitimate document target,
+ * and the prime goal of a prompt-injection attack (indexed content can steer
+ * the model's next tool call). Blocked for every tool regardless of how the
+ * path was formed, so a fabricated `~/.ssh/id_rsa` read can't leak into chat.
+ */
+const PROTECTED_DIRS = new Set([
+  '.ssh',
+  '.aws',
+  '.gnupg',
+  '.gpg',
+  '.kube',
+  '.docker',
+  '.gcloud',
+  '.password-store',
+]);
+
+/** Reject a resolved path that dips into a protected credential directory. */
+function assertToolPathAllowed(resolved: string): void {
+  const segments = resolved.split(/[\\/]+/);
+  if (segments.some((s) => PROTECTED_DIRS.has(s.toLowerCase()))) {
+    throw new ChatToolError('That location is protected and can’t be accessed.');
+  }
+}
+
+/**
  * Resolve a model-provided path: expand `~`, resolve relative paths against
  * the current folder, and require the result to be absolute. The model's
- * paths are untrusted input — but so is every path in a file manager; the
- * only hard rejections are the malformed ones.
+ * paths are untrusted input — but so is every path in a file manager; we
+ * reject malformed ones and block protected credential directories.
  */
 function resolveToolPath(input: unknown, cwd: string | undefined, home: string): string {
   const raw = str(input);
@@ -100,7 +125,9 @@ function resolveToolPath(input: unknown, cwd: string | undefined, home: string):
     if (!cwd) throw new ChatToolError(`"${raw}" is relative but no folder is open.`);
     p = join(cwd, p);
   }
-  return normalize(p);
+  const out = normalize(p);
+  assertToolPathAllowed(out);
+  return out;
 }
 
 /** Run one named tool. Resolves (never rejects) with the outcome. */
@@ -145,7 +172,9 @@ async function run(
     case 'create_folder': {
       const folderName = str(params.name);
       if (!folderName) throw new ChatToolError('No folder name given.');
-      const entry = await createFolder(folderOf('folder'), folderName);
+      // basename() strips any path separators so a "../.." name can't escape
+      // the parent folder (mirrors create_file's handling of `name`).
+      const entry = await createFolder(folderOf('folder'), basename(folderName));
       return {
         call: { name, summary: `Created folder "${entry.name}"`, ok: true, paths: [entry.path] },
         result: { ok: true, path: entry.path },
@@ -189,7 +218,9 @@ async function run(
       const from = resolveToolPath(params.path, cwd, deps.home());
       const newName = str(params.new_name);
       if (!newName) throw new ChatToolError('No new name given.');
-      const entry = await rename(from, newName);
+      // Enforce the schema's "no path separators" promise so a rename can't
+      // move the file elsewhere via `..` (mirrors create_file/create_folder).
+      const entry = await rename(from, basename(newName));
       deps.remap(from, entry.path);
       return {
         call: {

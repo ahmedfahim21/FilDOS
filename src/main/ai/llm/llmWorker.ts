@@ -309,6 +309,10 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
           ),
         ]);
       }
+      // Track whether any answer text reached the UI: once it has, a fallback
+      // retry would append a second run onto the same message (same requestId)
+      // and garble the output, so we must not restart after streaming begins.
+      let streamed = false;
       const options = {
         temperature: cfg.temperature,
         topP: cfg.topP,
@@ -316,7 +320,10 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
         signal: abort.signal,
         // On stop, end generation gracefully and keep the partial answer.
         stopOnAbortSignal: true,
-        onTextChunk: (text: string) => post({ type: 'chunk', requestId, text }),
+        onTextChunk: (text: string) => {
+          streamed = true;
+          post({ type: 'chunk', requestId, text });
+        },
       };
       if (tools) {
         const used = { count: 0 };
@@ -326,11 +333,11 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
             functions: buildToolFunctions(lib, requestId, used),
           });
         } catch (err) {
-          // Some chat wrappers can't drive function calling. As long as no
-          // tool actually ran, fall back to a plain generation — an answer
-          // without tools beats an error. (A grammar/template failure throws
-          // before any text streams, so restarting is safe.)
-          if (used.count > 0 || abort.signal.aborted) throw err;
+          // Some chat wrappers can't drive function calling. Fall back to a
+          // plain generation only when nothing has run or streamed yet — an
+          // answer without tools beats an error, but a mid-stream failure must
+          // surface rather than duplicate text onto the same message.
+          if (used.count > 0 || streamed || abort.signal.aborted) throw err;
           return await session.prompt(prompt, options);
         }
       }
