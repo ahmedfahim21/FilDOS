@@ -131,7 +131,7 @@ export function Sidebar({
       </div>
 
       {/* Scrollable navigation body */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-3 [scrollbar-gutter:stable]">
       <div className={title}>Quick Access</div>
       <nav>
         {items.map((item) => (

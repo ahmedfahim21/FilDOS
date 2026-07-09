@@ -45,7 +45,11 @@ export function Conversation({
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={ref} onScroll={onScroll} className={cn('h-full overflow-y-auto', className)}>
+      <div
+        ref={ref}
+        onScroll={onScroll}
+        className={cn('h-full overflow-y-auto [scrollbar-gutter:stable]', className)}
+      >
         {children}
       </div>
       {!stuck && (

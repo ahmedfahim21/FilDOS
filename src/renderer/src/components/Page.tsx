@@ -69,13 +69,13 @@ export function Page({
 }
 
 export function PageList({ children }: { children: ReactNode }) {
-  return <div className="flex-1 overflow-y-auto px-2 pb-2">{children}</div>;
+  return <div className="flex-1 overflow-y-auto px-2 pb-2 [scrollbar-gutter:stable]">{children}</div>;
 }
 
 /** Scrollable grid container for page views in grid mode. */
 export function PageGrid({ children }: { children: ReactNode }) {
   return (
-    <div className="flex-1 overflow-y-auto p-2">
+    <div className="flex-1 overflow-y-auto p-2 [scrollbar-gutter:stable]">
       <div className="flex flex-wrap content-start gap-0.5">{children}</div>
     </div>
   );
