@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Mark } from './Logo';
+import { NotificationsCenter } from './NotificationsCenter';
 import { CommandIcon } from 'hugeicons-react';
 
 /**
@@ -110,8 +111,9 @@ export function TopBar({
         </kbd>
       </Button>
 
-      {/* Right — Assistant opener (primary) */}
-      <div className="flex flex-1 justify-end">
+      {/* Right — activity notifications + the Assistant opener (primary) */}
+      <div className="flex flex-1 items-center justify-end gap-1.5">
+        <NotificationsCenter />
         <Button
           variant="default"
           size="sm"

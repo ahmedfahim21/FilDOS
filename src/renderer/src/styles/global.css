@@ -353,6 +353,28 @@ body {
   }
 }
 
+/* Indeterminate progress sweep for the notifications center (used while the
+ * indexer is scanning and has no numeric fraction yet). A single segment
+ * slides across the track; it holds still under reduced-motion. */
+@keyframes notif-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.notif-indeterminate {
+  animation: notif-indeterminate 1.1s var(--ease-fluid) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notif-indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
 /* Honour reduced-motion for the menu/popover enter-and-exit transforms: keep
  * the surface, drop the scale/slide so nothing zooms or flies. The dialog and
  * toast layers already read this preference through tw-animate-css; this

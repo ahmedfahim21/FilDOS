@@ -16,6 +16,7 @@ import {
   ComputerIcon,
   Copy01Icon,
   Delete01Icon,
+  Download01Icon,
   EyeIcon,
   File01Icon,
   FileAddIcon,
@@ -32,6 +33,7 @@ import {
   Moon01Icon,
   More01Icon,
   NoInternetIcon,
+  Notification03Icon,
   PauseIcon,
   PencilEdit01Icon,
   PlayIcon,
@@ -100,7 +102,9 @@ type IconName =
   | 'more'
   | 'brain'
   | 'play'
-  | 'pause';
+  | 'pause'
+  | 'bell'
+  | 'download';
 
 /** Maps the app's semantic icon names onto hugeicons-react glyphs. */
 const ICONS: Record<IconName, HugeIcon> = {
@@ -152,6 +156,8 @@ const ICONS: Record<IconName, HugeIcon> = {
   brain: AiBrain01Icon,
   play: PlayIcon,
   pause: PauseIcon,
+  bell: Notification03Icon,
+  download: Download01Icon,
 };
 
 export function Icon({
