@@ -347,7 +347,7 @@ export function ChatSurface({
         {/* Composer */}
         <div className="relative p-3">
           {popupOpen && (
-            <div className="border-border material animate-in fade-in-0 slide-in-from-bottom-1 absolute right-3 bottom-full left-3 z-10 mb-1.5 overflow-hidden rounded-xl border shadow-xl duration-150 ease-snappy">
+            <div className="border-border material animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none absolute right-3 bottom-full left-3 z-10 mb-1.5 overflow-hidden rounded-xl border shadow-xl duration-150 ease-snappy">
               <div className="border-border text-muted-foreground border-b px-3 py-1 text-3xs font-medium tracking-wider uppercase">
                 {token!.trigger === '/' ? 'Commands' : token!.trigger === '#' ? 'Folders' : 'Files'}
               </div>
