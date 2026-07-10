@@ -130,6 +130,10 @@ export function registerLlmHandlers(): void {
     }),
   );
 
+  ipcMain.handle(Channels.llmCancelDownload, (_e, modelId: string) =>
+    wrap<void>(() => manager.cancelDownload(modelId)),
+  );
+
   ipcMain.handle(Channels.llmRemove, (_e, modelId: string) =>
     wrap<void>(async () => {
       // No catalog check: a just-forgotten custom model must still be removable.

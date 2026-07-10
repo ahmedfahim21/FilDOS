@@ -324,3 +324,65 @@ body {
   background-color: color-mix(in srgb, var(--foreground) 34%, transparent);
 }
 
+/*
+ * Vibrancy material — Apple-style translucency for floating surfaces that
+ * overlay real content (menus, toasts, the search palette, autocomplete). A
+ * blurred, saturated backdrop lets the layer beneath telegraph depth without
+ * stealing focus (Designing Fluid Interfaces: material weight encodes
+ * hierarchy). The foundation stays black-and-white — the tint borrows the
+ * existing --popover token via color-mix, so it inverts correctly in dark
+ * mode (see .claude/brand-guidelines.md) — colour never enters here.
+ *
+ * Progressive enhancement: the base rule paints a solid --popover surface, so
+ * anything without backdrop-filter support, or a user who asks for reduced
+ * transparency, gets a fully legible opaque panel. Only when both hold do we
+ * swap in the translucent blur.
+ */
+.material {
+  background-color: var(--popover);
+}
+@supports (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  @media not (prefers-reduced-transparency: reduce) {
+    .material {
+      background-color: color-mix(in srgb, var(--popover) 82%, transparent);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+    }
+  }
+}
+
+/* Indeterminate progress sweep for the notifications center (used while the
+ * indexer is scanning and has no numeric fraction yet). A single segment
+ * slides across the track; it holds still under reduced-motion. */
+@keyframes notif-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.notif-indeterminate {
+  animation: notif-indeterminate 1.1s var(--ease-fluid) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notif-indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* Honour reduced-motion for the menu/popover enter-and-exit transforms: keep
+ * the surface, drop the scale/slide so nothing zooms or flies. The dialog and
+ * toast layers already read this preference through tw-animate-css; this
+ * covers the Radix popovers we anchor a spring open onto below. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='dropdown-menu-content'],
+  [data-slot='dropdown-menu-sub-content'] {
+    animation: none !important;
+  }
+}
+

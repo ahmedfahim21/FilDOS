@@ -21,6 +21,7 @@ import { UndoProvider, useUndo } from '@/state/undo';
 import { AiProvider, useAi } from '@/state/ai';
 import { ChatProvider } from '@/state/chat';
 import { IndexingProvider, useIndexing } from '@/state/indexing';
+import { NotificationsProvider } from '@/state/notifications';
 import { useDirectory } from '@/hooks/useDirectory';
 import { useFileActions } from '@/hooks/useFileActions';
 import { useTagState } from '@/hooks/useTags';
@@ -854,9 +855,11 @@ export default function App({
           <AiProvider>
             <ChatProvider>
               <IndexingProvider>
-                <NavigationProvider initialPath={initialPath} initial={navInitial}>
-                  <Browser initialView={initialView} />
-                </NavigationProvider>
+                <NotificationsProvider>
+                  <NavigationProvider initialPath={initialPath} initial={navInitial}>
+                    <Browser initialView={initialView} />
+                  </NavigationProvider>
+                </NotificationsProvider>
               </IndexingProvider>
             </ChatProvider>
           </AiProvider>

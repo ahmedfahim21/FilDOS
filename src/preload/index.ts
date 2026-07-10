@@ -113,6 +113,7 @@ contextBridge.exposeInMainWorld('cloud', cloudApi);
 const aiApi: AiApi = {
   status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
   download: (modelId) => ipcRenderer.invoke(Channels.aiDownload, modelId),
+  cancelDownload: (modelId) => ipcRenderer.invoke(Channels.aiCancelDownload, modelId),
   embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
   embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
   onModelProgress: (cb: (status: AiModelStatus) => void) => {
@@ -163,6 +164,7 @@ contextBridge.exposeInMainWorld('graph', graphApi);
 const llmApi: LlmApi = {
   models: () => ipcRenderer.invoke(Channels.llmModels),
   download: (modelId) => ipcRenderer.invoke(Channels.llmDownload, modelId),
+  cancelDownload: (modelId) => ipcRenderer.invoke(Channels.llmCancelDownload, modelId),
   remove: (modelId) => ipcRenderer.invoke(Channels.llmRemove, modelId),
   specs: () => ipcRenderer.invoke(Channels.llmSpecs),
   send: (payload) => ipcRenderer.invoke(Channels.chatSend, payload),

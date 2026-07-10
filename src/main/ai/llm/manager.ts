@@ -116,6 +116,11 @@ export class LlmManager {
     await this.request<void>('download', { modelId, uri });
   }
 
+  /** Abort an in-flight download; no-op once it has settled. */
+  async cancelDownload(modelId: string): Promise<void> {
+    await this.request<void>('cancelDownload', { modelId });
+  }
+
   /** Delete a downloaded model's weights from disk. */
   async remove(modelId: string): Promise<void> {
     await this.request<void>('remove', { modelId });

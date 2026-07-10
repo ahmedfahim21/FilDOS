@@ -13,9 +13,10 @@ let enabled = readEnabled();
 
 function readEnabled(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off';
+    // Off unless the user has explicitly turned sounds on.
+    return localStorage.getItem(STORAGE_KEY) === 'on';
   } catch {
-    return true;
+    return false;
   }
 }
 

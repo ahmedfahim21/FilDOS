@@ -34,6 +34,7 @@ import type {
   GbnfJsonSchema,
   Llama,
   LlamaModel,
+  ModelDownloader,
 } from 'node-llama-cpp';
 import type * as LlamaCpp from 'node-llama-cpp';
 import type { ChatTurn, LlmModelStatus } from '@shared/types';
@@ -160,6 +161,11 @@ async function removeModel(modelId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 const downloads = new Map<string, Promise<void>>();
+/** The live downloader for each in-flight download, so a cancel can reach it. */
+const downloaders = new Map<string, ModelDownloader>();
+/** Ids whose download is being deliberately cancelled — distinguishes a
+ * user-initiated cancel from a real failure when the download promise rejects. */
+const cancelling = new Set<string>();
 
 /** Download a model's GGUF. `uri` overrides the built-in catalog (custom models). */
 function download(modelId: string, uri?: string): Promise<void> {
@@ -190,11 +196,24 @@ function download(modelId: string, uri?: string): Promise<void> {
         }
       },
     });
-    await downloader.download();
+    downloaders.set(modelId, downloader);
+    try {
+      await downloader.download();
+    } finally {
+      downloaders.delete(modelId);
+    }
     downloading.delete(modelId);
     emit({ modelId, state: 'ready' });
   })().catch((err) => {
     downloading.delete(modelId);
+    downloaders.delete(modelId);
+    if (cancelling.delete(modelId)) {
+      // A deliberate cancel isn't a failure — resolve cleanly so a caller still
+      // awaiting the original `download` request doesn't see an error reply
+      // race against (and clobber) the 'absent' progress event above.
+      emit({ modelId, state: 'absent' });
+      return;
+    }
     emit({
       modelId,
       state: 'error',
@@ -205,6 +224,15 @@ function download(modelId: string, uri?: string): Promise<void> {
 
   downloads.set(modelId, promise);
   return promise.finally(() => downloads.delete(modelId));
+}
+
+/** Abort an in-flight download; the partial file is deleted (`deleteTempFileOnCancel`
+ * defaults true) so a later `download()` call starts clean. No-op once it has settled. */
+async function cancelDownload(modelId: string): Promise<void> {
+  const downloader = downloaders.get(modelId);
+  if (!downloader) return;
+  cancelling.add(modelId);
+  await downloader.cancel();
 }
 
 // ---------------------------------------------------------------------------
@@ -356,7 +384,7 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
 
 interface InMessage {
   id: number;
-  type: 'models' | 'download' | 'remove' | 'specs' | 'chat' | 'stopChat';
+  type: 'models' | 'download' | 'cancelDownload' | 'remove' | 'specs' | 'chat' | 'stopChat';
   modelId?: string;
   /** All ids to report status for — built-ins plus the user's custom models. */
   modelIds?: string[];
@@ -383,6 +411,9 @@ async function handle(msg: InMessage): Promise<unknown> {
       return (msg.modelIds ?? LLM_MODELS.map((m) => m.id)).map(statusFor);
     case 'download':
       await download(msg.modelId ?? '', msg.uri);
+      return undefined;
+    case 'cancelDownload':
+      await cancelDownload(msg.modelId ?? '');
       return undefined;
     case 'remove':
       await removeModel(msg.modelId ?? '');

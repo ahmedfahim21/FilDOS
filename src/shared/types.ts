@@ -539,6 +539,8 @@ export interface LlmApi {
   models(): Promise<Result<LlmModelStatus[]>>;
   /** Download a chat model; progress arrives via `onModelProgress`. */
   download(modelId: string): Promise<Result<void>>;
+  /** Abort an in-flight download. */
+  cancelDownload(modelId: string): Promise<Result<void>>;
   /** Delete a downloaded chat model's weights from disk. */
   remove(modelId: string): Promise<Result<void>>;
   /** What this machine can run (GPU backend + memory), for the model picker. */
@@ -560,6 +562,8 @@ export interface AiApi {
   status(modelId?: string): Promise<Result<AiModelStatus>>;
   /** Ensure a model is downloaded (defaults to the text model; progress via onModelProgress). */
   download(modelId?: string): Promise<Result<void>>;
+  /** Abort an in-flight download (defaults to the text model). */
+  cancelDownload(modelId?: string): Promise<Result<void>>;
   /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
   embed(texts: string[]): Promise<Result<number[][]>>;
   /** Embed each image file by path; image-capable models (CLIP) only. */
