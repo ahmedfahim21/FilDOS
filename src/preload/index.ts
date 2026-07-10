@@ -44,6 +44,7 @@ const fsapi: FsApi = {
   thumbnail: (path, size) => ipcRenderer.invoke(Channels.thumbnail, path, size),
   drives: () => ipcRenderer.invoke(Channels.drives),
   ejectDrive: (path) => ipcRenderer.invoke(Channels.ejectDrive, path),
+  openPrivacySettings: (pane) => ipcRenderer.invoke(Channels.openPrivacySettings, pane),
 };
 
 contextBridge.exposeInMainWorld('fsapi', fsapi);

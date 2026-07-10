@@ -38,6 +38,7 @@ export const Channels = {
   viewsSet: 'views:set',
   drives: 'fs:drives',
   ejectDrive: 'fs:eject',
+  openPrivacySettings: 'fs:openPrivacySettings',
   cloudConnect: 'cloud:connect',
   cloudConnectConfig: 'cloud:connectConfig',
   cloudListAccounts: 'cloud:listAccounts',

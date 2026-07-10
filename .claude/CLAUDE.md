@@ -345,6 +345,24 @@ State via React context (no Redux):
   which renders. `App.tsx` owns selection, the global keymap (inert while a page
   is shown), context-menu/dialog state, and DnD glue (incl. drop-on-tag).
 
+First-run onboarding (`components/onboarding/`): main.tsx mounts `Onboarding`
+instead of `App` when `needsOnboarding(prefs)` (steps.ts — fresh profiles only;
+a `lastPath` marks an existing install, which skips it). The flow does real
+setup: theme applies live, the AI opt-in kicks the embedding-model downloads
+behind the remaining steps, a dedicated assistant step makes the chat-model
+pick mandatory (the `llm.specs()` + `recommendLlmModel` fit preselects itself;
+the full `LLM_MODELS` catalog is searchable with family logos; persisted to
+`prefs.ai.llmModelId`), an optional-models step queues the reranker and the
+Canvas NER model, and finishing writes
+`prefs.ai` + starts indexing. All downloads run in the main-process workers,
+so step changes and the onboarding→app handoff never cancel one; extras chain
+behind the core text model so indexing unblocks first. A macOS-only step
+pre-triggers the TCC file-access prompts (Desktop/Documents/Downloads via
+`listDir`) and deep-links System Settings through
+`Channels.openPrivacySettings`. Completion or skip writes `prefs.onboarded`.
+Preview it on any profile with `?onboarding` on the dev URL; the e2e smoke test
+skips it when a fresh profile boots into it.
+
 Runtime deps are `@tanstack/react-virtual` (virtualization) and `drizzle-orm`
 (pure-TS, no binaries).
 

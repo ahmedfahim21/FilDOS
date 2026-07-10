@@ -221,6 +221,16 @@ export function registerFsHandlers(): void {
     return wrap(async () => { shell.showItemInFolder(assertValidPath(path)); });
   });
 
+  ipcMain.handle(Channels.openPrivacySettings, (_e, pane: 'files' | 'full-disk') =>
+    wrap(async () => {
+      // macOS only: deep-link into System Settings → Privacy & Security. On
+      // other platforms there's no equivalent gate, so this is a no-op.
+      if (process.platform !== 'darwin') return;
+      const section = pane === 'full-disk' ? 'Privacy_AllFiles' : 'Privacy_FilesAndFolders';
+      await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${section}`);
+    }),
+  );
+
   ipcMain.handle(Channels.quickAccess, () => wrap(() => quickAccess()));
 
   ipcMain.handle(Channels.getHome, () => wrap(async () => app.getPath('home')));

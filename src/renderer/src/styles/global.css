@@ -37,6 +37,51 @@
   }
 }
 
+/* First-run onboarding: each block rises into focus with a stagger (delay set
+ * inline per element); the welcome mark's tiles pop in one by one with a
+ * slight overshoot. */
+.onboard-item {
+  animation: onboard-rise 0.6s var(--ease-snappy) both;
+}
+@keyframes onboard-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.onboard-tile {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: onboard-tile-pop 0.7s var(--ease-snappy) both;
+}
+@keyframes onboard-tile-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-onboarding] *,
+  [data-onboarding] .onboard-item,
+  [data-onboarding] .onboard-tile {
+    animation: none !important;
+  }
+}
+
 /* Search overlay: a thin comet of the scoop colours orbiting the panel border.
  * The element sits 1px proud of the panel; the conic gradient paints the trail
  * (tail fades in, bright head, hard cut) over a hairline base ring. */
