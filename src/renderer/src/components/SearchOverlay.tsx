@@ -515,7 +515,7 @@ export function SearchOverlay({
 
         <div
           className={cn(
-            'bg-popover relative flex flex-col overflow-hidden rounded-xl shadow-2xl',
+            'material relative flex flex-col overflow-hidden rounded-xl shadow-2xl',
             dragOver && 'ring-mint/50 ring-2 ring-inset',
           )}
         >
