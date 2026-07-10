@@ -634,7 +634,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 },
               }
             : {}),
-        });
+        }).catch(() => {});
         if (enable) {
           await window.index.setAmbient(ambient).catch(() => {});
           kickExtras(); // catch selections changed after leaving the models step
@@ -727,7 +727,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step !== 'ready' && (
         <button
           onClick={() => finish({ skipped: true })}
-          className="text-muted-foreground hover:text-foreground absolute top-4 right-5 text-sm transition-colors [-webkit-app-region:no-drag]"
+          className="text-muted-foreground hover:text-foreground absolute top-4 right-5 z-10 text-sm transition-colors [-webkit-app-region:no-drag]"
         >
           Skip setup
         </button>
