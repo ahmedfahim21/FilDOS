@@ -560,7 +560,7 @@ export function SearchOverlay({
             />
             {loading ? (
               <svg
-                className="text-mint shrink-0 animate-spin"
+                className="text-mint shrink-0 animate-spin motion-reduce:animate-none"
                 width={15}
                 height={15}
                 viewBox="0 0 20 20"

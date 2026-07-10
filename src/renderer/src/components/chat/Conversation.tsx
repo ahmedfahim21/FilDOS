@@ -54,6 +54,7 @@ export function Conversation({
       </div>
       {!stuck && (
         <button
+          type="button"
           onClick={() => {
             scrollToBottom();
             setStuck(true);
