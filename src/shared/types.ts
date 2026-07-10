@@ -141,6 +141,8 @@ export type Theme = 'light' | 'dark' | 'system';
 export interface Prefs {
   /** Color theme (defaults to 'system'). */
   theme?: Theme;
+  /** True once the first-run onboarding flow has been completed (or skipped). */
+  onboarded?: boolean;
   windowBounds?: { x: number; y: number; width: number; height: number };
   lastPath?: string;
   showHidden?: boolean;
@@ -360,6 +362,11 @@ export interface FsApi {
   drives(): Promise<Result<DriveItem[]>>;
   /** Eject a removable drive by its mount path. */
   ejectDrive(path: string): Promise<Result<void>>;
+  /**
+   * Open the OS privacy settings pane (macOS: Files & Folders or Full Disk
+   * Access) so the user can grant file access the TCC prompt denied.
+   */
+  openPrivacySettings(pane: 'files' | 'full-disk'): Promise<Result<void>>;
 }
 
 /** The API surface exposed on `window.tags`. */

@@ -513,7 +513,7 @@ function ChatModelBrowser() {
     cn(
       'rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
       active
-        ? 'border-border bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/20'
+        ? 'border-border bg-primary/10 text-foreground'
         : 'border-border text-muted-foreground hover:bg-accent',
     );
 
@@ -916,7 +916,7 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                     className={cn(
                       'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
                       theme === t.value
-                        ? 'border-border bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/20'
+                        ? 'border-border bg-primary/10 text-foreground'
                         : 'border-border text-muted-foreground hover:bg-accent',
                     )}
                   >

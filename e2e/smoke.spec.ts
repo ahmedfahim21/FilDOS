@@ -25,6 +25,16 @@ test.beforeAll(async () => {
   });
   page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
+
+  // A fresh profile (CI) boots into first-run onboarding; skip it so the
+  // shell assertions below run against the browser. An already-onboarded
+  // profile goes straight to the app.
+  const onboarding = page.getByTestId('onboarding');
+  await expect(page.getByTestId('app').or(onboarding).first()).toBeVisible();
+  if (await onboarding.isVisible()) {
+    await page.getByRole('button', { name: 'Skip setup' }).click();
+    await expect(onboarding).toBeHidden();
+  }
 });
 
 test.afterAll(async () => {

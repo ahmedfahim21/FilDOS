@@ -5,6 +5,8 @@ import App from './App';
 import { applyTheme } from './lib/theme';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Splash } from './components/Splash';
+import { Onboarding } from './components/onboarding/Onboarding';
+import { needsOnboarding } from './components/onboarding/steps';
 import '@fontsource-variable/inter';
 import '@fontsource/space-mono/400.css';
 import '@fontsource/space-mono/700.css';
@@ -12,12 +14,22 @@ import './styles/global.css';
 
 /** Resolves the starting directory and preferences before mounting the browser. */
 function Root() {
-  const [boot, setBoot] = useState<{ path: string; prefs: Prefs } | null>(null);
+  const [boot, setBoot] = useState<{ path: string; prefs: Prefs; onboarding: boolean } | null>(
+    null,
+  );
 
   useEffect(() => {
     (async () => {
       const prefs = await window.prefs.get().catch(() => ({}) as Prefs);
       applyTheme(prefs.theme ?? 'system');
+
+      // `?onboarding` forces the flow for previewing it on an existing profile
+      // (the packaged app never carries a query string).
+      const onboarding =
+        needsOnboarding(prefs) || new URLSearchParams(location.search).has('onboarding');
+      // Existing installs that predate onboarding skip it; record that so the
+      // decision doesn't keep resting on the lastPath heuristic.
+      if (!onboarding && !prefs.onboarded) window.prefs.set({ onboarded: true }).catch(() => {});
 
       // Prefer the last folder if it still exists and is a directory.
       let path: string | undefined = prefs.lastPath;
@@ -30,11 +42,13 @@ function Root() {
         path = home.ok ? home.data : '/';
       }
 
-      setBoot({ path, prefs });
+      setBoot({ path, prefs, onboarding });
     })();
   }, []);
 
   if (!boot) return <Splash />;
+  if (boot.onboarding)
+    return <Onboarding onDone={() => setBoot({ ...boot, onboarding: false })} />;
   return <App initialPath={boot.path} initialPrefs={boot.prefs} />;
 }
 
