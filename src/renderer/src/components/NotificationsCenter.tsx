@@ -148,7 +148,7 @@ function NotificationRow({ n, onDismiss }: { n: AppNotification; onDismiss: () =
             <button
               onClick={onDismiss}
               aria-label="Dismiss"
-              className="text-muted-foreground hover:bg-foreground/[0.09] hover:text-foreground -mr-1 grid size-5 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity group-hover:opacity-100"
+              className="text-muted-foreground hover:bg-foreground/[0.09] hover:text-foreground -mr-1 grid size-5 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             >
               <Icon name="close" size={13} />
             </button>
