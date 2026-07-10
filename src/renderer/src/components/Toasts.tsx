@@ -17,8 +17,8 @@ export function Toasts() {
           className={cn(
             'material text-popover-foreground border-border flex min-w-72 max-w-96 items-start gap-2.5 rounded-lg border p-3 shadow-lg duration-200 ease-snappy',
             t.exiting
-              ? 'animate-out fade-out-0 slide-out-to-bottom-2'
-              : 'animate-in fade-in slide-in-from-bottom-2',
+              ? 'animate-out fade-out-0 slide-out-to-bottom-2 motion-reduce:animate-none'
+              : 'animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none',
           )}
         >
           <span

@@ -58,7 +58,7 @@ export function Conversation({
             scrollToBottom();
             setStuck(true);
           }}
-          className="border-border material text-foreground animate-in fade-in-0 zoom-in-95 absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2.5 py-1 text-2xs font-medium shadow-md duration-150 ease-snappy"
+          className="border-border material text-foreground animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none absolute bottom-3 left-1/2 flex h-6 -translate-x-1/2 items-center gap-1 rounded-full border px-2.5 text-2xs font-medium shadow-md duration-150 ease-snappy"
           title="Jump to latest"
         >
           <Icon name="up" size={11} className="rotate-180" />
