@@ -1,0 +1,112 @@
+---
+title: AI Pipeline
+description: How FilDOS extracts, embeds, indexes, searches, and reasons over your files — entirely on-device.
+---
+
+Every AI capability in FilDOS runs locally. This page is a tour of the
+engineering that makes that practical on a personal machine.
+
+<Frame caption="On-device agents working over your own folders — no upload step.">
+  <img src="/images/ai-native.png" alt="On-device AI over local files" />
+</Frame>
+
+## On-device by design
+
+Embeddings and reranking run through `@huggingface/transformers` on the **WASM**
+backend — zero native dependencies, matching the `node:sqlite` philosophy. The
+one deliberate exception is the assistant LLM, which uses **`node-llama-cpp`**
+(prebuilt platform binaries, Metal on Apple Silicon) because WASM generation is
+unusably slow.
+
+Models run in dedicated **utility processes** so load and inference never block
+the main process. Each worker is a separate main entry in the electron-vite
+config, memoizes one loaded model, and caches weights under `userData/models`
+(the main process hands the worker the path via an env var, since a utility
+process can't call `app.getPath`).
+
+## The model catalog
+
+`src/shared/aiModels.ts` is the shared embedding catalog — several 384-d
+feature-extraction models (MiniLM, BGE, GTE, multilingual E5) plus a 512-d
+**CLIP** model that embeds text and images into one space. Adding a
+feature-extraction model is a single catalog entry.
+
+The chat catalog lives in `src/shared/llmModels.ts` (0.6B–35B, grouped by
+family), and users can add any GGUF from Hugging Face at runtime.
+
+## Indexing
+
+The pipeline that turns files into searchable vectors:
+
+```text
+extract.ts  →  chunk.ts  →  provider.embed()  →  vectorStore.sqlite.ts
+(text/code/  (~512-token   (WASM inference)      (Float32 BLOBs +
+ pdf/docx)    windows)                            in-memory cache)
+```
+
+`indexer.ts` orchestrates it — crawling roots, comparing `fs.stat` against
+per-file `index_state` so unchanged files are no-ops, and draining a persistent
+`index_jobs` queue as a two-stage `prepare` → `commit` pipeline that yields
+between files. Notable properties:
+
+- **Cost-classed queue** — removals and text first, images next, PDF/DOCX last —
+  so a fresh index becomes useful in minutes.
+- **Duty-cycled** via `powerMonitor`: near full speed when you're away, ~half
+  while you're active, gentler on battery. The embed worker runs multi-threaded
+  WASM at low OS priority.
+- **Byte-range PDF transport** — book-size PDFs (up to 512 MB) extract with
+  bounded memory instead of buffering the whole file.
+- **Filename fallback** — files whose content can't be extracted still get a
+  humanized-basename chunk, so name queries find them through both lanes.
+- **Codebase-aware** — a directory with a `.git`/`package.json`/`Cargo.toml`
+  marker is indexed docs-only; build output is never descended.
+
+**Ambient mode** keeps indexing alive after the last window closes: the app
+stays resident in the menu bar / system tray with live progress.
+
+## The vector store
+
+Vectors are Float32 BLOBs in SQLite, searched with **brute-force cosine** over an
+**in-memory cache** (vectors only, no texts) warmed on first search and kept
+coherent by upsert/remove/remap/clear. There's no ANN index or vector DB — dot
+products over a personal-scale index take tens of milliseconds, and the cache is
+what makes that hold without re-reading every BLOB.
+
+## Search fusion
+
+`search.ts` fuses two retrieval lanes with **Reciprocal Rank Fusion** (vector +
+BM25), then reranks only the top ~16 candidates with an on-device cross-encoder
+(more would take seconds on WASM). Filename evidence anchors the rank; the CLIP
+image lane is gated on that model being downloaded. See
+[Search by Meaning](/features/ai-search) for the product view.
+
+## The assistant (LLM)
+
+The "Ask AI" panel is powered by `src/main/ai/llm/`:
+
+- **`llmWorker.ts`** runs `node-llama-cpp` in its own utility process — downloads
+  GGUF weights, keeps one model resident, runs one chat at a time, and streams
+  tokens back as `chunk` messages.
+- **`context.ts`** builds the prompt from `@file` mentions, `#folder` listings,
+  and `/`commands (`/find` runs the index search first).
+- **Chat tools** — `@shared/chatTools.ts` defines create/copy/move/rename/
+  delete/list/read tools with GBNF JSON schemas; the worker function-calls them,
+  RPCs each call to main, and executes against `fs/service` with injected deps.
+  Every action is recoverable (deletes to Trash, no overwrites).
+- **Persistence** — every exchange, including mentions and `/find` sources, is
+  saved to `chat_sessions` + `chat_messages` so conversations resume later.
+
+## The knowledge graph (Canvas)
+
+`src/main/ai/graph/` fuses three signals — embedding **similarity** (per-file
+centroids → partitioned kNN), **entities** (opt-in on-device NER), and
+**temporal sessions** (from mtimes) — into a `GraphSnapshot` with Louvain
+communities. `GraphBuilder` is lazy and incremental, running under the same
+duty-cycle as the indexer, and renders through **cosmos.gl** (GPU force layout +
+WebGL). See [Canvas](/features/canvas).
+
+## Testing the AI layer
+
+Dependencies are **injected** into `Indexer`, `IndexWatcher`, and `GraphBuilder`,
+so tests drive the whole pipeline with a fake provider and a temp directory — no
+Electron required. See [Testing](/engineering/testing).

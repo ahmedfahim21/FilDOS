@@ -1,0 +1,70 @@
+---
+title: Testing & CI
+description: Vitest for unit and integration tests, Playwright for end-to-end, running on Ubuntu, macOS, and Windows.
+---
+
+FilDOS is tested at three levels, all runnable locally and all enforced in CI.
+
+## Unit + integration (Vitest)
+
+Tests live **beside the code** as `*.test.ts`, split per feature, reusing the
+Vite aliases via `vitest.config.ts`:
+
+- **Renderer** tests run under **jsdom**.
+- **Main-process** tests run under **node**.
+
+The filesystem service tests (`src/main/fs/service.*.test.ts`, one file per
+operation — create, read, rename, copy, move, …) are **true integration tests**:
+they exercise real files in an `os.tmpdir()` sandbox provisioned by
+`src/main/fs/fixtures.ts`.
+
+The AI layer is tested the same way: dependencies are injected into `Indexer`,
+`IndexWatcher`, and `GraphBuilder`, so tests drive the whole pipeline with a fake
+provider and a temp directory — no Electron required. Chat tools are tested
+against a temp dir in `tools.test.ts`.
+
+```bash
+npm test            # vitest run — unit + integration
+npm run test:watch  # vitest in watch mode
+```
+
+## End-to-end (Playwright)
+
+`e2e/*.spec.ts` launch the **built** Electron app via `_electron`
+(`playwright.config.ts`) and assert the shell boots — so `test:e2e` builds first.
+
+```bash
+npm run test:e2e    # build, then Playwright smoke test on the packaged app
+```
+
+<Note>
+  On a headless Linux box, run the e2e suite under `xvfb-run`.
+</Note>
+
+## Lint + hooks
+
+ESLint uses a flat config (`eslint.config.mjs`) that splits environments along
+the process boundary — node vs. browser, plus React Hooks rules. A git
+pre-commit hook runs `lint-staged` (`eslint --fix` on staged files); the
+`prepare` script installs it on `npm install`.
+
+```bash
+npm run lint        # eslint (flat config)
+npm run typecheck   # tsc for both node (main/preload) and web (renderer) projects
+```
+
+## The full pre-PR loop
+
+Before opening a pull request, run:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs **lint, typecheck + unit/integration, and e2e**
+on **Ubuntu, macOS, and Windows**, on **Node 22** (required for `node:sqlite`).

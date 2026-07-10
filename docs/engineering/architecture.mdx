@@ -1,0 +1,91 @@
+---
+title: Architecture
+description: Electron + React + TypeScript with a strict process boundary and a typed IPC spine.
+---
+
+FilDOS is an Electron + React + TypeScript app built with **electron-vite**. It
+has three layers plus a shared contract, and a deliberately strict boundary
+between them.
+
+## The four layers
+
+```text
+src/shared/     Types + IPC channel names imported by ALL layers   (alias @shared)
+src/main/       Main process — all filesystem & database access lives here
+src/preload/    contextBridge — the ONLY surface the renderer can call
+src/renderer/   The React app                                      (alias @ = src/renderer/src)
+```
+
+The renderer never imports Node or Electron and never touches the disk directly.
+It calls a small, typed set of preload APIs — `window.fsapi`, `window.watcher`,
+`window.tags`, `window.recents`, `window.views`, `window.prefs`, `window.llm`,
+`window.chats`, `window.graph`, and so on — each defined in `src/preload/index.ts`
+and typed in `src/preload/index.d.ts`.
+
+## Security model
+
+<Warning>
+  These three settings are non-negotiable and must never be weakened:
+</Warning>
+
+| Setting | Value |
+|---------|-------|
+| `contextIsolation` | `true` |
+| `sandbox` | `true` |
+| `nodeIntegration` | `false` |
+
+Because the renderer is fully sandboxed, every capability it has is something the
+preload layer explicitly, and narrowly, exposes.
+
+## Main process modules
+
+| Module | Responsibility |
+|--------|----------------|
+| `index.ts` | App lifecycle, `BrowserWindow`, window-bounds persistence |
+| `fs/service.ts` | Pure fs logic: list, info, create/rename/copy/move/duplicate, folder size, recursive tokenized search |
+| `fs/handlers.ts` | Registers every `ipcMain.handle`; wraps errors into `Result` |
+| `fs/watch.ts` | Single non-recursive `fs.watch` on the focused dir, debounced |
+| `fs/thumbnails.ts` | `nativeImage` thumbnails as data URLs, cached in memory |
+| `db/` | SQLite metadata + AI index (see [Data Layer](/engineering/data-layer)) |
+| `prefs.ts` | Preferences in the SQLite `prefs` table (JSON values) |
+| `ai/` | Embeddings, indexer, search, knowledge graph, and the LLM (see [AI Pipeline](/engineering/ai-pipeline)) |
+
+## Renderer state
+
+State is React context, no Redux:
+
+- **`state/navigation.tsx`** — current path, back/forward/up history, sort,
+  view mode, column widths, search query, refresh token (`useReducer`).
+- **`state/clipboard.tsx` / `state/undo.tsx` / `state/toast.tsx`** — copy/cut,
+  the undo stack, and notifications.
+- **`hooks/useFileActions.ts`** — **all mutations funnel through here**; each runs
+  the IPC call, toasts, refreshes, and pushes an inverse onto the undo stack.
+- **`hooks/useTags.ts`** — all tag mutations funnel through here so the sidebar,
+  dots, menus, and info panel stay in sync.
+
+Page views like **Recents**, **Tag Files**, **Canvas**, and **Ask AI** are
+history entries — the toolbar Back/Forward arrows traverse them alongside
+folders.
+
+## Repository layout
+
+```text
+src/            The desktop app: Electron main / preload / renderer
+  shared/       Types and IPC channel names shared by every layer
+  main/         Main process: filesystem, database, and the AI layer
+  preload/      contextBridge: the only surface the renderer can call
+  renderer/     The React app
+docs/           Product docs (Mintlify)
+website/        The landing site (Next.js)
+```
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="The IPC Contract" icon="cable" href="/engineering/ipc-contract">
+    The Result-typed spine that connects renderer to disk.
+  </Card>
+  <Card title="Data Layer" icon="database" href="/engineering/data-layer">
+    SQLite via `node:sqlite` + Drizzle, with zero native deps.
+  </Card>
+</CardGroup>

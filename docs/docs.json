@@ -22,7 +22,26 @@
         "pages": [
           "features/file-management",
           "features/tags",
-          "features/ai-search"
+          "features/ai-search",
+          "features/ask-ai",
+          "features/canvas",
+          "features/cloud-drives"
+        ]
+      },
+      {
+        "group": "Under the Hood",
+        "pages": [
+          "engineering/architecture",
+          "engineering/ipc-contract",
+          "engineering/ai-pipeline",
+          "engineering/data-layer",
+          "engineering/testing"
+        ]
+      },
+      {
+        "group": "Resources",
+        "pages": [
+          "changelog"
         ]
       }
     ]

@@ -3,6 +3,7 @@ import { DiscordIcon, GithubIcon, XIcon } from "../icons";
 import { FlowField } from "./flow-field";
 
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
+const DOCS_URL = "https://docs.fildos.cloud";
 // TODO: replace with the real invite once the server is live.
 const DISCORD_URL = "https://discord.gg/fildos";
 
@@ -12,6 +13,13 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: st
     links: [
       // { label: "Roadmap", href: "/roadmap" },
       { label: "Download", href: `${GITHUB_URL}/releases`, external: true },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { label: "Docs", href: DOCS_URL, external: true },
+      { label: "Changelog", href: `${DOCS_URL}/changelog`, external: true },
     ],
   },
   {
@@ -72,7 +80,7 @@ export function LandingFooter() {
             </div>
           </div>
 
-          <div className="flex gap-16 sm:gap-24">
+          <div className="flex gap-10 sm:gap-16 lg:gap-24">
             {LINK_GROUPS.map(({ title, links }) => (
               <nav key={title}>
                 <div className="mb-3 font-mono text-2xs uppercase tracking-widest text-white/40">
