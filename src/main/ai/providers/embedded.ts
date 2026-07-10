@@ -31,6 +31,9 @@ export class EmbeddedAiProvider implements AiProvider {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly progressListeners = new Set<(status: AiModelStatus) => void>();
+  /** Model ids whose download was deliberately cancelled, so the worker-exit
+   * rejection it causes can be told apart from a real crash. */
+  private readonly cancelling = new Set<string>();
 
   /** Subscribe to model download/state progress. Returns an unsubscribe fn. */
   onProgress(cb: (status: AiModelStatus) => void): () => void {
@@ -94,7 +97,32 @@ export class EmbeddedAiProvider implements AiProvider {
   }
 
   async download(modelId: string): Promise<void> {
-    await this.request<void>('download', { modelId });
+    try {
+      await this.request<void>('download', { modelId });
+    } catch (err) {
+      // A deliberate cancel kills the worker, which rejects this same pending
+      // request generically ("The AI worker stopped.") — not a real failure.
+      if (this.cancelling.delete(modelId)) return;
+      throw err;
+    }
+  }
+
+  /**
+   * Abort an in-flight download. transformers.js's `from_pretrained` exposes no
+   * cancellation hook, so the only way to stop a fetch already underway is to
+   * kill the worker process doing it — it forks again lazily on the next
+   * request. Only acts while the given model is actually downloading, so a
+   * stale/late cancel can't kill an unrelated in-flight embed/rerank call.
+   */
+  async cancelDownload(modelId: string): Promise<void> {
+    if (!this.worker) return;
+    const status = await this.status(modelId).catch(() => null);
+    if (status?.state !== 'downloading') return;
+    this.cancelling.add(modelId);
+    this.worker.kill();
+    for (const listener of this.progressListeners) {
+      listener({ state: 'absent', modelId, dim: status.dim });
+    }
   }
 
   async embed(modelId: string, texts: string[], role: EmbedRole = 'passage'): Promise<Float32Array[]> {

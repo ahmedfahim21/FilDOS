@@ -112,7 +112,7 @@ export function TopBar({
       </Button>
 
       {/* Right — activity notifications + the Assistant opener (primary) */}
-      <div className="flex flex-1 items-center justify-end gap-1.5">
+      <div className="flex flex-1 items-center justify-end gap-3">
         <NotificationsCenter />
         <Button
           variant="default"

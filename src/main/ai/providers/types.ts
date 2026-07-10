@@ -24,6 +24,8 @@ export interface AiProvider {
   status(modelId: string): Promise<AiModelStatus>;
   /** Ensure a model is present locally. Idempotent; emits progress while fetching. */
   download(modelId: string): Promise<void>;
+  /** Abort an in-flight download for a model, if one is running. */
+  cancelDownload?(modelId: string): Promise<void>;
   /** Embed each input string into a vector; one Float32Array per input. The
    * `role` lets asymmetric retrieval models prefix queries vs. passages. */
   embed(modelId: string, texts: string[], role?: EmbedRole): Promise<Float32Array[]>;

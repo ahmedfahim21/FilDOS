@@ -33,7 +33,7 @@ import {
   Moon01Icon,
   More01Icon,
   NoInternetIcon,
-  Notification03Icon,
+  Notification01Icon,
   PauseIcon,
   PencilEdit01Icon,
   PlayIcon,
@@ -156,7 +156,7 @@ const ICONS: Record<IconName, HugeIcon> = {
   brain: AiBrain01Icon,
   play: PlayIcon,
   pause: PauseIcon,
-  bell: Notification03Icon,
+  bell: Notification01Icon,
   download: Download01Icon,
 };
 

@@ -86,6 +86,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   // Mirrors the last status per id so we can detect create/complete transitions
   // without reading state inside a setState updater.
   const lastStatus = useRef<Record<string, NotificationStatus>>({});
+  // First-seen time per id, used as a stable sort key. Sorting active rows by
+  // `updatedAt` instead would reorder the list on every progress tick — with a
+  // download and the indexer both streaming updates, their rows would swap
+  // places continuously and the panel would visibly jump around.
+  const createdAt = useRef<Record<string, number>>({});
   const openRef = useRef(false);
 
   const push = useCallback((n: AppNotification) => {
@@ -93,12 +98,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const created = prev === undefined;
     const completed = n.status !== 'active' && prev !== n.status;
     lastStatus.current[n.id] = n.status;
+    if (created) createdAt.current[n.id] = n.updatedAt;
     if ((created || completed) && !openRef.current) setUnseen(true);
     setMap((m) => ({ ...m, [n.id]: n }));
   }, []);
 
   const remove = useCallback((id: string) => {
     delete lastStatus.current[id];
+    delete createdAt.current[id];
     setMap((m) => {
       if (!(id in m)) return m;
       const next = { ...m };
@@ -113,6 +120,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     (s: { modelId: string; state: AiModelState; progress?: number; message?: string }) => {
       const id = `model:${s.modelId}`;
       const exists = lastStatus.current[id] !== undefined;
+      if (s.state === 'absent') {
+        // A cancelled download (or any other reset back to absent) — 'absent'
+        // has no terminal row of its own, so drop the notification instead of
+        // leaving it stuck at its last 'downloading' progress forever.
+        if (exists) remove(id);
+        return;
+      }
       const status = statusOf(s.state);
       // Ignore terminal/absent events for models we never saw downloading —
       // that keeps pre-installed models out of the feed on startup.
@@ -135,7 +149,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         updatedAt: Date.now(),
       });
     },
-    [push],
+    [push, remove],
   );
 
   const onIndex = useCallback(
@@ -221,7 +235,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       const aActive = a.status === 'active' ? 1 : 0;
       const bActive = b.status === 'active' ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
-      return b.updatedAt - a.updatedAt;
+      const aCreated = createdAt.current[a.id] ?? a.updatedAt;
+      const bCreated = createdAt.current[b.id] ?? b.updatedAt;
+      return bCreated - aCreated;
     });
     const activeCount = items.filter((n) => n.status === 'active').length;
     const hasCleared = items.some((n) => n.status !== 'active');

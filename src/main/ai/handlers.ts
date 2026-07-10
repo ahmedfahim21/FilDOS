@@ -58,6 +58,13 @@ export function registerAiHandlers(): void {
     }),
   );
 
+  ipcMain.handle(Channels.aiCancelDownload, (_e, modelId?: string) =>
+    wrap<void>(async () => {
+      const p = await provider();
+      await p.cancelDownload?.(await activeModelId(modelId));
+    }),
+  );
+
   ipcMain.handle(Channels.aiEmbed, (_e, texts: string[]) =>
     wrap<number[][]>(async () => {
       const vectors = await (await provider()).embed(await activeModelId(), texts);

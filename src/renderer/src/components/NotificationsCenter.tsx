@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getModelDef } from '@shared/aiModels';
 import { cn } from '@/lib/utils';
 import {
   useNotifications,
@@ -6,6 +7,18 @@ import {
   type NotificationStatus,
 } from '@/state/notifications';
 import { Icon } from './Icon';
+
+/** Model id a `model:<id>` notification tracks. */
+function modelIdOf(n: AppNotification): string {
+  return n.id.slice('model:'.length);
+}
+
+/** Cancel an in-flight model download — the embedding catalog goes through
+ * `window.ai`, everything else (built-in or custom GGUF) through `window.llm`. */
+function cancelModelDownload(modelId: string): void {
+  if (getModelDef(modelId)) void window.ai.cancelDownload(modelId);
+  else void window.llm.cancelDownload(modelId);
+}
 
 /** Opt controls out of the window-drag region so they stay clickable. */
 const NO_DRAG = '[-webkit-app-region:no-drag]';
@@ -141,9 +154,21 @@ function NotificationRow({ n, onDismiss }: { n: AppNotification; onDismiss: () =
         <div className="flex items-center gap-2">
           <span className="flex-1 truncate text-sm font-medium">{n.title}</span>
           {active ? (
-            pct != null ? (
-              <span className="text-mint text-2xs shrink-0 tabular-nums">{pct}%</span>
-            ) : null
+            <div className="flex shrink-0 items-center gap-1">
+              {pct != null ? (
+                <span className="text-mint text-2xs tabular-nums">{pct}%</span>
+              ) : null}
+              {n.kind === 'download' && (
+                <button
+                  onClick={() => cancelModelDownload(modelIdOf(n))}
+                  aria-label="Cancel download"
+                  title="Cancel download"
+                  className="text-muted-foreground hover:bg-foreground/[0.09] hover:text-foreground -mr-1 grid size-5 shrink-0 place-items-center rounded-sm opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <Icon name="close" size={13} />
+                </button>
+              )}
+            </div>
           ) : (
             <button
               onClick={onDismiss}
