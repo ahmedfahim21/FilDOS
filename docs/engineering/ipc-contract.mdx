@@ -1,0 +1,87 @@
+---
+title: The IPC Contract
+description: A Result-typed spine — every filesystem operation returns a discriminated union, so expected failures become friendly messages, not crashes.
+---
+
+The IPC contract is the spine of the app. Every filesystem operation returns a
+discriminated **`Result<T>`**, and the renderer checks `result.ok` rather than
+wrapping calls in `try/catch`.
+
+## The Result type
+
+```ts
+type Result<T> =
+  | { ok: true;  data: T }
+  | { ok: false; error: { code: string; message: string } };
+```
+
+Expected failures — `EACCES`, `ENOENT`, `EEXIST`, and friends — become friendly
+toasts in the UI, never uncaught exceptions. A renderer call reads like this:
+
+```ts
+const res = await window.fsapi.rename(oldPath, newName);
+if (!res.ok) {
+  toast(res.error.message); // e.g. "A file with that name already exists."
+  return;
+}
+// res.data is fully typed here
+```
+
+## The flow of an operation
+
+Every operation travels the same four hops:
+
+<Steps>
+  <Step title="Channel constant">
+    Declared once in `src/shared/channels.ts` so main and preload agree on the
+    string.
+  </Step>
+  <Step title="Preload method">
+    Added to the `FsApi` interface (`src/shared/types.ts` + `preload/index.d.ts`)
+    and exposed through the contextBridge in `src/preload/index.ts`.
+  </Step>
+  <Step title="Handler">
+    Registered in `src/main/fs/handlers.ts`, wrapped in `wrap()` which converts
+    thrown errors via `toAppError()`. Path arguments are validated with
+    `assertValidPath`.
+  </Step>
+  <Step title="Logic">
+    Implemented in `src/main/fs/service.ts`, which simply **throws on failure** —
+    the handler's `wrap()` turns the throw into a typed `Result`.
+  </Step>
+</Steps>
+
+## Adding a new FS operation
+
+The recipe is mechanical:
+
+1. Add the **channel** to `src/shared/channels.ts`.
+2. Add the method to **`FsApi`** in `src/shared/types.ts`.
+3. Implement it in **`service.ts`** — throw on failure.
+4. Register a **handler** in `handlers.ts` (validate path args with
+   `assertValidPath`).
+5. Expose it in **`preload/index.ts`**.
+
+<Tip>
+  Reuse Electron built-ins rather than hand-rolling: `shell.trashItem`,
+  `shell.openPath`, `fs.cp`, `nativeImage.createThumbnailFromPath`,
+  `app.getPath`.
+</Tip>
+
+## Events, not just calls
+
+Some flows push from main to renderer instead of returning a value. Those go over
+event channels (`Events.*`), for example:
+
+- `Events.dirChanged` — the watched directory changed.
+- `Events.indexProgress` — indexing progress.
+- `Events.aiModelProgress` / `Events.llmModelProgress` — model download progress.
+- `Events.chatStream` — streamed assistant tokens and tool activity.
+- `Events.graphProgress` — knowledge-graph build progress.
+
+## Delete = OS Trash only
+
+Delete moves items to the real OS Trash / Recycle Bin via `shell.trashItem`
+(`Channels.trash`). FilDOS keeps **no trash of its own** — no in-app Trash view,
+no restore, no empty-trash, no undo-of-delete. Recover from Finder or Explorer
+if needed.

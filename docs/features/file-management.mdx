@@ -1,13 +1,32 @@
 ---
 title: File Management
-description: Copy, move, rename, trash, and undo — all from the keyboard.
+description: A real file manager first — copy, move, rename, trash, and undo, all from the keyboard.
 ---
 
-<Note>This page is a work in progress.</Note>
+FilDOS is a proper file manager before it is anything else. Every core operation
+works — and works fast — before any AI does.
+
+<Frame caption="List, grid, and gallery views share the same virtualized engine.">
+  <img src="/images/home.jpg" alt="The FilDOS file browser" />
+</Frame>
+
+## Views
+
+Switch between three layouts from the **View** menu:
+
+- **List** — a virtualized table with resizable, reorderable columns.
+- **Grid** — thumbnails at a few icon sizes, with cached previews.
+- **Gallery** — a larger-preview layout for browsing images.
+
+Your choice is remembered per folder. A deliberate change to sort order, view
+mode, or icon size becomes the new global default *and* the current folder's
+remembered view — navigate away and back and the folder looks the way you left
+it.
 
 ## Operations
 
-FilDOS supports the full set of file operations you'd expect from a native file manager:
+FilDOS supports the full set of operations you'd expect from a native file
+manager:
 
 | Action | Keyboard |
 |--------|----------|
@@ -19,21 +38,49 @@ FilDOS supports the full set of file operations you'd expect from a native file 
 | Duplicate | `⌘ D` |
 | Trash | `⌘ ⌫` |
 | Undo | `⌘ Z` |
+| Search | `⌘ K` |
+| Info panel | `⌘ I` |
+
+Copies and moves never overwrite — a collision gets a `" copy"` suffix instead.
 
 ## Undo
 
 Every mutation — copy, move, rename, duplicate — pushes an inverse operation onto
-the undo stack. `⌘ Z` replays it. Delete (trash) is intentionally excluded: recover
-deleted files from the OS Trash (Finder / Recycle Bin).
+the undo stack. `⌘ Z` replays it.
+
+<Note>
+  Delete is intentionally excluded from undo. `⌘ ⌫` moves items to the **OS
+  Trash / Recycle Bin** via the system API; recover them from Finder or Explorer
+  if needed. FilDOS keeps no trash of its own.
+</Note>
 
 ## Live updates
 
-The file list subscribes to a non-recursive `fs.watch` on the current directory.
-Changes made by other apps (Terminal, Finder) appear in under a second, debounced
-to avoid redundant reloads.
+The file list subscribes to a non-recursive watch on the current directory.
+Changes made by other apps (Terminal, Finder, an installer) appear in under a
+second, debounced to avoid redundant reloads.
 
 ## Drag and drop
 
 - **Internal** (within FilDOS): move by default, hold `⌥` / `Alt` to copy.
 - **Drag out** to Finder or Explorer: copies the file(s) to the drop target.
-- **Drag in** from Finder or Explorer: moves or copies into the current directory.
+- **Drag in** from Finder or Explorer: moves or copies into the current
+  directory.
+
+## Recents
+
+FilDOS keeps a persistent **Recents** list that survives across sessions and
+updates automatically as files move. Open it from the sidebar. Like tags, recents
+are stored in SQLite and follow files through renames and moves — see
+[Tags & Recents](/features/tags).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Tags & Recents" icon="tag" href="/features/tags">
+    Colour-coded metadata that follows your files.
+  </Card>
+  <Card title="Search by Meaning" icon="sparkles" href="/features/ai-search">
+    Find files by what's inside them, not just their names.
+  </Card>
+</CardGroup>

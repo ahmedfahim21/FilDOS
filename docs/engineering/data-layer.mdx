@@ -1,0 +1,64 @@
+---
+title: Data Layer
+description: Everything that isn't the filesystem lives in SQLite via Node's built-in node:sqlite, with Drizzle ORM on top — and zero native dependencies.
+---
+
+Everything that isn't the filesystem itself — tags, recents, per-folder views,
+preferences, the AI index, chats, and the knowledge graph — lives in SQLite at
+`userData/fildos.db`.
+
+## Zero native dependencies
+
+The engine is Node's **built-in `node:sqlite`**. Nothing to rebuild against
+Electron's ABI, and Vitest can hit the real engine in tests. **Drizzle ORM** sits
+on top via its `sqlite-proxy` driver (a ~15-line adapter in `connection.ts`).
+
+Because `node:sqlite` is still experimental, bundlers don't recognise it as a
+builtin — it's loaded with `process.getBuiltinModule('node:sqlite')`, never a
+static import. This is why FilDOS requires **Electron ≥ 35 (Node 22)**, and why
+CI runs Node 22.
+
+## Modules
+
+| File | Responsibility |
+|------|----------------|
+| `connection.ts` | Open/close; the Drizzle proxy adapter. `initDb(file)` at startup; features call `db()`. Tests use `initDb(':memory:')`. |
+| `migrations.ts` | Plain-SQL migrations versioned via `PRAGMA user_version`; append-only. |
+| `schema.ts` | Mirrors the DDL as Drizzle tables for query typing. |
+| `tags.ts` / `recents.ts` / `views.ts` | Feature queries for tags, recents, per-folder views. |
+| `aiIndex.ts` / `indexJobs.ts` / `vectorStore.sqlite.ts` | AI index storage: `index_state`, `file_chunks`, `index_jobs`. |
+| `chats.ts` | `chat_sessions` + `chat_messages` for the assistant. |
+| `remap.ts` | Carries metadata across renames and moves. |
+
+## Migrations
+
+Migrations are hand-written plain SQL, appended to a `MIGRATIONS` list and
+applied by version. For a schema change:
+
+```bash
+npm run db:generate   # drizzle-kit scaffolds the diff SQL into /drizzle
+```
+
+Review the generated SQL (some pieces — like the `COLLATE NOCASE` on
+`tags.name` — are hand-tuned), then paste it as a new `MIGRATIONS` entry. The
+runtime never reads `/drizzle`; it's a scaffolding aid only.
+
+## Single-statement mutations
+
+Every mutation is a **single SQL statement** — no multi-await transactions. Since
+concurrent IPC handlers can't interleave within one statement, the database can
+never end up in a half-applied state.
+
+## Following files: `remapPaths`
+
+After a rename or move, handlers call `remapPaths(old, new, sep)`. A single
+prefix-safe `UPDATE OR REPLACE` carries **tags, recents, folder views, and
+`index_state`** to the new path; `file_chunks` follows `index_state` through its
+foreign-key cascade. All the AI-index and graph tables cascade the same way, so a
+move or delete carries — or cleans up — everything derived from a file.
+
+## Lazy pruning
+
+Rows for files deleted *outside* FilDOS aren't cleaned eagerly. They're pruned
+lazily: the next time a tag's files or the recents list is fetched, each path is
+stat'd and stale entries drop out.

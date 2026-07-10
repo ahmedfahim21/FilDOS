@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "FilDOS",
   "colors": {
-    "primary": "#4FC9B8",
-    "light": "#4FC9B8",
-    "dark": "#4FC9B8"
+    "primary": "#6e9bee",
+    "light": "#6e9bee",
+    "dark": "#6e9bee"
   },
   "favicon": "/logo/mark-light.svg",
   "navigation": {
@@ -22,7 +22,26 @@
         "pages": [
           "features/file-management",
           "features/tags",
-          "features/ai-search"
+          "features/ai-search",
+          "features/ask-ai",
+          "features/canvas",
+          "features/cloud-drives"
+        ]
+      },
+      {
+        "group": "Under the Hood",
+        "pages": [
+          "engineering/architecture",
+          "engineering/ipc-contract",
+          "engineering/ai-pipeline",
+          "engineering/data-layer",
+          "engineering/testing"
+        ]
+      },
+      {
+        "group": "Resources",
+        "pages": [
+          "changelog"
         ]
       }
     ]
@@ -36,7 +55,8 @@
     "color": {
       "light": "#ffffff",
       "dark": "#0f1117"
-    }
+    },
+    "decoration": "windows"
   },
   "navbar": {
     "links": [
@@ -62,6 +82,14 @@
     },
     "body": {
       "family": "Inter"
+    }
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "errors": {
+    "404": {
+      "redirect": true
     }
   }
 }

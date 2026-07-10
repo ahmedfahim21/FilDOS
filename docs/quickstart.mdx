@@ -1,22 +1,29 @@
 ---
 title: Quickstart
-description: Download FilDOS and get it running in under two minutes.
+description: Build FilDOS from source and run it in a couple of minutes.
 ---
 
-## Download
-
-Grab the latest release from GitHub:
-
-<Card title="FilDOS Releases" icon="github" href="https://github.com/ahmedfahim21/FilDOS/releases">
-  Download the latest `.dmg` (macOS) or `.exe` installer (Windows).
-</Card>
+FilDOS is pre-1.0 and doesn't ship packaged installers yet, so running it today
+means building from source. It's a single `npm install` away.
 
 <Note>
-  macOS: right-click → **Open** on first launch to bypass the Gatekeeper prompt
-  (the app is not yet notarized).
+  Once signed, packaged builds are published they'll appear on the
+  [Releases page](https://github.com/ahmedfahim21/FilDOS/releases).
 </Note>
 
-## Build from source
+## Prerequisites
+
+<Steps>
+  <Step title="Node.js 22 or newer">
+    Required — FilDOS relies on the built-in `node:sqlite` module, which needs
+    Node 22 / Electron ≥ 35.
+  </Step>
+  <Step title="npm">
+    Ships with Node. Used for install and all project scripts.
+  </Step>
+</Steps>
+
+## Run the desktop app
 
 <Steps>
   <Step title="Clone the repository">
@@ -26,31 +33,43 @@ Grab the latest release from GitHub:
     ```
   </Step>
   <Step title="Install dependencies">
-    Requires **Node 22+** (the built-in `node:sqlite` module is used for the database).
+    This also installs the git pre-commit hook.
 
     ```bash
     npm install
     ```
   </Step>
-  <Step title="Run in development mode">
+  <Step title="Start the dev server">
     ```bash
     npm run dev
     ```
 
-    This starts electron-vite with HMR for the renderer. Main and preload processes
-    rebuild on change.
-  </Step>
-  <Step title="Build for production">
-    ```bash
-    npm run build
-    npm start   # preview the production build
-    ```
+    electron-vite starts with HMR for the renderer; the main and preload
+    processes rebuild on change.
   </Step>
 </Steps>
 
+<Frame caption="Semantic search — meaning + name search, fused into one ranked list.">
+  <img src="/images/search.jpg" alt="Semantic search in FilDOS" />
+</Frame>
+
+## Build a production bundle
+
+```bash
+npm run build    # output in out/
+npm start        # preview the production build
+```
+
+## Optional: connect a cloud drive
+
+Cloud-provider OAuth credentials (Google Drive, Dropbox) are optional and only
+needed if you want to test those integrations locally. Copy `.env.example` to
+`.env` and fill in the values. See [Cloud Drives](/features/cloud-drives) for
+details.
+
 ## Verify your setup
 
-Run the test suite to confirm everything is wired up correctly:
+Run the checks to confirm everything is wired up correctly:
 
 ```bash
 npm test            # unit + integration (Vitest)
@@ -63,10 +82,16 @@ All three should exit with no errors on a clean clone.
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card title="Search by Meaning" icon="sparkles" href="/features/ai-search">
+    Download an embedding model and start indexing your files.
+  </Card>
+  <Card title="Ask AI" icon="message-circle" href="/features/ask-ai">
+    Pick a local LLM and chat with your documents.
+  </Card>
   <Card title="File Management" icon="folder" href="/features/file-management">
     Keyboard shortcuts, drag-and-drop, and the undo stack.
   </Card>
-  <Card title="AI Search" icon="sparkles" href="/features/ai-search">
-    Download a model and start indexing your files.
+  <Card title="Architecture" icon="layers" href="/engineering/architecture">
+    How the process boundary and IPC contract hold the app together.
   </Card>
 </CardGroup>

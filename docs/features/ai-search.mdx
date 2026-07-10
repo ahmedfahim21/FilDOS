@@ -1,45 +1,108 @@
 ---
-title: AI Search
-description: On-device semantic search — find files by meaning, not just filename.
+title: Search by Meaning
+description: On-device semantic search — find files by what's inside them, not just their names.
 ---
 
-<Note>This page is a work in progress.</Note>
+Ask for "receipts from tax season" or "photos from the Japan trip" and FilDOS
+finds files by what they contain. Text, code, PDFs, DOCX, and images are all
+indexed **on-device** — nothing is uploaded, and the index lives in a local
+database.
 
-## How it works
+<Frame caption="Meaning and name search, fused into one ranked result list.">
+  <img src="/images/search.jpg" alt="Semantic search results in FilDOS" />
+</Frame>
 
-FilDOS indexes your files in the background using **sentence-transformer models**
-running entirely on-device via WASM. No data ever leaves your machine.
+## How search works
 
-The pipeline:
+Hit `⌘ K` and type a natural-language query. FilDOS runs a **hybrid search** and
+returns a single fused list — never separate "semantic" and "name" sections:
 
-1. **Extract** — text is pulled from plain text, code, Markdown, CSV, JSON, and similar files. Binary files and files over the size cap are skipped.
-2. **Chunk** — long documents are split into ~512-token windows with overlap so context isn't lost at boundaries.
-3. **Embed** — each chunk is passed through the active model to produce a vector.
-4. **Store** — vectors are stored as Float32 BLOBs in SQLite and searched with brute-force cosine similarity.
+1. **Vector retrieval** finds chunks whose meaning matches your query.
+2. **BM25 keyword retrieval** finds exact term and filename matches.
+3. The two lanes are fused with **Reciprocal Rank Fusion** — filename evidence
+   anchors the rank, the semantic score is discounted against it, and a file
+   that scores in both lanes gets a bump.
+4. The **top candidates are reranked** by an on-device cross-encoder for the
+   final ordering, and the strongest hit is badged **Best**.
+
+Scope chips let you narrow to the current folder, or to **Folders / Docs /
+Images / Audio / Video / Code / Tag**, and filter by time.
+
+## The indexing pipeline
+
+<Frame caption="Files are extracted, chunked, embedded, and stored as vectors — all locally.">
+  <img src="/images/embeddings.png" alt="From documents to embeddings" />
+</Frame>
+
+<Steps>
+  <Step title="Extract">
+    Text is pulled from plain text, code, Markdown, CSV, JSON, and similar files.
+    PDFs stream through a byte-range transport (book-size files extract with
+    bounded memory), and DOCX is parsed too. Files that can't be extracted still
+    get a filename-fallback chunk so name queries find them.
+  </Step>
+  <Step title="Chunk">
+    Long documents are split into ~512-token windows so context isn't lost at
+    boundaries.
+  </Step>
+  <Step title="Embed">
+    Each chunk is passed through the active model — running on WASM — to produce a
+    vector. Images are embedded with CLIP into the **same space** as text, so a
+    text query can match a photo.
+  </Step>
+  <Step title="Store">
+    Vectors are stored as Float32 BLOBs in SQLite and searched with brute-force
+    cosine similarity over an in-memory cache — plenty fast for a personal-scale
+    index.
+  </Step>
+</Steps>
 
 ## Choosing a model
 
-Open **Settings → AI** to pick an embedding model and download it. Models are cached in `userData/models` and loaded only once per session.
+Open **Settings → AI & Search** to pick an embedding model and download it.
+Models are cached in `userData/models` and loaded once per session.
 
 | Model | Dim | Best for |
 |-------|-----|----------|
 | MiniLM L6 v2 | 384 | Fast, general text |
 | BGE Small v1.5 | 384 | Strong retrieval quality |
-| GTE Small | 384 | Multilingual queries |
+| GTE Small | 384 | General text and code |
+| Multilingual E5 | 384 | Non-English queries |
 | CLIP ViT-B/32 | 512 | Text **and** images in one space |
 
-## Indexing
+An optional cross-encoder reranker further sharpens results; like the Canvas NER
+model, it's **opt-in** and never auto-downloaded.
 
-The indexer runs in the background and crawls your home directory by default. It skips:
+## The background indexer
 
-- Dotfiles and hidden directories
-- `node_modules`, build outputs, caches
-- Files you've explicitly excluded via the context menu (**Exclude from AI index**)
+The indexer crawls your configured roots (your home directory by default) in the
+background. It's designed to stay out of your way:
 
-Progress is visible in **Settings → Indexing**. You can pause, resume, or clear the index at any time.
+- **Cost-classed queue** — removals and text first, images next, PDF/DOCX last —
+  so a fresh index is useful in minutes.
+- **Duty-cycled** around your activity: near full speed when you're away, gentler
+  while you're working, and easier on battery.
+- **Skips the noise** — dotfiles, system folders, `node_modules`, build outputs,
+  and caches. Checked-out **codebases** are indexed docs-only so source files
+  don't drown your results.
+- **Keeps itself fresh** via a filesystem watcher plus a periodic reconcile.
 
-## Search
+Progress lives in **Settings → Indexing**. You can pause, resume, or clear the
+index at any time.
 
-Type a natural-language query in the search bar and press `↵`. FilDOS runs a
-**hybrid search** — keyword matching fused with semantic vector retrieval — so you
-get precise results for filenames and fuzzy results for content.
+## Keeping things private
+
+Use **Hide from AI** (a context-menu action, or **Settings → Privacy**) to
+exclude specific files, folders, or whole file extensions from indexing — the
+assistant and search never see what you don't want them to.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Ask AI" icon="message-circle" href="/features/ask-ai">
+    Turn search into a conversation with an on-device LLM.
+  </Card>
+  <Card title="AI Pipeline" icon="cpu" href="/engineering/ai-pipeline">
+    The engineering behind extraction, embeddings, and fusion.
+  </Card>
+</CardGroup>

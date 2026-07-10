@@ -1,14 +1,16 @@
 ---
-title: Tags
-description: Colour-coded tags stored in SQLite — they follow files through renames and moves.
+title: Tags & Recents
+description: Colour-coded tags and a persistent recents list, stored in SQLite — they follow files through renames and moves.
 ---
 
-<Note>This page is a work in progress.</Note>
+Tags and recents are lightweight metadata that live in a local SQLite database,
+not in the filesystem. Because they're keyed by path — and FilDOS updates those
+keys atomically on every rename and move — they follow your files wherever they
+go.
 
-## Overview
+## Tags
 
-Tags are stored in the local SQLite database (`userData/fildos.db`), not in the
-filesystem. Each tag has a name and one of the six brand accent colours:
+Each tag has a name and one of the six brand accent colours:
 
 | Colour | Hex |
 |--------|-----|
@@ -19,20 +21,36 @@ filesystem. Each tag has a name and one of the six brand accent colours:
 | Mint | `#4FC9B8` |
 | Grape | `#A585E0` |
 
-## Applying tags
+### Applying tags
 
 Right-click any file or folder and choose **Tags** from the context menu, or use
-the **Info panel** (`⌘ I`) to manage tags for the selection.
+the **Info panel** (`⌘ I`) to manage tags for the selection. Tag dots appear on
+the right side of every row in the list view.
 
-Tag dots appear on the right side of every row in the file list.
-
-## Tag Files view
+### Tag Files view
 
 Click a tag in the sidebar to open the **Tag Files** view — a filtered list of
-every file carrying that tag, regardless of where it lives on disk.
+every file carrying that tag, regardless of where it lives on disk. It's a
+history entry, so the toolbar Back/Forward arrows traverse it alongside folders.
+
+## Recents
+
+The **Recents** view is a persistent list of recently touched files that survives
+across sessions. Open it from the sidebar; it updates automatically as you work.
 
 ## Persistence through moves and renames
 
 When you rename or move a file inside FilDOS, the database path references are
-updated atomically via `remapPaths`. Tags, recents, and folder view preferences
-all follow the file to its new location.
+updated atomically via `remapPaths`. Tags, recents, folder-view preferences, and
+the AI index all follow the file to its new location in a single, prefix-safe
+update.
+
+Rows for files deleted *outside* FilDOS are pruned lazily — the next time a tag's
+files or the recents list are fetched, each path is stat'd and stale entries drop
+out.
+
+<Note>
+  Every metadata mutation is a single SQL statement — no multi-await
+  transactions — so concurrent IPC handlers can never interleave into a
+  half-applied state. Read more in [Data Layer](/engineering/data-layer).
+</Note>

@@ -1,56 +1,100 @@
 ---
 title: Introduction
-description: FilDOS is an AI-native file browser for macOS and Windows.
+description: FilDOS is an open-source, AI-native file browser that runs entirely on your machine.
 ---
 
-## What is FilDOS?
+## Your files, finally connected
 
-FilDOS is a **keyboard-first, AI-native file browser** built on Electron. It replaces
-Finder and Explorer with a fast, programmer-friendly interface — then adds a layer of
-on-device AI that lets you find files by meaning, not just name.
+**FilDOS** is an open-source, AI-native file browser for your PC. It replaces
+Finder and Explorer with a fast, keyboard-first file manager — then adds a layer
+of on-device intelligence: search by meaning, chat with your documents, and see
+how your work connects. Everything runs locally. Nothing leaves your machine
+unless you explicitly connect a cloud drive.
+
+<video
+  controls
+  className="w-full aspect-video rounded-xl"
+  src="https://github.com/user-attachments/assets/0db212bb-82be-494d-aabd-fbb224d211fd"
+></video>
+
+<Frame caption="The FilDOS file browser — grid view with cloud drives, tags, and Canvas in the sidebar.">
+  <img src="/images/home.jpg" alt="The FilDOS file browser" />
+</Frame>
+
+## Why FilDOS
+
+Cloud file-AI products require you to upload your files to use AI features. Every
+document, photo, and note you hand over teaches someone else's model and sits on
+someone else's servers.
+
+FilDOS runs the other way around: the app, the index, and the models all live on
+your personal machine. Embeddings, search, the knowledge graph, and the
+assistant chat are computed on-device. The whole thing is MIT licensed, so the
+privacy story is something you can read in the source, not something you have to
+take on faith.
+
+## What you can do
 
 <CardGroup cols={2}>
   <Card title="File Management" icon="folder" href="/features/file-management">
-    Copy, move, rename, duplicate, and trash files with full undo support and live
-    filesystem watching.
+    List, grid, and gallery views with resizable columns, inline rename,
+    drag-and-drop, an undo stack, and live filesystem watching.
   </Card>
-  <Card title="Tags" icon="tag" href="/features/tags">
-    Colour-coded tags that follow files through renames and moves, with a tag-files
-    view and sidebar integration.
+  <Card title="Tags & Recents" icon="tag" href="/features/tags">
+    Colour-coded tags and a persistent recents list, stored in SQLite — they
+    follow files through renames and moves.
   </Card>
-  <Card title="AI Search" icon="sparkles" href="/features/ai-search">
-    On-device semantic search powered by sentence-transformer embeddings — no data
-    leaves your machine.
+  <Card title="Search by Meaning" icon="sparkles" href="/features/ai-search">
+    Ask for "receipts from tax season" or "photos from the Japan trip." Text,
+    code, PDFs, DOCX, and images (via CLIP) are all indexed on-device.
   </Card>
-  <Card title="Recents" icon="clock" href="/features/file-management">
-    A persistent recents list that survives across sessions and updates automatically
-    as files move.
+  <Card title="Ask AI" icon="message-circle" href="/features/ask-ai">
+    Chat with your files through an on-device LLM that can mention files,
+    run searches, and act on your data — with your approval.
+  </Card>
+  <Card title="Canvas" icon="workflow" href="/features/canvas">
+    A GPU-rendered knowledge graph of your files, built from embedding
+    similarity, extracted entities, and temporal sessions.
+  </Card>
+  <Card title="Your Clouds, One Window" icon="cloud" href="/features/cloud-drives">
+    Browse Google Drive and Dropbox alongside local folders, through the same
+    interface.
   </Card>
 </CardGroup>
 
 ## Design principles
 
-**Offline-first.** Every feature works without a network connection. AI embeddings
-run entirely on-device via WASM — no API keys, no telemetry.
+**Offline-first.** Every feature works without a network connection. AI
+embeddings, the reranker, the knowledge graph, and the assistant chat all run
+on-device — no API keys, no telemetry.
 
-**Fast by default.** The file list is virtualised, thumbnails are cached, and the
-background indexer yields between files so the UI never stutters.
+**Fast by default.** The file list is virtualised, thumbnails are cached, the
+background indexer is duty-cycled around your activity, and search fuses
+keyword and vector retrieval so results feel instant.
 
-**Secure by construction.** The renderer process runs in a sandboxed `contextIsolation`
-environment. It never touches the disk directly — every operation goes through a typed
-IPC contract.
+**Secure by construction.** The renderer runs in a sandboxed `contextIsolation`
+environment. It never touches the disk directly — every operation goes through a
+typed IPC contract.
 
 **Result-typed IPC.** Every filesystem call returns
-`{ ok: true; data: T } | { ok: false; error: { code, message } }`. Expected failures
-(permission denied, file not found) surface as friendly toasts, never uncaught exceptions.
+`{ ok: true; data: T } | { ok: false; error: { code, message } }`. Expected
+failures (permission denied, file not found) surface as friendly toasts, never
+uncaught exceptions.
 
 ## Technology
 
 | Layer | Tech |
 |-------|------|
 | Shell | Electron 35+ |
-| Renderer | React 18, TypeScript, Tailwind v4 |
+| Renderer | React 18, TypeScript, Tailwind v4, Radix |
 | Build | electron-vite, Vite |
 | Database | `node:sqlite` (built-in) + Drizzle ORM |
-| AI embeddings | `@huggingface/transformers` on WASM |
+| AI embeddings & reranking | `@huggingface/transformers` on WASM |
+| Assistant chat | `node-llama-cpp` (Metal / prebuilt binaries) |
+| Knowledge graph | `@cosmos.gl/graph` (GPU / WebGL) |
+| Cloud storage | `opendal` |
 | Tests | Vitest (unit + integration), Playwright (e2e) |
+
+<Card title="Ready to try it?" icon="rocket" href="/quickstart">
+  Head to the Quickstart to build and run FilDOS from source.
+</Card>
