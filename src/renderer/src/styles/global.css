@@ -108,6 +108,16 @@
     transparent 350deg 360deg
   );
   animation: scoop-orbit 4s linear infinite;
+  /* Paint only a hairline ring at the very edge. The panel above is a
+   * translucent `material` surface, so a full gradient rectangle behind it
+   * bleeds straight through the blur and washes the whole modal in colour —
+   * masking to the border keeps just the orbiting comet outline. */
+  padding: 1.5px;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 @media (prefers-reduced-motion: reduce) {
   .scoop-trail {

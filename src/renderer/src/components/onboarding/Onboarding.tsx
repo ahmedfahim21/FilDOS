@@ -496,6 +496,7 @@ type AccessState = 'unknown' | 'granted' | 'denied';
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [stepIx, setStepIx] = useState(0);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [theme, setTheme] = useState<Theme>('system');
   const [aiChoice, setAiChoice] = useState<'enable' | 'later'>('enable');
   const [ambient, setAmbient] = useState(true);
@@ -724,7 +725,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     >
       {/* Window-drag strip where the title bar would be (traffic lights live here on macOS). */}
       <div className="absolute inset-x-0 top-0 h-13 [-webkit-app-region:drag]" />
-      {step !== 'ready' && (
+      {step !== 'ready' && step !== 'welcome' && (
         <button
           onClick={() => finish({ skipped: true })}
           className="text-muted-foreground hover:text-foreground absolute top-4 right-5 z-10 text-sm transition-colors [-webkit-app-region:no-drag]"
@@ -791,6 +792,37 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 <p className="text-muted-foreground mt-3 max-w-xs text-sm leading-relaxed text-balance">
                   A fast, private file browser that understands what's inside your files.
                 </p>
+              </Reveal>
+              <Reveal order={7} className="mt-8">
+                <label className="text-muted-foreground flex max-w-xs cursor-pointer items-start gap-2.5 text-left text-xs leading-relaxed">
+                  <input
+                    type="checkbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="accent-foreground mt-0.5 size-3.5 shrink-0"
+                  />
+                  <span>
+                    I agree to the{' '}
+                    <a
+                      href="https://fildos.cloud/terms"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-foreground underline underline-offset-2"
+                    >
+                      T&amp;C
+                    </a>{' '}
+                    and{' '}
+                    <a
+                      href="https://fildos.cloud/privacy"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-foreground underline underline-offset-2"
+                    >
+                      Privacy Policy
+                    </a>
+                    .
+                  </span>
+                </label>
               </Reveal>
             </div>
           )}
@@ -1238,9 +1270,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <div className="flex justify-end">
           <Button
             onClick={next}
-            disabled={finishing || (step === 'assistant' && !llmChoice)}
+            disabled={
+              finishing ||
+              (step === 'welcome' && !agreedToTerms) ||
+              (step === 'assistant' && !llmChoice)
+            }
             title={
-              step === 'assistant' && !llmChoice ? 'Pick an assistant model first' : undefined
+              step === 'welcome' && !agreedToTerms
+                ? 'Agree to the Terms & Privacy Policy to continue'
+                : step === 'assistant' && !llmChoice
+                  ? 'Pick an assistant model first'
+                  : undefined
             }
             className="min-w-28"
           >

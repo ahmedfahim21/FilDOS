@@ -28,10 +28,14 @@ test.beforeAll(async () => {
 
   // A fresh profile (CI) boots into first-run onboarding; skip it so the
   // shell assertions below run against the browser. An already-onboarded
-  // profile goes straight to the app.
+  // profile goes straight to the app. The welcome step gates its CTA on the
+  // Terms/Privacy consent checkbox and has no Skip, so agree + advance first,
+  // then Skip from the next step.
   const onboarding = page.getByTestId('onboarding');
   await expect(page.getByTestId('app').or(onboarding).first()).toBeVisible();
   if (await onboarding.isVisible()) {
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Get started' }).click();
     await page.getByRole('button', { name: 'Skip setup' }).click();
     await expect(onboarding).toBeHidden();
   }

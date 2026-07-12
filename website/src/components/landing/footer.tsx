@@ -30,6 +30,13 @@ const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: st
       { label: "Report an issue", href: `${GITHUB_URL}/issues`, external: true },
     ],
   },
+  {
+    title: "Legal",
+    links: [
+      { label: "Privacy Policy", href: "/privacy" },
+      { label: "Terms & Conditions", href: "/terms" },
+    ],
+  },
 ];
 
 export function LandingFooter() {

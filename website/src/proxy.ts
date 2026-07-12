@@ -5,7 +5,7 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Known pages — let these through; everything else (404s) bounces home.
-  const ALLOWED = ['/', '/roadmap'];
+  const ALLOWED = ['/', '/roadmap', '/privacy', '/terms'];
   if (ALLOWED.includes(pathname) || pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
