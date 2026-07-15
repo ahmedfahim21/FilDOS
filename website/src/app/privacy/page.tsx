@@ -4,7 +4,7 @@ import { LegalPage } from "@/components/legal/legal-page";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "How FilDOS handles your data. The app is fully on-device, your files, embeddings, and chats never leave your machine. The website uses privacy-friendly, cookieless analytics only.",
+    "How FilDOS handles your data. The app is fully on-device by default — your files, embeddings, and chats never leave your machine unless you opt in to bring-your-own-key cloud chat. The website uses privacy-friendly, cookieless analytics only.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -18,12 +18,12 @@ export default function PrivacyPage() {
         FilDOS is built privacy-first. This policy explains what happens to your data across two
         separate things: the <strong>FilDOS desktop app</strong> and the{" "}
         <strong>fildos website</strong>. In short, the app runs on your own device and sends
-        us nothing (the only exception is any cloud storage you choose to connect, which talks
-        directly to that provider, not to us), and the website uses only cookieless, privacy-friendly
-        analytics.
+        us nothing (the only exceptions are any cloud storage you choose to connect and any cloud
+        AI provider you choose to bring your own key for — both talk directly to that provider,
+        not to us), and the website uses only cookieless, privacy-friendly analytics.
       </p>
 
-      <h2>The FilDOS app is fully on-device</h2>
+      <h2>The FilDOS app is fully on-device by default</h2>
       <p>
         FilDOS is a local file browser. Everything it does with your files happens on your own
         machine:
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
           <strong>AI runs locally.</strong> Semantic search embeddings, the knowledge-graph analysis,
           and the assistant chat are all computed on-device using models that run on your own hardware.
           Your file contents, search queries, and chat conversations are not transmitted to us or any
-          third party.
+          third party — unless you explicitly opt in to cloud chat, described below.
         </li>
         <li>
           <strong>Your data stays on your disk.</strong> The search index, embeddings, chat history,
@@ -57,6 +57,31 @@ export default function PrivacyPage() {
         provider&rsquo;s own privacy policy. We do not receive the contents of, or metadata about,
         these downloads. Once downloaded, models run entirely offline.
       </p>
+
+      <h2>Optional cloud chat with your own API key</h2>
+      <p>
+        The assistant chat can <strong>optionally</strong> run through a cloud model — Anthropic,
+        OpenAI, Google, AWS Bedrock, or any OpenAI-compatible endpoint — using an API key you
+        provide. This is strictly opt-in: if you never connect a provider, nothing changes.
+      </p>
+      <ul>
+        <li>
+          <strong>What is sent.</strong> While a cloud model is selected (the chat shows a
+          persistent notice naming the provider), your chat messages, recent conversation turns,
+          excerpts of files you @mention, and the results of file actions the assistant performs
+          are sent directly from your device to that provider, under that provider&rsquo;s privacy
+          policy. Nothing passes through, or is seen by, any FilDOS server.
+        </li>
+        <li>
+          <strong>What is never sent.</strong> Your search index, embeddings, semantic search
+          queries, and the knowledge graph are always computed on-device and never leave your
+          machine, regardless of which chat model is selected.
+        </li>
+        <li>
+          <strong>Keys are stored locally and encrypted</strong> in your operating system&rsquo;s
+          secure keychain. Disconnecting a provider deletes the stored key from your device.
+        </li>
+      </ul>
 
       <h2>Connecting cloud services</h2>
       <p>

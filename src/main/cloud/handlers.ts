@@ -3,6 +3,7 @@ import { Operator } from 'opendal';
 import { Channels } from '@shared/channels';
 import type { AccountRecord, AppError, Result } from '@shared/types';
 import { findBackend } from '@shared/opendalBackends';
+import { isLlmAccountProvider } from '@shared/cloudLlm';
 import { runOAuthFlow, type OAuthConfig } from './oauth';
 import { getProvider } from './registry';
 import * as accountsDb from '../db/accounts';
@@ -207,7 +208,12 @@ export function registerCloudHandlers(): void {
   );
 
   ipcMain.handle(Channels.cloudListAccounts, () =>
-    wrap((): Promise<AccountRecord[]> => accountsDb.listAccounts()),
+    wrap(async (): Promise<AccountRecord[]> => {
+      // BYO-key LLM connections share the accounts table but are not drives —
+      // without this filter an Anthropic key would render in the sidebar.
+      const accounts = await accountsDb.listAccounts();
+      return accounts.filter((a) => !isLlmAccountProvider(a.provider));
+    }),
   );
 
   ipcMain.handle(Channels.cloudDisconnect, (_e, accountId: string) =>

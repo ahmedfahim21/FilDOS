@@ -9,6 +9,13 @@ import deepseek from '@/assets/ai-logos/deepseek.png';
 import granite from '@/assets/ai-logos/granite.svg';
 import lfm from '@/assets/ai-logos/lfm.png';
 import custom from '@/assets/ai-logos/custom.webp';
+// Cloud providers get a flat cloud glyph in the provider's accent colour —
+// the "this model leaves the device" cue, consistent across the picker.
+import anthropic from '@/assets/ai-logos/anthropic.svg';
+import openai from '@/assets/ai-logos/openai.svg';
+import google from '@/assets/ai-logos/google.svg';
+import bedrock from '@/assets/ai-logos/bedrock.svg';
+import openaiCompat from '@/assets/ai-logos/openai-compat.svg';
 
 const LOGOS: Record<LlmModelFamily, string> = {
   llama,
@@ -21,6 +28,11 @@ const LOGOS: Record<LlmModelFamily, string> = {
   granite,
   lfm,
   custom,
+  anthropic,
+  openai,
+  google,
+  bedrock,
+  'openai-compat': openaiCompat,
 };
 
 export function modelLogo(family: LlmModelFamily): string {

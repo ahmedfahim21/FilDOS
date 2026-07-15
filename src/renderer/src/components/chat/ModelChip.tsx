@@ -1,5 +1,6 @@
 import type { AiModelState } from '@shared/types';
-import { resolveLlmConfig } from '@shared/llmModels';
+import { CLOUD_CONFIG_LIMITS, resolveLlmConfig } from '@shared/llmModels';
+import { getCloudProvider, isCloudModelId } from '@shared/cloudLlm';
 import { useChat } from '@/state/chat';
 import { useNavigation } from '@/state/navigation';
 import { modelLogo } from '@/lib/modelLogo';
@@ -19,7 +20,8 @@ import { STATE_DOT } from './util';
  * device with the parameters set in Settings, plus a link to manage them.
  */
 export function ModelChip() {
-  const { modelId, statuses, configs, recommendedId, setModelId, allModels, modelDef } = useChat();
+  const { modelId, statuses, configs, recommendedId, setModelId, allModels, cloudModels, modelDef } =
+    useChat();
   const nav = useNavigation();
   const current = modelDef(modelId);
   const state: AiModelState = statuses[modelId]?.state ?? 'absent';
@@ -32,6 +34,12 @@ export function ModelChip() {
 
   /** "0.3 temp · 0.9 top-p · 1024 tok · 4k ctx" from the model's stored config. */
   const summary = (id: string) => {
+    if (isCloudModelId(id)) {
+      const cloud = cloudModels.find((m) => m.id === id);
+      const cfg = resolveLlmConfig(id, configs[id], CLOUD_CONFIG_LIMITS);
+      const provider = cloud ? (getCloudProvider(cloud.provider)?.label ?? cloud.provider) : 'cloud';
+      return `${provider} · ${cfg.maxTokens} tok`;
+    }
     const cfg = resolveLlmConfig(id, configs[id]);
     return `${cfg.temperature} temp · ${cfg.topP} top-p · ${cfg.maxTokens} tok · ${cfg.contextSize / 1024}k ctx`;
   };
@@ -49,6 +57,9 @@ export function ModelChip() {
             <span className={cn('size-1.5 rounded-full', STATE_DOT[state])} />
           )}
           {current?.label ?? modelId}
+          {isCloudModelId(modelId) && (
+            <Icon name="cloud" size={11} className="text-blueberry" aria-label="Cloud model" />
+          )}
           <Icon name="chevron" size={10} className="-rotate-90 opacity-60" />
         </button>
       </DropdownMenuTrigger>
@@ -96,6 +107,35 @@ export function ModelChip() {
             </DropdownMenuItem>
           );
         })}
+        {cloudModels.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="text-muted-foreground flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-3xs font-medium tracking-wider uppercase">
+              <Icon name="cloud" size={11} />
+              Cloud — leaves this device
+            </div>
+            {cloudModels.map((def) => (
+              <DropdownMenuItem
+                key={def.id}
+                onClick={() => setModelId(def.id)}
+                className="flex-col items-start gap-0.5 py-2"
+              >
+                <div className="flex w-full items-center gap-2">
+                  <img
+                    src={modelLogo(def.family)}
+                    alt={def.family}
+                    className="size-5 shrink-0 rounded-sm object-contain"
+                  />
+                  <span className="text-sm font-medium">{def.label}</span>
+                  {def.id === modelId && <Icon name="check" size={13} className="text-mint ml-auto" />}
+                </div>
+                <span className="text-muted-foreground pl-3.5 font-mono text-3xs">
+                  {summary(def.id)}
+                </span>
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => nav.openPage({ kind: 'settings' })}

@@ -280,6 +280,25 @@ Trash, creations/copies never overwrite. Calls stream to the renderer as
 `ChatSidebar`) and persist as a `tool_calls` JSON snapshot on
 `chat_messages`. `SettingsView` is tabbed: General / AI & Search / Assistant
 (model library) / Privacy (Hide from AI).
+**Cloud chat (BYO key, optional):** the same chat can run through a cloud
+model — the one lane allowed off-device (embeddings/index/graph stay local,
+`AiProvider` untouched). `@shared/cloudLlm.ts` is the provider catalog
+(anthropic/openai/google/bedrock/openai-compat; field specs drive the Settings
+form) + `CloudModelDef`s persisted in `prefs.ai.cloudModels` (metadata only).
+Keys live in the encrypted accounts table (`db/accounts.ts#saveConfigAccount`)
+namespaced `llm-<provider>` — `cloud:listAccounts` filters them out so they
+never render as drives. `llm/sendChat.ts` is the extracted, DI'd body of
+`chat:send` that branches local (`LlmManager`) vs cloud; `llm/cloudChat.ts` is
+the cloud engine on the **Vercel AI SDK** (`ai` + `@ai-sdk/*`, ESM → dynamic
+`import()` in main, no worker — I/O-bound), translating `CHAT_TOOLS` GBNF
+schemas to JSON Schema and running `executeChatTool` in-process via tool
+`execute`; Anthropic models get no sampling params (`samplingFor`). Bedrock
+auth: explicit keys or `fromNodeProviderChain` (profile/SSO).
+`llm/cloudAccounts.ts` validates + cheap-verifies credentials per provider
+(`llm:cloud*` channels; per-model Test = one-token `generateText`). Cloud
+models list as always-'ready'; ChatSurface shows a "Sent to <provider>" strip
+while one is selected; one-time consent gates the first connect
+(`prefs.ai.cloudConsentAt`).
 
 ### The database layer (`src/main/db/`)
 

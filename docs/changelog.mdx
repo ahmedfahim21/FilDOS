@@ -3,6 +3,28 @@ title: Changelog
 description: What's new in FilDOS.
 ---
 
+<Update label="Unreleased" description="2026-07-15">
+
+## Cloud models for Ask AI (bring your own key)
+
+The assistant chat can now optionally run through a cloud model with your own
+API key — **Anthropic, OpenAI, Google, AWS Bedrock** (access keys or your AWS
+profile/SSO), or **any OpenAI-compatible endpoint** (OpenRouter, Groq, a local
+server, …). Local stays the default; nothing changes unless you connect a key.
+
+- **Settings → Ask AI → Cloud models** — connect a provider, add model ids
+  (curated suggestions or free text, Bedrock inference profiles included), and
+  tune each model. Connections are verified on save; every model has a
+  **Test** button that runs a real one-token generation.
+- **Same chat, same tools** — mentions, `/find`, file actions, and saved
+  conversations all work identically on cloud models, with a wider file-context
+  budget.
+- **Private by design** — keys live encrypted in your OS keychain; a
+  persistent notice in the chat names the provider while a cloud model is
+  selected; indexing, embeddings, search, and Canvas never leave the device.
+
+</Update>
+
 <Update label="1.0.0-beta.1" description="2026-07-10">
 
 ## FilDOS 1.0.0-beta.1

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AiModelStatus, Theme } from '@shared/types';
+import type { AccountRecord, AiModelStatus, Theme } from '@shared/types';
 import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID } from '@shared/aiModels';
 import {
+  CLOUD_CONFIG_LIMITS,
   HF_GGUF_MODELS_URL,
   LLM_CONFIG_LIMITS,
   LLM_SYSTEM_PROMPT_MAX,
@@ -10,6 +11,17 @@ import {
   type LlmModelFamily,
   type LlmSystemSpecs,
 } from '@shared/llmModels';
+import {
+  CLOUD_MODEL_PLACEHOLDER,
+  CLOUD_MODEL_SUGGESTIONS,
+  CLOUD_PROVIDERS,
+  cloudProviderOfAccount,
+  getCloudProvider,
+  usesProviderDefaultSampling,
+  type CloudLlmProviderId,
+  type CloudModelDef,
+  type CloudProviderDef,
+} from '@shared/cloudLlm';
 import { useAi } from '@/state/ai';
 import { useChat } from '@/state/chat';
 import { useIndexing } from '@/state/indexing';
@@ -51,6 +63,13 @@ const FAMILY_LABELS: Record<LlmModelFamily, string> = {
   granite: 'Granite — IBM',
   lfm: 'LFM — Liquid AI',
   smollm: 'SmolLM — Hugging Face',
+  // Cloud families never group in the library — models under a BYO-key
+  // connection render in the Cloud section — but the Record wants them all.
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google',
+  bedrock: 'AWS Bedrock',
+  'openai-compat': 'OpenAI-compatible',
 };
 const FAMILY_ORDER: LlmModelFamily[] = [
   'custom',
@@ -616,9 +635,10 @@ function ChatModelBrowser() {
       )}
 
       <p className="text-muted-foreground mt-3 text-2xs leading-snug">
-        Models run fully on this device through llama.cpp — nothing leaves your machine.
-        Downloaded models appear in the Ask AI picker with the parameters you set here.
-        Vision-capable models answer text today; image input is coming.
+        Models in this library run fully on this device through llama.cpp — nothing leaves your
+        machine. Downloaded models appear in the Ask AI picker with the parameters you set here.
+        Vision-capable models answer text today; image input is coming. Cloud models added below
+        are the optional, clearly marked exception.
       </p>
     </div>
   );
@@ -672,6 +692,473 @@ function AddModelRow() {
         Browse trending GGUF models on Hugging Face
         <Icon name="open" size={11} />
       </a>
+    </div>
+  );
+}
+
+const cloudChip = (active: boolean) =>
+  cn(
+    'rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+    active
+      ? 'border-border bg-primary/10 text-foreground'
+      : 'border-border text-muted-foreground hover:bg-accent',
+  );
+
+/** Inline outcome of a connection or model test. */
+function TestNote({ result }: { result: { ok: boolean; message?: string; unverified?: boolean } }) {
+  if (!result.ok) return <p className="text-strawberry mt-1.5 text-2xs">{result.message}</p>;
+  if (result.unverified) {
+    return <p className="text-mango mt-1.5 text-2xs">{result.message ?? 'Saved without verification.'}</p>;
+  }
+  return <p className="text-mint mt-1.5 text-2xs">{result.message ?? 'Connection verified.'}</p>;
+}
+
+/**
+ * The BYO-key connect form: pick a provider, fill the credential fields its
+ * catalog entry declares (conditional fields follow the choices made, e.g.
+ * Bedrock's keys-vs-profile switch), acknowledge the one-time off-device
+ * consent, connect. Credentials go straight to the main process and the OS
+ * keychain — they are never echoed back or kept in prefs.
+ */
+function CloudConnectForm() {
+  const chat = useChat();
+  const [providerId, setProviderId] = useState<CloudLlmProviderId>('anthropic');
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [consentNeeded, setConsentNeeded] = useState(false);
+  const [consenting, setConsenting] = useState(false);
+
+  const provider = getCloudProvider(providerId) as CloudProviderDef;
+
+  useEffect(() => {
+    window.prefs.get().then((p) => setConsentNeeded(!p.ai?.cloudConsentAt));
+  }, []);
+
+  const pickProvider = (id: CloudLlmProviderId) => {
+    setProviderId(id);
+    setError(null);
+    setNote(null);
+    // Choice fields start on their first option so conditionals resolve.
+    const defaults: Record<string, string> = {};
+    for (const f of getCloudProvider(id)?.fields ?? []) {
+      if (f.choices) defaults[f.key] = f.choices[0];
+    }
+    setForm(defaults);
+  };
+
+  const visibleFields = provider.fields.filter(
+    (f) => !f.showWhen || form[f.showWhen.key] === f.showWhen.value,
+  );
+  const complete = visibleFields.every((f) => f.optional || f.choices || form[f.key]?.trim());
+
+  const doConnect = async () => {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const res = await chat.connectCloudAccount(providerId, form);
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setNote(
+      res.unverified
+        ? 'Saved — the endpoint offered no way to verify the credentials. Use Test on a model to be sure.'
+        : `${provider.label} connected. Add a model below to start chatting with it.`,
+    );
+    pickProvider(providerId); // clear the entered secrets
+  };
+
+  const connect = async () => {
+    if (consentNeeded) {
+      setConsenting(true);
+      return;
+    }
+    await doConnect();
+  };
+
+  const acceptConsent = async () => {
+    const p = await window.prefs.get();
+    await window.prefs.set({
+      ai: {
+        enabled: p.ai?.enabled ?? false,
+        activeProvider: p.ai?.activeProvider ?? 'embedded',
+        ...p.ai,
+        cloudConsentAt: Date.now(),
+      },
+    });
+    setConsentNeeded(false);
+    setConsenting(false);
+    await doConnect();
+  };
+
+  const choiceLabels: Record<string, string> = { profile: 'AWS profile', keys: 'Access keys' };
+
+  return (
+    <div className="border-border rounded-lg border px-3 py-2.5">
+      <div className="text-foreground text-sm">Connect a provider</div>
+      <div className="text-muted-foreground mb-2 text-2xs">{provider.hint}</div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {CLOUD_PROVIDERS.map((p) => (
+          <button key={p.id} onClick={() => pickProvider(p.id)} className={cloudChip(p.id === providerId)}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {visibleFields.map((field) =>
+          field.choices ? (
+            <div key={field.key} className="flex items-center gap-3">
+              <span className="text-muted-foreground w-28 shrink-0 text-2xs">{field.label}</span>
+              <div className="flex items-center gap-1.5">
+                {field.choices.map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() => setForm((f) => ({ ...f, [field.key]: choice }))}
+                    className={cloudChip(form[field.key] === choice)}
+                  >
+                    {choiceLabels[choice] ?? choice}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <label key={field.key} className="flex items-center gap-3">
+              <span className="text-muted-foreground w-28 shrink-0 text-2xs">
+                {field.label}
+                {field.optional ? ' (optional)' : ''}
+              </span>
+              <input
+                type={field.secret ? 'password' : 'text'}
+                value={form[field.key] ?? ''}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, [field.key]: e.target.value }));
+                  setError(null);
+                }}
+                placeholder={field.placeholder}
+                autoComplete="off"
+                spellCheck={false}
+                aria-label={`${provider.label} ${field.label}`}
+                className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-mint/50 min-w-0 flex-1 rounded-lg border px-3 py-2 font-mono text-xs outline-none"
+              />
+            </label>
+          ),
+        )}
+      </div>
+
+      {consenting ? (
+        <div className="border-border bg-muted/40 mt-3 rounded-lg border px-3 py-2.5">
+          <p className="text-foreground text-2xs leading-snug">
+            Chat messages — including excerpts of files you @mention and files the Assistant's
+            tools read — will be sent to {provider.label}. Indexing, semantic search, and
+            embeddings never leave this device.
+          </p>
+          <div className="mt-2 flex items-center gap-1.5">
+            <Button size="sm" onClick={() => void acceptConsent()}>
+              I understand, connect
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConsenting(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3">
+          <Button size="sm" onClick={() => void connect()} disabled={!complete || busy}>
+            {busy ? 'Connecting…' : 'Connect'}
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="text-strawberry mt-1.5 text-2xs">{error}</p>}
+      {note && !error && <p className="text-mint mt-1.5 text-2xs">{note}</p>}
+    </div>
+  );
+}
+
+/** One cloud model under its account: always ready, testable, tunable. */
+function CloudModelRow({ def }: { def: CloudModelDef }) {
+  const chat = useChat();
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [test, setTest] = useState<{ ok: boolean; message?: string } | null>(null);
+
+  const stored = chat.configs[def.id];
+  const cfg = resolveLlmConfig(def.id, stored, CLOUD_CONFIG_LIMITS);
+  const customized = !!stored && Object.keys(stored).length > 0;
+  const providerSampling = usesProviderDefaultSampling(def.provider, def.remoteId);
+  const L = CLOUD_CONFIG_LIMITS;
+
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    const result = await chat.testCloud(def.accountId, def.remoteId);
+    setTesting(false);
+    setTest(result.ok ? { ok: true, message: `${def.label} answered.` } : result);
+  };
+
+  return (
+    <div className="border-border rounded-lg border">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <img src={modelLogo(def.family)} alt={def.family} className="size-5 shrink-0 object-contain" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-foreground truncate text-sm">{def.label}</span>
+            {customized && (
+              <span
+                className="bg-grape/15 text-grape shrink-0 rounded-full px-1.5 py-0.5 text-3xs font-medium"
+                title="Custom parameters are set"
+              >
+                Customized
+              </span>
+            )}
+          </div>
+          <div className="text-muted-foreground mt-0.5 truncate font-mono text-2xs">{def.remoteId}</div>
+        </div>
+
+        {confirming ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-muted-foreground text-2xs">Remove this model?</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setConfirming(false);
+                setOpen(false);
+                chat.removeCloudModel(def.id);
+              }}
+            >
+              Remove
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+              Keep
+            </Button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => void runTest()} disabled={testing}>
+              {testing ? 'Testing…' : 'Test'}
+            </Button>
+            <button
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              className={cn(
+                'text-muted-foreground hover:bg-accent hover:text-foreground grid size-7 place-items-center rounded-md',
+                open && 'bg-accent text-foreground',
+              )}
+              title="Customize parameters"
+              aria-label={`Customize ${def.label}`}
+            >
+              <Icon name="settings" size={14} />
+            </button>
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-muted-foreground hover:bg-accent hover:text-strawberry grid size-7 place-items-center rounded-md"
+              title="Remove this model"
+              aria-label={`Remove ${def.label}`}
+            >
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {test && (
+        <div className="px-3 pb-2">
+          <TestNote result={test} />
+        </div>
+      )}
+
+      {open && (
+        <div className="border-border space-y-3 border-t px-3 py-3">
+          {providerSampling ? (
+            <p className="text-muted-foreground text-3xs">
+              Claude models run on the provider's default sampling — temperature and top-p are
+              not sent.
+            </p>
+          ) : (
+            <>
+              <ParamSlider
+                label="Temperature"
+                value={cfg.temperature}
+                min={L.temperature.min}
+                max={L.temperature.max}
+                step={L.temperature.step}
+                display={cfg.temperature.toFixed(2)}
+                onChange={(v) => chat.setConfig(def.id, { temperature: v })}
+              />
+              <ParamSlider
+                label="Top-p"
+                value={cfg.topP}
+                min={L.topP.min}
+                max={L.topP.max}
+                step={L.topP.step}
+                display={cfg.topP.toFixed(2)}
+                onChange={(v) => chat.setConfig(def.id, { topP: v })}
+              />
+            </>
+          )}
+          <ParamSlider
+            label="Max answer"
+            value={cfg.maxTokens}
+            min={L.maxTokens.min}
+            max={L.maxTokens.max}
+            step={L.maxTokens.step}
+            display={`${cfg.maxTokens} tok`}
+            onChange={(v) => chat.setConfig(def.id, { maxTokens: v })}
+          />
+          <div>
+            <span className="text-muted-foreground mb-1 block text-2xs">Custom instructions</span>
+            <textarea
+              value={cfg.systemPrompt}
+              maxLength={LLM_SYSTEM_PROMPT_MAX}
+              rows={2}
+              placeholder="e.g. Always answer in bullet points."
+              onChange={(e) => chat.setConfig(def.id, { systemPrompt: e.target.value })}
+              className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-mint/50 w-full resize-none rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+            />
+          </div>
+          {customized && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => chat.setConfig(def.id, null)}
+                className="text-muted-foreground hover:text-foreground text-2xs underline-offset-2 hover:underline"
+              >
+                Reset to defaults
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Add a model under a connected account: starter chips + free-text id. */
+function AddCloudModelRow({
+  account,
+  provider,
+}: {
+  account: AccountRecord;
+  provider: CloudLlmProviderId;
+}) {
+  const chat = useChat();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const existing = new Set(
+    chat.cloudModels.filter((m) => m.accountId === account.id).map((m) => m.remoteId),
+  );
+  const suggestions = CLOUD_MODEL_SUGGESTIONS[provider].filter((s) => !existing.has(s.remoteId));
+
+  const add = async (remoteId: string, label?: string) => {
+    const problem = await chat.addCloudModel(account.id, provider, remoteId, label);
+    setError(problem);
+    if (!problem) setValue('');
+  };
+
+  return (
+    <div>
+      {suggestions.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {suggestions.map((s) => (
+            <button
+              key={s.remoteId}
+              onClick={() => void add(s.remoteId, s.label)}
+              className={cloudChip(false)}
+              title={s.remoteId}
+            >
+              + {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && value.trim() && void add(value)}
+          placeholder={CLOUD_MODEL_PLACEHOLDER[provider]}
+          aria-label="Add a cloud model by id"
+          className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-mint/50 min-w-0 flex-1 rounded-lg border px-3 py-2 font-mono text-xs outline-none"
+        />
+        <Button size="sm" variant="secondary" onClick={() => void add(value)} disabled={!value.trim()}>
+          Add
+        </Button>
+      </div>
+      {error && <p className="text-strawberry mt-1.5 text-2xs">{error}</p>}
+    </div>
+  );
+}
+
+/** One connected account: header with Test/Disconnect, its models, add-model. */
+function CloudAccountCard({ account }: { account: AccountRecord }) {
+  const chat = useChat();
+  const provider = cloudProviderOfAccount(account.provider);
+  const [confirming, setConfirming] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [test, setTest] = useState<{ ok: boolean; message?: string; unverified?: boolean } | null>(
+    null,
+  );
+  if (!provider) return null;
+  const def = getCloudProvider(provider) as CloudProviderDef;
+  const models = chat.cloudModels.filter((m) => m.accountId === account.id);
+
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    const result = await chat.testCloud(account.id);
+    setTesting(false);
+    setTest(result);
+  };
+
+  return (
+    <div className="border-border rounded-lg border px-3 py-2.5">
+      <div className="flex items-center gap-3">
+        <img src={modelLogo(def.family)} alt={def.label} className="size-5 shrink-0 object-contain" />
+        <div className="min-w-0 flex-1">
+          <div className="text-foreground truncate text-sm">{account.label}</div>
+          <div className="text-muted-foreground mt-0.5 text-2xs">
+            {def.label} · {models.length ? `${models.length} model${models.length > 1 ? 's' : ''}` : 'no models yet'}
+          </div>
+        </div>
+        {confirming ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-muted-foreground text-2xs">Remove key and models?</span>
+            <Button size="sm" variant="secondary" onClick={() => void chat.disconnectCloudAccount(account.id)}>
+              Disconnect
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+              Keep
+            </Button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => void runTest()} disabled={testing}>
+              {testing ? 'Testing…' : 'Test'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>
+              Disconnect
+            </Button>
+          </div>
+        )}
+      </div>
+      {test && <TestNote result={test} />}
+
+      <div className="mt-3 space-y-2">
+        {models.map((m) => (
+          <CloudModelRow key={m.id} def={m} />
+        ))}
+        <AddCloudModelRow account={account} provider={provider} />
+      </div>
     </div>
   );
 }
@@ -1156,11 +1643,26 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
               </Section>
 
               <Section
-                icon="cloud"
+                icon="download"
                 title="Add a model from the internet"
                 subtitle="Bring any GGUF chat model — Hugging Face repo or direct link"
               >
                 <AddModelRow />
+              </Section>
+
+              <Section
+                icon="cloud"
+                title="Cloud models (optional)"
+                subtitle="Bring your own API key — chat only; indexing, search and embeddings always stay on this device"
+              >
+                {chat.cloudAccounts.map((account) => (
+                  <CloudAccountCard key={account.id} account={account} />
+                ))}
+                <CloudConnectForm />
+                <p className="text-muted-foreground text-2xs leading-snug">
+                  Keys are stored encrypted in your OS keychain and only ever sent to the provider
+                  you chose. While a cloud model is selected, the chat shows where your messages go.
+                </p>
               </Section>
             </>
           )}

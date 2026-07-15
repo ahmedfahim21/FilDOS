@@ -179,6 +179,13 @@ const llmApi: LlmApi = {
     ipcRenderer.on(Events.llmModelProgress, listener);
     return () => ipcRenderer.removeListener(Events.llmModelProgress, listener);
   },
+  // BYO-key cloud chat connections (kept off window.cloud — that's storage).
+  cloudConnect: (providerId, options) =>
+    ipcRenderer.invoke(Channels.llmCloudConnect, providerId, options),
+  cloudAccounts: () => ipcRenderer.invoke(Channels.llmCloudAccounts),
+  cloudDisconnect: (accountId) => ipcRenderer.invoke(Channels.llmCloudDisconnect, accountId),
+  cloudTest: (accountId, remoteId) =>
+    ipcRenderer.invoke(Channels.llmCloudTest, accountId, remoteId),
 };
 contextBridge.exposeInMainWorld('llm', llmApi);
 

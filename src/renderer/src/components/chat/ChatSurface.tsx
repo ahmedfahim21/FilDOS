@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Entry, SemanticHit } from '@shared/types';
 import { CHAT_COMMANDS } from '@shared/llmModels';
+import { getCloudProvider, isCloudModelId } from '@shared/cloudLlm';
 import { useChat } from '@/state/chat';
 import { useNavigation } from '@/state/navigation';
 import {
@@ -285,6 +286,20 @@ export function ChatSurface({
       <div className={cn(page && 'mx-auto w-full max-w-3xl')}>
         {/* Research nudges toward a capable model when a small one is selected. */}
         {research && <ResearchCallout />}
+
+        {/* Trust strip: while a cloud model is selected, say where messages go. */}
+        {isCloudModelId(chat.modelId) && (
+          <div className="text-muted-foreground flex items-center gap-1.5 px-4 pt-2 text-3xs leading-snug">
+            <Icon name="cloud" size={11} className="text-blueberry shrink-0" />
+            <span>
+              Sent to{' '}
+              {getCloudProvider(
+                chat.cloudModels.find((m) => m.id === chat.modelId)?.provider ?? 'openai-compat',
+              )?.label ?? 'your provider'}{' '}
+              — messages and @-mentioned file excerpts leave this device.
+            </span>
+          </div>
+        )}
 
         {/* Model download call-to-action (shown until the picked model is local). */}
         {!chat.modelReady && (
