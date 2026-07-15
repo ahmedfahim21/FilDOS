@@ -352,6 +352,8 @@ export interface FsApi {
   reveal(path: string): Promise<Result<void>>;
   quickAccess(): Promise<Result<QuickAccessItem[]>>;
   getHome(): Promise<Result<string>>;
+  /** The running app version (from package.json), e.g. "0.1.0". */
+  appVersion(): Promise<Result<string>>;
   /** Recursive byte size of a folder (depth-guarded). */
   folderSize(path: string): Promise<Result<number>>;
   /** Recursive name search under rootPath, capped result set. */

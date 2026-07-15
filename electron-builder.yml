@@ -1,0 +1,56 @@
+appId: com.fildos.app
+productName: FilDOS
+copyright: Copyright © 2026 Fahim Ahmed
+
+# electron-vite compiles into out/; electron-builder packages that, plus the
+# production node_modules it resolves from package.json automatically.
+directories:
+  buildResources: build
+  output: release/${version}
+
+files:
+  - out/**
+  - package.json
+
+# Native binaries and WASM cannot run from inside the asar archive — they must
+# be unpacked to the filesystem. node-llama-cpp ships llama.cpp platform bins;
+# the AI embed/rerank path loads onnxruntime-web's .wasm (copied beside the
+# worker in out/main by the copyOnnxWasm vite plugin).
+asar: true
+asarUnpack:
+  - "**/node_modules/node-llama-cpp/**"
+  - "**/node_modules/@node-llama-cpp/**"
+  - "**/node_modules/onnxruntime-web/**"
+  - "**/*.node"
+  - "**/*.wasm"
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  # Unsigned beta: allow the app to load its own unsigned native modules.
+  # Replace with Developer ID signing + notarization for a public release.
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+
+dmg:
+  title: ${productName} ${version}
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: build/icon.png
+  maintainer: Fahim Ahmed
+  synopsis: An AI-native file browser for the desktop.
+
+# Publish artifacts to GitHub Releases (used by the release workflow when
+# GH_TOKEN is set). Marked as a prerelease-friendly draft by the workflow.
+publish:
+  provider: github
+  owner: ahmedfahim21
+  repo: FilDOS

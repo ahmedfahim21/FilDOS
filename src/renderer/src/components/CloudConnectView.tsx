@@ -43,13 +43,17 @@ const META: Record<string, { logo?: string; blurb: string; group: Group }> = {
   ipfs: { logo: ipfsLogo, blurb: 'Content-addressed network', group: 'object' },
 };
 
+/** Providers hidden from the connect page for now (kept in the backend catalog). */
+const HIDDEN_PROVIDERS = new Set(['s3', 'ipfs']);
+
 const PROVIDERS: ProviderDef[] = [
   { id: 'gdrive', name: 'Google Drive', available: true, auth: 'oauth' },
   { id: 'dropbox', name: 'Dropbox', available: true, auth: 'oauth' },
-  ...OPENDAL_BACKENDS.map((b) => ({
+  ...OPENDAL_BACKENDS.filter((b) => !HIDDEN_PROVIDERS.has(b.id)).map((b) => ({
     id: b.id,
     name: b.name,
-    available: b.available,
+    // OneDrive isn't ready yet — surface it as "coming soon" in the UI.
+    available: b.id === 'onedrive' ? false : b.available,
     auth: b.auth,
     fields: b.fields,
     unavailableReason: b.unavailableReason,

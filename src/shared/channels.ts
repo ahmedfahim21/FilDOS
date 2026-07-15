@@ -16,6 +16,7 @@ export const Channels = {
   reveal: 'fs:reveal',
   quickAccess: 'fs:quickAccess',
   getHome: 'fs:getHome',
+  appVersion: 'fs:appVersion',
   folderSize: 'fs:folderSize',
   search: 'fs:search',
   thumbnail: 'fs:thumbnail',

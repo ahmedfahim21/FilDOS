@@ -235,6 +235,8 @@ export function registerFsHandlers(): void {
 
   ipcMain.handle(Channels.getHome, () => wrap(async () => app.getPath('home')));
 
+  ipcMain.handle(Channels.appVersion, () => wrap(async () => app.getVersion()));
+
   ipcMain.handle(Channels.folderSize, (_e, path: string) => {
     if (isRemote(path)) return wrap(async (): Promise<number> => 0);
     return wrap(() => service.folderSize(assertValidPath(path)));
