@@ -1,11 +1,12 @@
 ---
 title: Ask AI
-description: Chat with your files through a fully on-device LLM that can mention files, run searches, and act on your data.
+description: Chat with your files through an on-device LLM — or, optionally, your own cloud API key — that can mention files, run searches, and act on your data.
 ---
 
 The **Ask AI** panel lets you research across your files in plain language.
-Answers come from a model running **entirely on this device** — nothing leaves
-your system.
+By default, answers come from a model running **entirely on this device** —
+nothing leaves your system. If you want more horsepower, you can optionally
+[bring your own cloud API key](#cloud-models-optional).
 
 <Frame caption="Ask AI — research across your files with an on-device LLM.">
   <img src="/images/ask-ai.jpg" alt="The Ask AI chat panel" />
@@ -51,6 +52,35 @@ Silicon).
   `owner/repo`, or a direct `.gguf` URL.
 
 Manage everything in **Settings → Assistant**.
+
+## Cloud models (optional)
+
+Local stays the default, but the same chat — mentions, `/find`, file tools,
+saved conversations — can run through a cloud model with **your own API key**:
+
+| Provider | What you enter |
+|----------|----------------|
+| Anthropic | API key |
+| OpenAI | API key (and an optional base URL) |
+| Google | API key |
+| AWS Bedrock | Region, plus either access keys or your local AWS profile (SSO works) |
+| OpenAI-compatible | A name, base URL, and optional key — OpenRouter, Groq, Together, a local server, anything speaking the OpenAI API |
+
+Connect a provider in **Settings → Ask AI → Cloud models**, then add the model
+ids you want (curated suggestions for the big providers; free text everywhere —
+Bedrock inference profiles included). Each connection is verified with the
+cheapest call the provider offers, and every model has a **Test** button that
+runs a real one-token generation.
+
+**What is sent, and what never is.** While a cloud model is selected, the chat
+shows a persistent notice naming the provider. Your messages, recent turns,
+excerpts of files you `@mention`, and the results of tool calls the model makes
+are sent to that provider. Your index, embeddings, semantic search, and the
+Canvas graph are computed on-device and **never leave your machine**.
+
+**Keys are stored encrypted** in your OS keychain (macOS Keychain / Windows
+DPAPI / Linux keyring) via Electron `safeStorage` — never in plain prefs, and
+never sent anywhere except the provider you chose.
 
 ## Conversations are saved
 

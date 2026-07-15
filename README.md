@@ -7,7 +7,7 @@
 <h3 align="center">Your files, finally connected</h3>
 
 <p align="center">
-  FilDOS is an Open-Source AI-native File Browser for your PC. Search by meaning, chat with your documents, and see how your work connects. All running locally on-device.
+  FilDOS is an Open-Source AI-native File Browser for your PC. Search by meaning, chat with your documents, and see how your work connects. All running locally on-device by default — optionally bring your own API key to chat through a cloud model.
 </p>
 
 <p align="center">
@@ -40,7 +40,10 @@ on someone else's servers.
 FilDOS runs the other way around: the app, the index, and the models all live
 on your personal machine. Embeddings, search, the knowledge graph, and the assistant
 chat are computed on-device, nothing leaves your computer unless you
-explicitly connect a cloud drive. The whole thing is MIT licensed, so the
+explicitly connect a cloud drive — or, if you choose, bring your own API key
+so the assistant chat can use a cloud model (Anthropic, OpenAI, Google, AWS
+Bedrock, or any OpenAI-compatible endpoint). Even then, indexing, embeddings,
+and search never leave the device. The whole thing is MIT licensed, so the
 privacy story is something you can read in the source, not something you have
 to take on faith.
 
@@ -57,7 +60,10 @@ to take on faith.
 - **Chat with your files.** An on-device LLM (llama.cpp) that can `@file` and
   `#folder` mention your data, run `/find` searches, and act on files
   (create/move/rename/delete) with your approval, every exchange is saved so
-  you can resume it later.
+  you can resume it later. Prefer more horsepower? Connect your own API key
+  (Anthropic, OpenAI, Google, AWS Bedrock, or any OpenAI-compatible endpoint)
+  and the same chat runs through a cloud model — clearly marked, strictly
+  opt-in, keys encrypted in your OS keychain.
 - **Canvas.** A GPU-rendered knowledge graph of your files, built from
   embedding similarity, extracted entities, and temporal sessions. A visual
   answer to "how does this connect to the rest of my work."
@@ -164,6 +170,7 @@ tests, and the end-to-end smoke test on Ubuntu, macOS, and Windows. See
 - SQLite (`node:sqlite`) with Drizzle ORM
 - `@huggingface/transformers` (WASM) for on-device embeddings and reranking
 - `node-llama-cpp` for the on-device assistant chat
+- Vercel AI SDK (`ai` + `@ai-sdk/*`) for the optional bring-your-own-key cloud chat
 - `@cosmos.gl/graph` (GPU/WebGL) for the Canvas knowledge graph
 - `opendal` for cloud storage backends
 - Vitest and Playwright for testing

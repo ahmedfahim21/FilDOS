@@ -10,7 +10,11 @@
  * switching models unloads the previous one. Users can also add any GGUF from
  * the internet via {@link parseCustomModelInput} (stored in prefs, not here).
  */
-/** Model family, for grouping and a logo per family in the UI. */
+/**
+ * Model family, for grouping and a logo per family in the UI. The last five
+ * are cloud providers (see `@shared/cloudLlm`) — models added under a BYO-key
+ * connection carry their provider as the family.
+ */
 export type LlmModelFamily =
   | 'llama'
   | 'qwen'
@@ -21,7 +25,12 @@ export type LlmModelFamily =
   | 'deepseek'
   | 'granite'
   | 'lfm'
-  | 'custom';
+  | 'custom'
+  | 'anthropic'
+  | 'openai'
+  | 'google'
+  | 'bedrock'
+  | 'openai-compat';
 
 /**
  * What the checkpoint can take as input. 'vision' means the source repo ships
@@ -581,6 +590,31 @@ export const LLM_CONFIG_LIMITS = {
   contextSize: { min: 1024, max: 8192, step: 1024 },
 } as const;
 
+interface ConfigRange {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface LlmConfigLimits {
+  temperature: ConfigRange;
+  topP: ConfigRange;
+  maxTokens: ConfigRange;
+  contextSize: ConfigRange;
+}
+
+/**
+ * Ranges for cloud models: answers may run longer (no local KV-cache cost),
+ * and the context ceiling only bounds how much file content the prompt
+ * builder packs — the provider allocates its own window.
+ */
+export const CLOUD_CONFIG_LIMITS: LlmConfigLimits = {
+  temperature: { min: 0, max: 1.5, step: 0.05 },
+  topP: { min: 0.1, max: 1, step: 0.05 },
+  maxTokens: { min: 128, max: 8192, step: 128 },
+  contextSize: { min: 1024, max: 131072, step: 1024 },
+};
+
 /** Longest accepted custom instructions. */
 export const LLM_SYSTEM_PROMPT_MAX = 500;
 
@@ -597,13 +631,17 @@ export function defaultLlmConfig(modelId: string): LlmModelConfig {
   };
 }
 
-/** Merge a stored partial config over the defaults, clamping every field. */
+/**
+ * Merge a stored partial config over the defaults, clamping every field.
+ * Cloud models pass {@link CLOUD_CONFIG_LIMITS}; the default suits local GGUFs.
+ */
 export function resolveLlmConfig(
   modelId: string,
   stored?: Partial<LlmModelConfig>,
+  limits: LlmConfigLimits = LLM_CONFIG_LIMITS,
 ): LlmModelConfig {
   const base = defaultLlmConfig(modelId);
-  const L = LLM_CONFIG_LIMITS;
+  const L = limits;
   return {
     temperature: clamp(stored?.temperature ?? base.temperature, L.temperature.min, L.temperature.max),
     topP: clamp(stored?.topP ?? base.topP, L.topP.min, L.topP.max),

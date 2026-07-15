@@ -198,6 +198,38 @@ describe('Indexer — multimodal routing', () => {
     expect(img?.status).toBe('indexed');
     expect(img?.modelId).toBe('clip'); // routed to the image model
   });
+
+  it('falls back to a filename chunk when an image cannot be decoded (HEIC)', async () => {
+    // iPhone HEIC: sharp's libvips ships without the HEVC codec, so decode
+    // always throws. The file must not error-loop — it gets a name chunk.
+    await fs.writeFile(join(tmp(), 'IMG_6921.HEIC'), Buffer.from([0, 1, 2, 3]));
+    const { provider } = fakeProvider();
+    const textEmbeds: [string, string][] = [];
+    provider.embedImages = async () => {
+      throw new Error('heif: Error while loading plugin: bad seek');
+    };
+    const baseEmbed = provider.embed.bind(provider);
+    provider.embed = async (modelId, texts, role) => {
+      texts.forEach((t) => textEmbeds.push([modelId, t]));
+      return baseEmbed(modelId, texts, role);
+    };
+    const { indexer, progress } = makeIndexer(provider);
+
+    await indexer.start();
+
+    const path = join(tmp(), 'IMG_6921.HEIC');
+    const state = await aiIndex.getState(path);
+    expect(state?.status).toBe('skipped'); // bookkept, not error-looped
+    expect(progress()?.errors).toBe(0);
+    // The filename went through the CLIP text encoder (same vector space).
+    expect(textEmbeds).toContainEqual(['clip', 'IMG 6921 HEIC']);
+    expect((await db().select().from(fileChunks)).some((c) => c.path === path)).toBe(true);
+
+    // Unchanged file: the next crawl leaves it alone instead of retrying.
+    textEmbeds.length = 0;
+    await indexer.start();
+    expect(textEmbeds).toHaveLength(0);
+  });
 });
 
 describe('Indexer.reconcile', () => {

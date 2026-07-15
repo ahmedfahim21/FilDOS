@@ -538,9 +538,24 @@ export class Indexer {
 
     if (prep.kind === 'image') {
       const t0 = Date.now();
-      const [embedding] = await provider.embedImages(prep.modelId, [path]);
+      let embedding: Float32Array | undefined;
+      let decoded = true;
+      try {
+        [embedding] = await provider.embedImages(prep.modelId, [path]);
+      } catch {
+        // Formats the bundled decoder can't open — iPhone HEIC is the big one
+        // (sharp's libvips ships without the patent-encumbered HEVC codec), plus
+        // the odd corrupt file. Same philosophy as unextractable documents:
+        // embed the filename through CLIP's text encoder (same vector space) so
+        // the photo stays findable by name, mark it 'skipped', and don't touch
+        // it again until the file itself changes.
+        decoded = false;
+        [embedding] = await provider.embed(prep.modelId, [nameChunkText(path)], 'passage');
+      }
       await this.deps.pace?.(Date.now() - t0);
-      await aiIndex.upsertState(this.stateFor(path, prep.stat, prep.modelId, embedding ? 'indexed' : 'skipped'));
+      await aiIndex.upsertState(
+        this.stateFor(path, prep.stat, prep.modelId, embedding && decoded ? 'indexed' : 'skipped'),
+      );
       await this.deps.vectorStore.upsert(
         path,
         embedding ? [{ chunkIx: 0, text: basename(path), embedding, modelId: prep.modelId }] : [],

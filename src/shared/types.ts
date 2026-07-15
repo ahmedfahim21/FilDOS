@@ -4,6 +4,7 @@
  * (the llmModels import below is type-only — erased at compile time).
  */
 import type { LlmModelConfig, LlmModelDef, LlmSystemSpecs } from './llmModels';
+import type { CloudLlmTestResult, CloudModelDef } from './cloudLlm';
 import type { GraphProgress, GraphSnapshot } from './graphTypes';
 
 /** A single directory entry as shown in the file list. */
@@ -161,6 +162,12 @@ export interface Prefs {
     llmConfigs?: Record<string, Partial<LlmModelConfig>>;
     /** User-added chat models (from `parseCustomModelInput`). */
     llmCustomModels?: LlmModelDef[];
+    /** BYO-key cloud chat models — metadata only, credentials live encrypted
+     * in the accounts table (see `@shared/cloudLlm`). */
+    cloudModels?: CloudModelDef[];
+    /** When the user first acknowledged that cloud chat sends data off-device
+     * (epoch ms); unset until the first cloud connection. */
+    cloudConsentAt?: number;
   };
   /** Background indexing settings (kept separate from `ai` so neither clobbers the other). */
   index?: {
@@ -554,6 +561,18 @@ export interface LlmApi {
   onEvent(cb: (event: ChatStreamEvent) => void): () => void;
   /** Subscribe to model download/state progress; returns an unsubscribe fn. */
   onModelProgress(cb: (status: LlmModelStatus) => void): () => void;
+  /** Connect a BYO-key cloud chat provider; validates credentials first.
+   * `unverified` means saved without proof (endpoint offered no cheap check). */
+  cloudConnect(
+    providerId: string,
+    options: Record<string, string>,
+  ): Promise<Result<{ account: AccountRecord; unverified?: boolean }>>;
+  /** Connected cloud chat accounts (never includes cloud-storage accounts). */
+  cloudAccounts(): Promise<Result<AccountRecord[]>>;
+  /** Remove a cloud chat account, its credentials, and its models. */
+  cloudDisconnect(accountId: string): Promise<Result<void>>;
+  /** Re-verify an account's credentials — end-to-end against a model when given. */
+  cloudTest(accountId: string, remoteId?: string): Promise<Result<CloudLlmTestResult>>;
 }
 
 /** The API surface exposed on `window.ai` by the preload bridge. */

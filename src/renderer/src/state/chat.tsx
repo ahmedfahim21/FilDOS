@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from 'react';
 import type {
+  AccountRecord,
   ChatMention,
   ChatSessionMeta,
   ChatToolCall,
@@ -27,6 +28,13 @@ import {
   type LlmModelDef,
   type LlmSystemSpecs,
 } from '@shared/llmModels';
+import {
+  getCloudProvider,
+  makeCloudModelDef,
+  type CloudLlmProviderId,
+  type CloudLlmTestResult,
+  type CloudModelDef,
+} from '@shared/cloudLlm';
 
 /** One rendered bubble in the Assistant conversation. */
 export interface ChatMessage {
@@ -68,13 +76,35 @@ interface ChatContextValue {
   configs: Record<string, Partial<LlmModelConfig>>;
   /** Every known model: the built-in catalog plus the user's custom additions. */
   allModels: LlmModelDef[];
-  /** Look up any known model's definition. */
+  /** Look up any known model's definition (cloud models included, shimmed). */
   modelDef: (id: string) => LlmModelDef | undefined;
   /** Add a model from user input (hf: URI / owner/repo / .gguf URL).
    * Returns an error message, or null on success. */
   addCustomModel: (input: string) => Promise<string | null>;
   /** Remove a custom model: forget the entry and delete any weights. */
   forgetCustomModel: (id: string) => Promise<void>;
+  /** BYO-key cloud chat models (metadata; keys live in the OS keychain). */
+  cloudModels: CloudModelDef[];
+  /** Connected cloud chat accounts. */
+  cloudAccounts: AccountRecord[];
+  /** Connect a cloud provider from its credentials form. */
+  connectCloudAccount: (
+    providerId: CloudLlmProviderId,
+    options: Record<string, string>,
+  ) => Promise<{ error: string | null; unverified?: boolean }>;
+  /** Remove a cloud account, its credentials, and every model under it. */
+  disconnectCloudAccount: (accountId: string) => Promise<void>;
+  /** Add a model under a connected account. Returns an error message or null. */
+  addCloudModel: (
+    accountId: string,
+    provider: CloudLlmProviderId,
+    remoteId: string,
+    label?: string,
+  ) => Promise<string | null>;
+  /** Forget one cloud model (the account stays connected). */
+  removeCloudModel: (id: string) => void;
+  /** Verify an account (or one model end-to-end when remoteId is given). */
+  testCloud: (accountId: string, remoteId?: string) => Promise<CloudLlmTestResult>;
   /** Patch one model's settings (persisted to prefs.ai.llmConfigs). */
   setConfig: (id: string, patch: Partial<LlmModelConfig> | null) => void;
   setModelId: (id: string) => void;
@@ -133,6 +163,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [specs, setSpecs] = useState<LlmSystemSpecs | null>(null);
   const [configs, setConfigs] = useState<Record<string, Partial<LlmModelConfig>>>({});
   const [customModels, setCustomModels] = useState<LlmModelDef[]>([]);
+  const [cloudModels, setCloudModels] = useState<CloudModelDef[]>([]);
+  const [cloudAccounts, setCloudAccounts] = useState<AccountRecord[]>([]);
   // Composer draft/mentions/Research toggle — persisted across the rail↔page swap.
   const [composerDraft, setComposerDraft] = useState('');
   const [composerMentions, setComposerMentions] = useState<ChatMention[]>([]);
@@ -159,8 +191,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
         if (prefs.ai?.llmConfigs) setConfigs(prefs.ai.llmConfigs);
         if (prefs.ai?.llmCustomModels) setCustomModels(prefs.ai.llmCustomModels);
+        if (prefs.ai?.cloudModels) setCloudModels(prefs.ai.cloudModels);
       })
       .then(refreshStatuses);
+    window.llm.cloudAccounts().then((res) => {
+      if (res.ok) setCloudAccounts(res.data);
+    });
     // Probing loads the llama.cpp binding in the worker — cheap, no model load.
     window.llm.specs().then((res) => {
       if (res.ok) setSpecs(res.data);
@@ -251,8 +287,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const allModels = useMemo(() => [...LLM_MODELS, ...customModels], [customModels]);
   const modelDef = useCallback(
-    (id: string) => allModels.find((m) => m.id === id),
-    [allModels],
+    (id: string) => {
+      const local = allModels.find((m) => m.id === id);
+      if (local) return local;
+      // Cloud models satisfy the same shape so session restore and labels work.
+      const cloud = cloudModels.find((m) => m.id === id);
+      if (!cloud) return undefined;
+      const provider = getCloudProvider(cloud.provider)?.label ?? cloud.provider;
+      return {
+        id: cloud.id,
+        label: cloud.label,
+        uri: '',
+        sizeMb: 0,
+        ctx: cloud.ctx ?? 0,
+        description: `${provider} · ${cloud.remoteId}`,
+        family: cloud.family,
+      } satisfies LlmModelDef;
+    },
+    [allModels, cloudModels],
   );
 
   /** Persist the custom-model list, merging over the stored ai prefs. */
@@ -327,6 +379,108 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (modelId === id) setModelId(DEFAULT_LLM_MODEL_ID);
     },
     [customModels, persistCustomModels, modelId, setModelId, setConfig],
+  );
+
+  /** Persist the cloud-model list, merging over the stored ai prefs. */
+  const persistCloudModels = useCallback((models: CloudModelDef[]) => {
+    setCloudModels(models);
+    window.prefs
+      .get()
+      .then((p) =>
+        window.prefs.set({
+          ai: {
+            enabled: p.ai?.enabled ?? false,
+            activeProvider: p.ai?.activeProvider ?? 'embedded',
+            ...p.ai,
+            cloudModels: models,
+          },
+        }),
+      )
+      .catch(() => {});
+  }, []);
+
+  const refreshCloudAccounts = useCallback(async () => {
+    const res = await window.llm.cloudAccounts();
+    if (res.ok) setCloudAccounts(res.data);
+  }, []);
+
+  const connectCloudAccount = useCallback(
+    async (
+      providerId: CloudLlmProviderId,
+      options: Record<string, string>,
+    ): Promise<{ error: string | null; unverified?: boolean }> => {
+      const res = await window.llm.cloudConnect(providerId, options);
+      if (!res.ok) return { error: res.error.message };
+      await refreshCloudAccounts();
+      return { error: null, unverified: res.data.unverified };
+    },
+    [refreshCloudAccounts],
+  );
+
+  const removeCloudModel = useCallback(
+    (id: string) => {
+      persistCloudModels(cloudModels.filter((m) => m.id !== id));
+      setConfig(id, null);
+      setStatuses((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (modelId === id) setModelId(DEFAULT_LLM_MODEL_ID);
+    },
+    [cloudModels, persistCloudModels, modelId, setModelId, setConfig],
+  );
+
+  const disconnectCloudAccount = useCallback(
+    async (accountId: string) => {
+      // Main prunes prefs (models, configs, selection); mirror it locally.
+      await window.llm.cloudDisconnect(accountId);
+      const orphaned = cloudModels.filter((m) => m.accountId === accountId);
+      setCloudModels((prev) => prev.filter((m) => m.accountId !== accountId));
+      setConfigs((prev) => {
+        const next = { ...prev };
+        for (const m of orphaned) delete next[m.id];
+        return next;
+      });
+      setStatuses((prev) => {
+        const next = { ...prev };
+        for (const m of orphaned) delete next[m.id];
+        return next;
+      });
+      if (orphaned.some((m) => m.id === modelId)) {
+        userPickedModel.current = false;
+        setModelIdState(specs ? recommendLlmModel(specs) : DEFAULT_LLM_MODEL_ID);
+      }
+      await refreshCloudAccounts();
+    },
+    [cloudModels, modelId, specs, refreshCloudAccounts],
+  );
+
+  const addCloudModel = useCallback(
+    async (
+      accountId: string,
+      provider: CloudLlmProviderId,
+      remoteId: string,
+      label?: string,
+    ): Promise<string | null> => {
+      const def = makeCloudModelDef(provider, accountId, remoteId, label);
+      if (!def) return 'Enter a model id (no spaces), e.g. the ones your provider documents.';
+      if (cloudModels.some((m) => m.id === def.id)) return 'That model is already in the list.';
+      persistCloudModels([...cloudModels, def]);
+      // No weights to download — a cloud model is ready the moment it exists.
+      setStatuses((prev) => ({ ...prev, [def.id]: { modelId: def.id, state: 'ready' } }));
+      return null;
+    },
+    [cloudModels, persistCloudModels],
+  );
+
+  const testCloud = useCallback(
+    async (accountId: string, remoteId?: string): Promise<CloudLlmTestResult> => {
+      const res = await window.llm.cloudTest(accountId, remoteId);
+      if (!res.ok) return { ok: false, message: res.error.message };
+      return res.data;
+    },
+    [],
   );
 
   const send = useCallback(
@@ -453,6 +607,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         modelDef,
         addCustomModel,
         forgetCustomModel,
+        cloudModels,
+        cloudAccounts,
+        connectCloudAccount,
+        disconnectCloudAccount,
+        addCloudModel,
+        removeCloudModel,
+        testCloud,
         setConfig,
         setModelId,
         download,

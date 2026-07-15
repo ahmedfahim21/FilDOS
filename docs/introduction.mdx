@@ -8,8 +8,9 @@ description: FilDOS is an open-source, AI-native file browser that runs entirely
 **FilDOS** is an open-source, AI-native file browser for your PC. It replaces
 Finder and Explorer with a fast, keyboard-first file manager — then adds a layer
 of on-device intelligence: search by meaning, chat with your documents, and see
-how your work connects. Everything runs locally. Nothing leaves your machine
-unless you explicitly connect a cloud drive.
+how your work connects. Everything runs locally by default. Nothing leaves your
+machine unless you explicitly connect a cloud drive — or opt in to chatting
+through a cloud model with your own API key.
 
 <video
   controls
@@ -66,7 +67,10 @@ take on faith.
 
 **Offline-first.** Every feature works without a network connection. AI
 embeddings, the reranker, the knowledge graph, and the assistant chat all run
-on-device — no API keys, no telemetry.
+on-device — no account required, no telemetry. Cloud chat is a strictly
+opt-in extra: bring your own API key (Anthropic, OpenAI, Google, AWS Bedrock,
+or any OpenAI-compatible endpoint) and only the assistant's messages go out;
+indexing, embeddings, and search always stay local.
 
 **Fast by default.** The file list is virtualised, thumbnails are cached, the
 background indexer is duty-cycled around your activity, and search fuses

@@ -272,7 +272,16 @@ export async function similarByFile(
   let modelId: string;
   if (isImage(filePath)) {
     modelId = models.image;
-    [vec] = await provider.embedImages(modelId, [filePath]);
+    try {
+      [vec] = await provider.embedImages(modelId, [filePath]);
+    } catch {
+      // Undecodable format (HEIC/HEVC isn't in the bundled codec set) — a
+      // friendly message instead of libheif's "bad seek" surfacing in a toast.
+      throw Object.assign(
+        new Error('This image format can’t be decoded for similarity search.'),
+        { code: 'EUNSUPPORTED' },
+      );
+    }
   } else {
     modelId = models.text;
     const text = await extractText(filePath);
