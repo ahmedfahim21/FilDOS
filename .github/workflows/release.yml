@@ -1,0 +1,56 @@
+name: Release
+
+# Build installers on every platform and attach them to a GitHub Release.
+# Trigger by pushing a version tag, e.g.:
+#   npm version 0.1.0-beta.0   # bumps package.json + creates tag v0.1.0-beta.0
+#   git push --follow-tags
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # needed to create/update the GitHub Release
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # electron-builder reads GH_TOKEN to draft/attach release assets.
+      # A prerelease (-beta/-alpha/-rc tag) is detected by electron-builder and
+      # marked as a GitHub prerelease automatically.
+      - name: Build & publish (macOS)
+        if: runner.os == 'macOS'
+        run: npm run dist:mac -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & publish (Linux)
+        if: runner.os == 'Linux'
+        run: npm run dist:linux -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts (backup)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/**/*.dmg
+            release/**/*.AppImage
+            release/**/*.deb
+          retention-days: 7
+          if-no-files-found: ignore
