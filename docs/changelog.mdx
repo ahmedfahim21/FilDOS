@@ -3,97 +3,57 @@ title: Changelog
 description: What's new in FilDOS.
 ---
 
-<Update label="1.0.0-beta.1" description="2026-07-10">
+<Update label="0.1.0-beta" description="2026-07-10">
 
-## FilDOS 1.0.0-beta.1
+## FilDOS 0.1.0-beta
 
-The first public beta of FilDOS — an open-source, AI-native file browser that
-runs entirely on your machine. This release brings the full file manager
-together with the on-device AI layer: search by meaning, chat with your files,
-and Canvas.
+The first public beta — an AI-native file browser that runs entirely on your
+device.
 
 <Frame caption="The FilDOS file browser.">
   <img src="/images/home.jpg" alt="The FilDOS file browser" />
 </Frame>
 
-### File manager
+### Browse & manage files
 
-- **Three views** — virtualized **list** (resizable, reorderable columns),
-  **grid** (cached thumbnails at several icon sizes), and **gallery**.
-- **Full operations** — create, rename, copy, cut, paste, duplicate, and
-  trash, with inline rename and an **undo stack** for every mutation.
-- **Drag-and-drop** — internal move/copy, plus OS drag-in and drag-out to
-  Finder / Explorer.
-- **Live filesystem watching** — external changes appear in under a second.
-- **Per-folder view memory** — sort, view mode, and icon size are remembered
-  per folder.
-- **Delete = OS Trash** — deletions go to the system Trash / Recycle Bin;
-  FilDOS keeps no trash of its own.
+- List, grid, and gallery views, with thumbnails and resizable columns.
+- Create, rename, copy, move, duplicate, and delete — with undo.
+- Drag files in and out of Finder / Explorer.
+- Changes on disk show up instantly.
+- Each folder remembers how you like to view it.
 
-### Tags & recents
+### Organize
 
-- **Colour-coded tags** in six brand accents, stored in SQLite.
-- **Tag Files view** — every file carrying a tag, wherever it lives.
-- **Persistent recents** across sessions.
-- Tags, recents, and views **follow files** through renames and moves.
+- Colour-coded tags that stick to files as you move them.
+- Jump back to what you touched recently.
 
 ### Search by meaning
 
-- **On-device semantic search** over text, code, PDFs, DOCX, and images.
-- **Hybrid ranking** — vector + BM25 fused with Reciprocal Rank Fusion, then an
-  on-device cross-encoder rerank.
-- **Image search via CLIP** — text and images embedded into one space.
-- **Scope chips** — Everywhere / This folder / Folders / Docs / Images / Audio /
-  Video / Code / Tag, plus time filters.
-- **Embedding model catalog** — MiniLM, BGE, GTE, multilingual E5, and CLIP.
-
-### Background indexer
-
-- **Cost-classed, duty-cycled** pipeline that stays out of your way and becomes
-  useful within minutes.
-- **Byte-range PDF transport** for book-size documents with bounded memory.
-- **Codebase-aware** indexing (docs-only for checked-out repos).
-- **Ambient mode** — keeps indexing from the menu bar / system tray after the
-  last window closes.
-- Skips dotfiles, system folders, `node_modules`, caches, and build output.
+- Find files by what they say, not just their name — text, code, PDFs, DOCX,
+  and images.
+- Search your photos with words, powered by CLIP.
+- Narrow results with scope and time filters.
 
 ### Ask AI
 
-- **Chat with your files** through a fully **on-device LLM** (`node-llama-cpp`).
-- **`@file` / `#folder` mentions** and **`/`commands** (e.g. `/find`).
-- **File actions** — create, copy, move, rename, list, read, delete-to-Trash —
-  via function calling, with your approval and full recoverability.
-- **Bring your own model** — a catalog from 0.6B to 35B (Llama, Qwen, Gemma,
-  Phi, Mistral, DeepSeek, and more), or paste any GGUF from Hugging Face.
-- **Saved conversations** you can reopen and continue.
+- Chat with your files using an AI model that runs fully on your device.
+- Mention files and folders, or run `/find` right in the conversation.
+- Let it create, move, rename, or tidy up files — you stay in control.
+- Pick from many local models, or bring your own.
 
 ### Canvas
 
-- A **GPU-rendered knowledge graph** of your files built from embedding
-  **similarity**, extracted **entities** (opt-in NER), **tags**, and **temporal
-  sessions**.
-- **Louvain communities**, a detail panel that explains connections, and an
-  **mtime time scrubber with replay**.
+- See how your files connect in an interactive knowledge graph.
+- Scrub through time to watch your files evolve.
 
 ### Cloud drives
 
-- Browse **Google Drive** and **Dropbox** alongside local folders through the
-  same interface (built on `opendal`).
+- Browse Google Drive and Dropbox right next to your local files.
 
-### Privacy
+### Private by default
 
-- **Hide from AI** — exclude specific files, folders, or extensions from
-  indexing and chat.
-- **Everything is local** — embeddings, search, the graph, and chat all run
-  on-device; nothing leaves your machine unless you connect a cloud drive.
-
-### Foundations
-
-- Electron + React + TypeScript with a strict process boundary and a
-  **Result-typed IPC contract**.
-- SQLite via Node's built-in **`node:sqlite`** + Drizzle ORM — **zero native
-  dependencies** for the data layer.
-- Tested with **Vitest** (unit + integration) and **Playwright** (e2e) on
-  Ubuntu, macOS, and Windows.
+- Search, chat, and everything AI run on your device — nothing leaves your
+  machine unless you connect a cloud drive.
+- Hide any file, folder, or file type from AI with one click.
 
 </Update>

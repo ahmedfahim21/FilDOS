@@ -19,6 +19,7 @@ import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { modelLogo } from '@/lib/modelLogo';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
+import { Mark, Wordmark } from './Logo';
 import { Button } from '@/components/ui/button';
 
 type IconName = React.ComponentProps<typeof Icon>['name'];
@@ -27,6 +28,13 @@ const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[
   { value: 'system', label: 'System', icon: 'monitor' },
   { value: 'light', label: 'Light', icon: 'sun' },
   { value: 'dark', label: 'Dark', icon: 'moon' },
+];
+
+/** External resource links surfaced in General → About. */
+const LEGAL_LINKS: { label: string; description: string; href: string }[] = [
+  { label: 'Terms & Conditions', description: 'The agreement for using FilDOS', href: 'https://fildos.cloud/terms' },
+  { label: 'Privacy Policy', description: 'How your data stays on your device', href: 'https://fildos.cloud/privacy' },
+  { label: 'Changelog', description: "What's new in each release", href: 'https://docs.fildos.cloud/changelog' },
 ];
 
 /** The Settings pages. Model management gets its own tab — it's the biggest. */
@@ -791,12 +799,19 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   const [tab, setTab] = useState<SettingsTab>('general');
   const [theme, setTheme] = useState<Theme>('system');
   const [sounds, setSounds] = useState(soundsEnabled());
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onBack();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onBack]);
+
+  useEffect(() => {
+    window.fsapi.appVersion().then((res) => {
+      if (res.ok) setVersion(res.data);
+    });
+  }, []);
 
   useEffect(() => {
     window.prefs.get().then((p) => setTheme(p.theme ?? 'system'));
@@ -907,35 +922,72 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
 
         <div className="flex flex-col gap-5">
           {tab === 'general' && (
-            <Section icon="sun" title="Appearance" subtitle="Theme and interface feedback">
-              <div className="grid grid-cols-3 gap-2">
-                {THEMES.map((t) => (
-                  <button
-                    key={t.value}
-                    onClick={() => chooseTheme(t.value)}
-                    className={cn(
-                      'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
-                      theme === t.value
-                        ? 'border-border bg-primary/10 text-foreground'
-                        : 'border-border text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    <Icon name={t.icon} size={18} />
-                    <span className="text-foreground text-sm">{t.label}</span>
-                  </button>
-                ))}
-              </div>
+            <>
+              <Section icon="sun" title="Appearance" subtitle="Theme and interface feedback">
+                <div className="grid grid-cols-3 gap-2">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => chooseTheme(t.value)}
+                      className={cn(
+                        'flex flex-col items-center gap-1.5 rounded-lg border px-3 py-3 transition-colors',
+                        theme === t.value
+                          ? 'border-border bg-primary/10 text-foreground'
+                          : 'border-border text-muted-foreground hover:bg-accent',
+                      )}
+                    >
+                      <Icon name={t.icon} size={18} />
+                      <span className="text-foreground text-sm">{t.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-              <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
-                <div className="min-w-0">
-                  <div className="text-foreground text-sm">Interface sounds</div>
-                  <div className="text-muted-foreground text-2xs">
-                    Soft cues for actions, notifications, and toggles
+                <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
+                  <div className="min-w-0">
+                    <div className="text-foreground text-sm">Interface sounds</div>
+                    <div className="text-muted-foreground text-2xs">
+                      Soft cues for actions, notifications, and toggles
+                    </div>
+                  </div>
+                  <Toggle checked={sounds} onChange={chooseSounds} label="Enable interface sounds" />
+                </div>
+              </Section>
+
+              <Section icon="info" title="About" subtitle="Legal and release information">
+                <div className="border-border mb-2 flex items-center gap-3 border-b pb-4">
+                  <div className="bg-muted ring-border/60 flex size-11 shrink-0 items-center justify-center rounded-xl ring-1">
+                    <Mark className="size-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <Wordmark className="text-foreground text-base" />
+                    <div className="text-muted-foreground text-2xs">
+                      {version ? `Version ${version} · beta` : 'AI-native file browser'}
+                    </div>
                   </div>
                 </div>
-                <Toggle checked={sounds} onChange={chooseSounds} label="Enable interface sounds" />
-              </div>
-            </Section>
+                <div className="flex flex-col">
+                  {LEGAL_LINKS.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group hover:bg-accent -mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-foreground text-sm">{link.label}</div>
+                        <div className="text-muted-foreground text-2xs">{link.description}</div>
+                      </div>
+                      <Icon
+                        name="open"
+                        size={13}
+                        className="text-muted-foreground group-hover:text-foreground shrink-0"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </Section>
+            </>
           )}
 
           {tab === 'search' && (

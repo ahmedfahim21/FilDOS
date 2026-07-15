@@ -39,6 +39,7 @@ const fsapi: FsApi = {
   reveal: (path) => ipcRenderer.invoke(Channels.reveal, path),
   quickAccess: () => ipcRenderer.invoke(Channels.quickAccess),
   getHome: () => ipcRenderer.invoke(Channels.getHome),
+  appVersion: () => ipcRenderer.invoke(Channels.appVersion),
   folderSize: (path) => ipcRenderer.invoke(Channels.folderSize, path),
   search: (rootPath, query) => ipcRenderer.invoke(Channels.search, rootPath, query),
   thumbnail: (path, size) => ipcRenderer.invoke(Channels.thumbnail, path, size),
