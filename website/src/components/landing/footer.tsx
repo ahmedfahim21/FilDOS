@@ -5,7 +5,7 @@ import { FlowField } from "./flow-field";
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
 const DOCS_URL = "https://docs.fildos.cloud";
 // TODO: replace with the real invite once the server is live.
-const DISCORD_URL = "https://discord.gg/fildos";
+const DISCORD_URL = "https://discord.gg/xyWw7WSyVe";
 
 const LINK_GROUPS: Array<{ title: string; links: Array<{ label: string; href: string; external?: boolean }> }> = [
   {
