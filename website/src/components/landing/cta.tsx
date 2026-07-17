@@ -5,7 +5,7 @@ import { DiscordIcon } from "../icons";
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
 const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
 // TODO: replace with the real invite once the server is live.
-const DISCORD_URL = "https://discord.gg/fildos";
+const DISCORD_URL = "https://discord.gg/xyWw7WSyVe";
 
 const SCOOPS = ["#f26d6d", "#f286b4", "#f9a85c", "#6e9bee", "#4fc9b8", "#a585e0"];
 
