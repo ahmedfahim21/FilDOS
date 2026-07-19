@@ -8,6 +8,7 @@ import { formatRemote } from '@shared/remote';
 import type { Entry, FileInfo } from '@shared/types';
 import type { Provider } from '../provider';
 import type { OAuthToken } from '../oauth';
+import { cloudCredential } from '../credentials';
 import * as accountsDb from '../../db/accounts';
 
 const PROVIDER_ID = 'gdrive';
@@ -123,9 +124,10 @@ export class GDriveProvider implements Provider {
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: tok.refreshToken,
-      client_id: process.env.GDRIVE_CLIENT_ID ?? '',
+      client_id: cloudCredential('GDRIVE', 'CLIENT_ID') ?? '',
     });
-    if (process.env.GDRIVE_CLIENT_SECRET) body.set('client_secret', process.env.GDRIVE_CLIENT_SECRET);
+    const clientSecret = cloudCredential('GDRIVE', 'CLIENT_SECRET');
+    if (clientSecret) body.set('client_secret', clientSecret);
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

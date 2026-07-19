@@ -4,6 +4,7 @@ import { Channels } from '@shared/channels';
 import type { AccountRecord, AppError, Result } from '@shared/types';
 import { findBackend } from '@shared/opendalBackends';
 import { runOAuthFlow, type OAuthConfig } from './oauth';
+import { cloudCredential } from './credentials';
 import { getProvider } from './registry';
 import * as accountsDb from '../db/accounts';
 
@@ -130,7 +131,7 @@ export function registerCloudHandlers(): void {
       }
 
       const envPrefix = providerId.toUpperCase();
-      const clientId = process.env[`${envPrefix}_CLIENT_ID`];
+      const clientId = cloudCredential(envPrefix, 'CLIENT_ID');
       if (!clientId) {
         const err = new Error(
           `Set ${envPrefix}_CLIENT_ID (and optionally ${envPrefix}_CLIENT_SECRET) to connect ${providerId}.`,
@@ -138,7 +139,7 @@ export function registerCloudHandlers(): void {
         err.code = 'EINVAL';
         throw err;
       }
-      const clientSecret = process.env[`${envPrefix}_CLIENT_SECRET`];
+      const clientSecret = cloudCredential(envPrefix, 'CLIENT_SECRET');
 
       const { profileUrl: _unused, ...oauthBase } = base;
       const config: OAuthConfig = { ...oauthBase, clientId, clientSecret };
