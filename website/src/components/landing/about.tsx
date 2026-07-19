@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Grainient, type ScoopBlend } from "./grainient";
+import { Reveal } from "./reveal";
 import { GithubIcon } from "../icons";
 import { cn } from "@/lib/utils";
 import { Mark } from "../logo";
@@ -139,23 +140,22 @@ export function LandingAbout() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
-          {FEATURES.map(({ blend, chips, title, desc }) => (
-            <div
-              key={title}
-              className="group overflow-hidden rounded-3xl border border-ink/8 bg-white p-2 shadow-sm transition-shadow hover:shadow-md"
-            >
-              <Grainient blend={blend} className="h-36 rounded-2xl sm:h-40">
-                <div className="flex h-full items-center justify-center gap-3 transition-transform duration-300 group-hover:scale-105">
-                  {chips.map((chip, i) => (
-                    <Chip key={i}>{chip}</Chip>
-                  ))}
+          {FEATURES.map(({ blend, chips, title, desc }, i) => (
+            <Reveal key={title} index={i}>
+              <div className="group overflow-hidden rounded-3xl border border-ink/8 bg-white p-2 shadow-sm transition-shadow hover:shadow-md">
+                <Grainient blend={blend} className="h-36 rounded-2xl sm:h-40">
+                  <div className="flex h-full items-center justify-center gap-3 transition-transform duration-300 group-hover:scale-105">
+                    {chips.map((chip, j) => (
+                      <Chip key={j}>{chip}</Chip>
+                    ))}
+                  </div>
+                </Grainient>
+                <div className="p-4 sm:p-5">
+                  <h3 className="text-lg font-medium text-ink">{title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-mist">{desc}</p>
                 </div>
-              </Grainient>
-              <div className="p-4 sm:p-5">
-                <h3 className="text-lg font-medium text-ink">{title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-mist">{desc}</p>
               </div>
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>

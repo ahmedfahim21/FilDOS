@@ -2,12 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useMotionValueEvent, useScroll, useTransform } from "motion/react";
-import { ArrowDown, Download, Star } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { AppMock, MOCK_W } from "./app-mock";
 import { Mark } from "../logo";
-
-const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
-const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
+import { DownloadButton, StarOnGithubButton } from "./action-buttons";
 
 /* ---------- Illustration pieces (flat, rounded, scoop-coloured) ---------- */
 
@@ -210,26 +208,10 @@ export function LandingHero() {
               work connects. All running locally on-device.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
-              <a
-                href={DOWNLOAD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-ink/85 sm:text-base"
-              >
-                <Download className="size-4" />
-                Download FilDOS
-              </a>
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-cloud sm:text-base"
-              >
-                <Star className="size-4 fill-mango text-mango" />
-                Star on GitHub
-              </a>
+              <DownloadButton className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-ink/85 sm:text-base" />
+              <StarOnGithubButton className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-colors hover:bg-cloud sm:text-base" />
             </div>
-            <span className="mt-4 font-mono text-2xs text-mist sm:text-xs">
+            <span className="mt-4 font-mono text-[10px] text-mist sm:text-xs">
               Free &amp; open source · Runs entirely on your machine · No telemetry
             </span>
           </motion.div>

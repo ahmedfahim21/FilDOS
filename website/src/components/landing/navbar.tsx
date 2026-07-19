@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { Download, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Logo } from "../logo";
+import { DownloadButton } from "./action-buttons";
 
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
-const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
 
 
 function GithubIcon({ className }: { className?: string }) {
@@ -37,15 +38,10 @@ export function LandingNavbar() {
           >
             <GithubIcon className="size-5" />
           </a>
-          <a
-            href={DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <DownloadButton
+            label="Download"
             className="flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ink/85"
-          >
-            <Download className="size-4" />
-            Download
-          </a>
+          />
           <button
             type="button"
             aria-label="Toggle menu"
@@ -57,20 +53,29 @@ export function LandingNavbar() {
         </div>
       </nav>
 
-      {open && (
-        <div className="mx-auto mt-2 max-w-5xl rounded-2xl border border-ink/10 bg-white/95 p-3 shadow-lg backdrop-blur-md md:hidden">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-ink/80 hover:bg-cloud"
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+            style={{ transformOrigin: "top" }}
+            className="mx-auto mt-2 max-w-5xl origin-top rounded-2xl border border-ink/10 bg-white/95 p-3 shadow-lg backdrop-blur-md md:hidden"
           >
-            <GithubIcon className="size-4" />
-            GitHub
-          </a>
-        </div>
-      )}
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-ink/80 hover:bg-cloud"
+            >
+              <GithubIcon className="size-4" />
+              GitHub
+            </a>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }
