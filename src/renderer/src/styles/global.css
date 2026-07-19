@@ -356,9 +356,9 @@ body {
 ) {
   @media not (prefers-reduced-transparency: reduce) {
     .material {
-      background-color: color-mix(in srgb, var(--popover) 82%, transparent);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      background-color: color-mix(in srgb, var(--popover) 92%, transparent);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
     }
   }
 }

@@ -8,6 +8,7 @@ import { formatRemote } from '@shared/remote';
 import type { Entry, FileInfo } from '@shared/types';
 import type { Provider } from '../provider';
 import type { OAuthToken } from '../oauth';
+import { cloudCredential } from '../credentials';
 import * as accountsDb from '../../db/accounts';
 
 const PROVIDER_ID = 'dropbox';
@@ -146,9 +147,10 @@ export class DropboxProvider implements Provider {
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: tok.refreshToken,
-      client_id: process.env.DROPBOX_CLIENT_ID ?? '',
+      client_id: cloudCredential('DROPBOX', 'CLIENT_ID') ?? '',
     });
-    if (process.env.DROPBOX_CLIENT_SECRET) body.set('client_secret', process.env.DROPBOX_CLIENT_SECRET);
+    const clientSecret = cloudCredential('DROPBOX', 'CLIENT_SECRET');
+    if (clientSecret) body.set('client_secret', clientSecret);
     const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

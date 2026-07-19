@@ -33,17 +33,30 @@ jobs:
       # electron-builder reads GH_TOKEN to draft/attach release assets.
       # A prerelease (-beta/-alpha/-rc tag) is detected by electron-builder and
       # marked as a GitHub prerelease automatically.
+      # Cloud OAuth client IDs are inlined into the main bundle at build time
+      # (electron.vite.config.ts `define` → src/main/cloud/credentials.ts), so
+      # Drive/Dropbox login works in the packaged app with no `.env` shipped.
+      # Add these as repo secrets: Settings → Secrets and variables → Actions.
+      # Leave *_CLIENT_SECRET unset for public/native desktop clients.
       - name: Build & publish (macOS)
         if: runner.os == 'macOS'
         run: npm run dist:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
+          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
 
       - name: Build & publish (Linux)
         if: runner.os == 'Linux'
         run: npm run dist:linux -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
+          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
 
       - name: Upload artifacts (backup)
         if: ${{ !cancelled() }}
