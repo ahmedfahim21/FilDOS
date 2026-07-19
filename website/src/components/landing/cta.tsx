@@ -1,9 +1,7 @@
 import type { CSSProperties } from "react";
-import { Download, Star } from "lucide-react";
 import { DiscordIcon } from "../icons";
+import { DownloadButton, StarOnGithubButton } from "./action-buttons";
 
-const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
-const DOWNLOAD_URL = "https://github.com/ahmedfahim21/FilDOS/releases";
 // TODO: replace with the real invite once the server is live.
 const DISCORD_URL = "https://discord.gg/fildos";
 
@@ -58,24 +56,8 @@ export function LandingCta() {
         </div>
 
         <div className="relative flex flex-col items-center gap-3 sm:flex-row">
-          <a
-            href={DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-ink/85"
-          >
-            <Download className="size-4" />
-            Download FilDOS
-          </a>
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-cloud"
-          >
-            <Star className="size-4 fill-mango text-mango" />
-            Star on GitHub
-          </a>
+          <DownloadButton className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-ink/85" />
+          <StarOnGithubButton className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-colors hover:bg-cloud" />
         </div>
 
         <a
@@ -89,7 +71,7 @@ export function LandingCta() {
         </a>
 
         <span className="relative font-mono text-2xs text-mist">
-          macOS · Windows · Linux
+          macOS · Linux
         </span>
 
         <div className="pointer-events-none absolute -bottom-px left-1/2 w-screen -translate-x-1/2 border-b border-ink/8" />

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
 import { EyeOff, FileSearch, FileText, Plus, Search } from "lucide-react";
+import { Reveal } from "./reveal";
 import { cn } from "@/lib/utils";
 
 /* ────────────────────────── Canvas constellation ────────────────────────── */
@@ -148,9 +149,9 @@ function Constellation({ className }: { className?: string }) {
 
 function CanvasCard() {
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-3xl bg-ink text-white md:col-span-2">
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-3xl bg-ink text-white">
       <div className="relative h-64 shrink-0 sm:h-72">
-        <Constellation className="absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-[1.03]" />
+        <Constellation className="absolute inset-0 h-full w-full transition-transform duration-300 group-hover:scale-[1.03]" />
 
         {/* edge-kind chips, like the Canvas page's filter row */}
         <div className="absolute left-4 top-4 flex flex-wrap items-center gap-1.5">
@@ -317,7 +318,7 @@ const MODEL_LOGOS = [
 
 function ModelsCard() {
   return (
-    <div className="flex flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15 md:col-span-2">
+    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15">
       <div className="m-2 mb-0 flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl bg-cloud/60 p-6">
         <div className="flex max-w-sm flex-wrap items-center justify-center gap-3">
           {MODEL_LOGOS.map(({ src, alt, tilt, float }, i) => (
@@ -363,7 +364,7 @@ function ModelsCard() {
 /** Single-column bento cell: visual panel on top, title + copy below. */
 function BentoCard({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15">
+    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15">
       <div className="m-2 mb-0 flex-1 rounded-2xl bg-cloud/60">{children}</div>
       <div className="p-6 pt-4 sm:p-7 sm:pt-4">
         <h3 className="text-lg font-medium text-ink">{title}</h3>
@@ -387,10 +388,18 @@ export function LandingBento() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
-          <CanvasCard />
-          <ResearchCard />
-          <HideCard />
-          <ModelsCard />
+          <Reveal index={0} className="md:col-span-2">
+            <CanvasCard />
+          </Reveal>
+          <Reveal index={1}>
+            <ResearchCard />
+          </Reveal>
+          <Reveal index={2}>
+            <HideCard />
+          </Reveal>
+          <Reveal index={3} className="md:col-span-2">
+            <ModelsCard />
+          </Reveal>
         </div>
       </div>
     </section>

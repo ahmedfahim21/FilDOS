@@ -160,3 +160,16 @@
   animation: float-medium 7s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  /* Stop the page-wide ambient loops; hold elements at their rest position. */
+  .animate-float,
+  .animate-float-slow,
+  .animate-float-medium,
+  .animate-ripple {
+    animation: none;
+  }
+}
+
