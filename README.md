@@ -105,8 +105,10 @@ each AI subsystem lives in [.claude/CLAUDE.md](.claude/CLAUDE.md).
 
 ## Getting started
 
-FilDOS is pre-1.0 and doesn't have packaged installers yet, so running it
-today means building from source.
+FilDOS is in beta. Grab a packaged build from
+[Releases](https://github.com/ahmedfahim21/FilDOS/releases) — macOS (`.dmg`,
+Apple Silicon and Intel) and Linux (`.AppImage`, `.deb`) — or build from source
+with the steps below.
 
 ### Prerequisites
 
@@ -134,8 +136,6 @@ npm run build    # output in out/
 npm start        # preview the production build
 ```
 
-Check [Releases](https://github.com/ahmedfahim21/FilDOS/releases) for signed,
-packaged builds once they're published.
 
 ## Development
 
