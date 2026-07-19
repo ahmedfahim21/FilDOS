@@ -1,6 +1,6 @@
 {
   "name": "fildos-app",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "description": "FilDOS — an AI-native file browser for the desktop.",
   "main": "./out/main/index.js",
   "author": "Fahim Ahmed",
