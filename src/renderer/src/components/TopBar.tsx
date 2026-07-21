@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigation } from '@/state/navigation';
 import { resolveDroppedPaths } from '@/lib/dragState';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 import { Mark } from './Logo';
@@ -105,10 +106,10 @@ export function TopBar({
         <span className="flex-1 truncate text-left text-xs leading-none">
           {dragOver ? 'Drop to find similar files…' : 'Search'}
         </span>
-        <kbd className="border-border/70 text-muted-foreground flex items-center gap-0.5 rounded border px-1 py-0.5 font-mono text-3xs leading-none">
+        <Kbd className="border-border/70 bg-transparent px-1">
           {isMac ? <CommandIcon className="size-2.5" /> : 'Ctrl+'}
           <span className="leading-none">K</span>
-        </kbd>
+        </Kbd>
       </Button>
 
       {/* Right — activity notifications + the Assistant opener (primary) */}

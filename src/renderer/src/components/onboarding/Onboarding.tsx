@@ -14,6 +14,7 @@ import { applyTheme } from '@/lib/theme';
 import { playToggle } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from '@/components/Icon';
 import { Wordmark } from '@/components/Logo';
 import { onboardingSteps, type OnboardingStepId } from './steps';
@@ -292,16 +293,13 @@ function ShortcutRow({ label, keys }: { label: string; keys: string[] }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="text-foreground text-sm">{label}</span>
-      <span className="flex gap-1">
+      <KbdGroup>
         {keys.map((k) => (
-          <kbd
-            key={k}
-            className="bg-muted border-border text-muted-foreground rounded border px-1.5 py-0.5 font-mono text-2xs"
-          >
+          <Kbd key={k} size="md">
             {k}
-          </kbd>
+          </Kbd>
         ))}
-      </span>
+      </KbdGroup>
     </div>
   );
 }
