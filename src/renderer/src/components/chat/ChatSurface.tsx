@@ -14,6 +14,7 @@ import { fileLogo } from '@/lib/fileLogo';
 import { cn } from '@/lib/utils';
 import type { ChatMention } from '@shared/types';
 import { Icon } from '@/components/Icon';
+import { Kbd } from '@/components/ui/kbd';
 import { Mark } from '@/components/Logo';
 import { Conversation } from './Conversation';
 import { Message } from './Message';
@@ -372,9 +373,7 @@ export function ChatSurface({
                   <span className="text-foreground shrink-0 font-medium">{opt.label}</span>
                   {opt.detail && <span className="text-muted-foreground truncate">{opt.detail}</span>}
                   {ix === popupIx && (
-                    <kbd className="border-border text-muted-foreground ml-auto shrink-0 rounded border px-1 font-mono text-3xs">
-                      ⏎
-                    </kbd>
+                    <Kbd className="ml-auto shrink-0 bg-transparent px-1 py-px">⏎</Kbd>
                   )}
                 </button>
               ))}
@@ -538,9 +537,9 @@ function EmptyState({ variant, onPick }: { variant: 'rail' | 'page'; onPick: (te
           ] as const
         ).map(([key, label, tint]) => (
           <span key={key} className="text-muted-foreground flex items-center gap-1 text-2xs">
-            <kbd className={cn('border-border bg-background rounded border px-1.5 py-0.5 font-mono text-2xs shadow-[0_1px_0_0_var(--color-border)]', tint)}>
+            <Kbd variant="raised" size="md" className={tint}>
               {key}
-            </kbd>
+            </Kbd>
             {label}
           </span>
         ))}

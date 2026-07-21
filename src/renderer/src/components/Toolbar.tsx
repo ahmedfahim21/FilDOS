@@ -1,6 +1,7 @@
 import type { IconSize, SortKey, ViewMode } from '@shared/types';
 import { useNavigation } from '@/state/navigation';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -121,10 +122,10 @@ export function Toolbar({
                     >
                       <Icon name={o.icon} size={16} className={cn('shrink-0', o.color)} />
                       <span className="flex-1 text-left">{o.label}</span>
-                      <kbd className="text-muted-foreground flex items-center gap-0.5 font-mono text-3xs leading-none">
+                      <Kbd variant="ghost">
                         {isMac ? <CommandIcon className="size-2.5" /> : 'Ctrl+'}
                         <span className="leading-none">{i + 1}</span>
-                      </kbd>
+                      </Kbd>
                     </button>
                   );
                 })}

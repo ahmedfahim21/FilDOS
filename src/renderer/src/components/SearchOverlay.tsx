@@ -14,6 +14,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
 
@@ -571,9 +572,7 @@ export function SearchOverlay({
                 <circle cx={10} cy={10} r={8} stroke="currentColor" strokeWidth={2} strokeDasharray="18 37" strokeLinecap="round" />
               </svg>
             ) : (
-              <kbd className="border-border bg-muted text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-3xs">
-                esc
-              </kbd>
+              <Kbd className="shrink-0">esc</Kbd>
             )}
           </div>
 
@@ -769,9 +768,7 @@ export function SearchOverlay({
                           </span>
                         )}
                         {i === activeIx && !isBest && (
-                          <kbd className="border-border bg-muted text-muted-foreground shrink-0 rounded border px-1 py-px font-mono text-3xs">
-                            ↵
-                          </kbd>
+                          <Kbd className="shrink-0 px-1 py-px">↵</Kbd>
                         )}
                       </div>
                     );
@@ -783,8 +780,17 @@ export function SearchOverlay({
 
           {/* ── Footer hints ── */}
           <div className="border-border text-muted-foreground flex shrink-0 items-center justify-between gap-3 border-t px-4 py-1.5 text-3xs">
-            <span>
-              ↑↓ Navigate · ↵ Open · {modKey}↵ Show in Folder
+            <span className="flex items-center gap-1.5">
+              <KbdGroup>
+                <Kbd>↑</Kbd>
+                <Kbd>↓</Kbd>
+              </KbdGroup>
+              Navigate ·<Kbd>↵</Kbd> Open ·
+              <KbdGroup>
+                <Kbd>{modKey}</Kbd>
+                <Kbd>↵</Kbd>
+              </KbdGroup>
+              Show in Folder
             </span>
             <span className="flex min-w-0 items-center gap-1.5">
               <span
