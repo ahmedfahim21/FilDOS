@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-space-mono), ui-monospace, monospace;
   /* FilDOS brand foundation (see .claude/brand-guidelines.md) */
   --color-ink: #0f1117;
@@ -56,24 +56,27 @@
 
 :root {
   --radius: 0.625rem;
+  color-scheme: light;
+  /* Light mode: White canvas, Cloud surfaces, Ink text/primary, Mist secondary
+   * — mirrors the desktop app (see .claude/brand-guidelines.md). */
   --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --foreground: #0f1117; /* Ink */
+  --card: #ffffff;
+  --card-foreground: #0f1117;
+  --popover: #ffffff;
+  --popover-foreground: #0f1117;
   --primary: #0f1117;
   --primary-foreground: #ffffff;
   --secondary: #f5f5f7;
   --secondary-foreground: #0f1117;
   --muted: #f5f5f7;
   --muted-foreground: #8a8f9c;
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --accent: #f5f5f7;
+  --accent-foreground: #0f1117;
+  --destructive: #dc2626;
+  --border: #e7e7ea;
+  --input: #e7e7ea;
+  --ring: #0f1117;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -87,6 +90,30 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Dark mode: neutral Ink app shell, lifted Ink cards, light (#eef2fb) text,
+   * Mist secondary, near-white primary — mirrors the desktop app. */
+  color-scheme: dark;
+  --background: #0f1117;
+  --foreground: #eef2fb;
+  --card: #16181f;
+  --card-foreground: #eef2fb;
+  --popover: #16181f;
+  --popover-foreground: #eef2fb;
+  --primary: #eef2fb;
+  --primary-foreground: #0f1117;
+  --secondary: #1d2029;
+  --secondary-foreground: #eef2fb;
+  --muted: #1d2029;
+  --muted-foreground: #8a8f9c;
+  --accent: #1d2029;
+  --accent-foreground: #eef2fb;
+  --destructive: #f87171;
+  --border: #262932;
+  --input: #262932;
+  --ring: #eef2fb;
 }
 
 @layer base {
@@ -109,17 +136,17 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--muted);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--color-mist); /* Mist reads on both themes */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--foreground);
 }
 
 /* CTA ripple background (adapted from Eldora UI cta-03) */

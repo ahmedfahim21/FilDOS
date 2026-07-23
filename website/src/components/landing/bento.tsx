@@ -213,26 +213,26 @@ function ResearchCard() {
     >
       <div className="flex h-full flex-col justify-center gap-2 p-4">
         {/* user turn */}
-        <div className="max-w-[85%] self-end rounded-2xl rounded-br-sm bg-ink px-3 py-1.5 text-[10px] leading-snug text-white">
+        <div className="max-w-[85%] self-end rounded-2xl rounded-br-sm bg-primary px-3 py-1.5 text-[10px] leading-snug text-primary-foreground">
           What changed across my lease drafts?
         </div>
         {/* tool activity, streamed as chips in the app */}
-        <div className="flex items-center gap-1.5 self-start rounded-full border border-ink/10 bg-white px-2.5 py-1 font-mono text-[9px] text-mist">
+        <div className="flex items-center gap-1.5 self-start rounded-full border border-foreground/10 bg-card px-2.5 py-1 font-mono text-[9px] text-muted-foreground">
           <Search className="size-2.5 text-mint" />
           /find lease drafts · 12 hits
         </div>
-        <div className="flex items-center gap-1.5 self-start rounded-full border border-ink/10 bg-white px-2.5 py-1 font-mono text-[9px] text-mist">
+        <div className="flex items-center gap-1.5 self-start rounded-full border border-foreground/10 bg-card px-2.5 py-1 font-mono text-[9px] text-muted-foreground">
           <FileSearch className="size-2.5 text-mint" />
           reading lease-v3.docx…
         </div>
         {/* answer with citations */}
-        <div className="self-start rounded-2xl rounded-bl-sm border border-ink/8 bg-white px-3 py-2 text-[10px] leading-snug text-ink/80">
+        <div className="self-start rounded-2xl rounded-bl-sm border border-foreground/8 bg-card px-3 py-2 text-[10px] leading-snug text-foreground/80">
           The rent clause changed twice — v2 added a break fee, v3 removed it.
           <div className="mt-1.5 flex flex-wrap gap-1">
             {["lease-v1", "lease-v2", "lease-v3"].map((f) => (
               <span
                 key={f}
-                className="flex items-center gap-1 rounded-md border border-ink/8 bg-cloud/70 px-1.5 py-0.5 font-mono text-[8px] text-ink/60"
+                className="flex items-center gap-1 rounded-md border border-foreground/8 bg-muted/70 px-1.5 py-0.5 font-mono text-[8px] text-foreground/60"
               >
                 <FileText className="size-2.5 text-blueberry" />
                 {f}.docx
@@ -269,7 +269,7 @@ function HideCard() {
         {PRIVACY_ROWS.map(({ name, hidden }) => (
           <div
             key={name}
-            className="flex items-center gap-2.5 rounded-lg border border-ink/8 bg-white px-3 py-2"
+            className="flex items-center gap-2.5 rounded-lg border border-foreground/8 bg-card px-3 py-2"
           >
             <svg viewBox="0 0 56 56" className={cn("size-6 shrink-0", hidden && "opacity-40")} aria-hidden>
               <path
@@ -281,16 +281,16 @@ function HideCard() {
                 strokeWidth="2"
               />
             </svg>
-            <span className={cn("flex-1 text-xs", hidden ? "text-mist line-through decoration-ink/20" : "text-ink")}>
+            <span className={cn("flex-1 text-xs", hidden ? "text-muted-foreground line-through decoration-foreground/20" : "text-foreground")}>
               {name}
             </span>
             {hidden ? (
-              <span className="flex items-center gap-1 rounded-full bg-cloud px-2 py-0.5 text-[9px] font-medium text-mist">
+              <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
                 <EyeOff className="size-2.5" />
                 Hidden from AI
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[9px] text-mist">
+              <span className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
                 <span className="size-1.5 rounded-full bg-mint" />
                 Indexed
               </span>
@@ -318,14 +318,14 @@ const MODEL_LOGOS = [
 
 function ModelsCard() {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15">
-      <div className="m-2 mb-0 flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl bg-cloud/60 p-6">
+    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/8 bg-card transition-colors hover:border-foreground/15">
+      <div className="m-2 mb-0 flex flex-1 flex-col items-center justify-center gap-5 rounded-2xl bg-muted/60 p-6">
         <div className="flex max-w-sm flex-wrap items-center justify-center gap-3">
           {MODEL_LOGOS.map(({ src, alt, tilt, float }, i) => (
             <span
               key={alt}
               className={cn(
-                "grid size-12 place-items-center rounded-2xl bg-white ring-1 ring-ink/8 sm:size-12",
+                "grid size-12 place-items-center rounded-2xl bg-card ring-1 ring-foreground/8 sm:size-12",
                 tilt,
                 float
               )}
@@ -337,19 +337,19 @@ function ModelsCard() {
           ))}
         </div>
         {/* bring-your-own-GGUF input, straight from Settings */}
-        <div className="flex w-full max-w-sm items-center gap-2 rounded-full border border-ink/10 bg-white px-3.5 py-2">
-          <Plus className="size-3.5 shrink-0 text-mist" />
-          <span className="flex-1 truncate font-mono text-[11px] text-ink/70">
+        <div className="flex w-full max-w-sm items-center gap-2 rounded-full border border-foreground/10 bg-card px-3.5 py-2">
+          <Plus className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="flex-1 truncate font-mono text-[11px] text-foreground/70">
             hf:unsloth/gemma-3-4b-it-GGUF
           </span>
-          <span className="shrink-0 rounded-full bg-ink px-2.5 py-0.5 text-[10px] font-medium text-white">
+          <span className="shrink-0 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-medium text-primary-foreground">
             Add
           </span>
         </div>
       </div>
       <div className="p-6 pt-4 sm:p-7 sm:pt-4">
-        <h3 className="text-lg font-medium text-ink">Plug any AI model</h3>
-        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-mist">
+        <h3 className="text-lg font-medium text-foreground">Plug any AI model</h3>
+        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
           A built-in catalog of local models: Llama, Qwen, Gemma, Phi,
           Mistral, DeepSeek or paste any GGUF from Hugging Face. Everything runs 
           right on your hardware.
@@ -364,11 +364,11 @@ function ModelsCard() {
 /** Single-column bento cell: visual panel on top, title + copy below. */
 function BentoCard({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-ink/8 bg-white transition-colors hover:border-ink/15">
-      <div className="m-2 mb-0 flex-1 rounded-2xl bg-cloud/60">{children}</div>
+    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-foreground/8 bg-card transition-colors hover:border-foreground/15">
+      <div className="m-2 mb-0 flex-1 rounded-2xl bg-muted/60">{children}</div>
       <div className="p-6 pt-4 sm:p-7 sm:pt-4">
-        <h3 className="text-lg font-medium text-ink">{title}</h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-mist">{desc}</p>
+        <h3 className="text-lg font-medium text-foreground">{title}</h3>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{desc}</p>
       </div>
     </div>
   );
@@ -376,13 +376,13 @@ function BentoCard({ title, desc, children }: { title: string; desc: string; chi
 
 export function LandingBento() {
   return (
-    <section id="canvas" className="scroll-mt-16 bg-white py-16 sm:py-24">
+    <section id="canvas" className="scroll-mt-16 bg-card py-16 sm:py-24">
       <div className="container mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
-          <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
+          <span className="font-mono text-xs uppercase tracking-widest text-foreground/60">
             AI Beyond search
           </span>
-          <h2 className="mt-3 text-3xl font-medium tracking-tight text-ink sm:text-4xl">
+          <h2 className="mt-3 text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
             More than a file browser
           </h2>
         </div>
