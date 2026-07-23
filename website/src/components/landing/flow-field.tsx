@@ -83,7 +83,15 @@ export function FlowField({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = `rgb(${INK})`;
       ctx.fillRect(0, 0, width, height);
-      particles = Array.from({ length: particleCount }, spawnParticle);
+      // Scale density to the container width so phones don't get a dense
+      // tangle of trails — full count at a desktop reference width, fewer as
+      // it narrows (never more than the requested count).
+      const REF_WIDTH = 1280;
+      const effectiveCount = Math.max(
+        120,
+        Math.min(particleCount, Math.round(particleCount * (width / REF_WIDTH)))
+      );
+      particles = Array.from({ length: effectiveCount }, spawnParticle);
     };
 
     const render = () => {

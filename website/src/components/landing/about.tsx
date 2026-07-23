@@ -29,7 +29,7 @@ function Chip({ children, className }: { children: ReactNode; className?: string
   return (
     <span
       className={cn(
-        "grid size-12 place-items-center rounded-2xl bg-white shadow-[0_6px_16px_rgba(15,17,23,0.14)] ring-1 ring-ink/5 sm:size-13",
+        "grid size-12 place-items-center rounded-2xl bg-card shadow-[0_6px_16px_rgba(15,17,23,0.14)] ring-1 ring-foreground/5 sm:size-13",
         className
       )}
     >
@@ -64,7 +64,7 @@ const FEATURES: Array<{
     chips: [
       <Mark key="a" className="size-6"/>,
       <Sparkles key="a" className="size-6 text-mint" />,
-      <Search key="b" className="size-6 text-ink/70" />,
+      <Search key="b" className="size-6 text-foreground/70" />,
     ],
     title: "Search by meaning",
     desc: "Ask for ‘receipts from tax season’ or ‘photos from Japan trip’. FilDOS finds files by meaning, not just filenames.",
@@ -74,7 +74,7 @@ const FEATURES: Array<{
     chips: [
       <Cpu key="a" className="size-6 text-grape" />,
       <ShieldCheck key="b" className="size-6 text-mint" />,
-      <Lock key="c" className="size-6 text-ink/70" />,
+      <Lock key="c" className="size-6 text-foreground/70" />,
     ],
     title: "Private, on-device AI",
     desc: "Everything stays on your device. Models run locally, your index lives locally, and your files never leave your machine.",
@@ -113,7 +113,7 @@ const FEATURES: Array<{
   {
     blend: "bubblegumMango",
     chips: [
-      <GithubIcon key="a" className="size-6 text-ink" />,
+      <GithubIcon key="a" className="size-6 text-foreground" />,
       <Heart key="b" className="size-6 text-strawberry" />,
     ],
     title: "Open source",
@@ -123,16 +123,16 @@ const FEATURES: Array<{
 
 export function LandingAbout() {
   return (
-    <section id="features" className="scroll-mt-16 bg-cloud/60 py-16 sm:py-24">
+    <section id="features" className="scroll-mt-16 bg-muted/60 py-16 sm:py-24">
       <div className="container mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
-          <span className="font-mono text-xs uppercase tracking-widest text-ink/60">
+          <span className="font-mono text-xs uppercase tracking-widest text-foreground/60">
             Features
           </span>
-          <h2 className="mt-3 text-3xl font-medium tracking-tight text-ink sm:text-4xl">
+          <h2 className="mt-3 text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
             The file browser built for the AI era
           </h2>
-          <p className="mt-4 text-base text-mist sm:text-lg">
+          <p className="mt-4 text-base text-muted-foreground sm:text-lg">
             FilDOS looks like a familiar file browser, 
             but underneath it builds a private semantic index 
             that understands what&apos;s inside your files.
@@ -142,7 +142,7 @@ export function LandingAbout() {
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
           {FEATURES.map(({ blend, chips, title, desc }, i) => (
             <Reveal key={title} index={i}>
-              <div className="group overflow-hidden rounded-3xl border border-ink/8 bg-white p-2 shadow-sm transition-shadow hover:shadow-md">
+              <div className="group overflow-hidden rounded-3xl border border-foreground/8 bg-card p-2 shadow-sm transition-shadow hover:shadow-md">
                 <Grainient blend={blend} className="h-36 rounded-2xl sm:h-40">
                   <div className="flex h-full items-center justify-center gap-3 transition-transform duration-300 group-hover:scale-105">
                     {chips.map((chip, j) => (
@@ -151,8 +151,8 @@ export function LandingAbout() {
                   </div>
                 </Grainient>
                 <div className="p-4 sm:p-5">
-                  <h3 className="text-lg font-medium text-ink">{title}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-mist">{desc}</p>
+                  <h3 className="text-lg font-medium text-foreground">{title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{desc}</p>
                 </div>
               </div>
             </Reveal>

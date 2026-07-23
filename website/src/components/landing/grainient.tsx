@@ -42,13 +42,17 @@ export function Grainient({
             `radial-gradient(95% 110% at 14% 16%, ${a} 0%, transparent 62%)`,
             `radial-gradient(110% 120% at 88% 8%, ${b} 0%, transparent 58%)`,
             `radial-gradient(130% 120% at 55% 108%, ${c} 0%, transparent 65%)`,
-            "#ffffff",
+            // Base follows the card token so the panel isn't a white glare in
+            // dark mode; the scoop blobs read as a soft glow over it.
+            "var(--card)",
           ].join(", "),
         }}
       />
+      {/* Film grain — denser + more present than a whisper of noise. Overlay
+          blend keeps it visible on both bright and dark panels. */}
       <div
-        className="absolute inset-0 opacity-30 mix-blend-soft-light"
-        style={{ backgroundImage: GRAIN, backgroundSize: "160px 160px" }}
+        className="absolute inset-0 opacity-[0.55] mix-blend-overlay"
+        style={{ backgroundImage: GRAIN, backgroundSize: "140px 140px" }}
       />
       {children && <div className="relative h-full">{children}</div>}
     </div>

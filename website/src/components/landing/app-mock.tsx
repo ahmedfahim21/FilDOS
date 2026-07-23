@@ -204,7 +204,7 @@ const CHAT: Array<{
 /* ------------------------------ Sub-parts ------------------------------ */
 
 const sectionTitle =
-  "px-1.5 pt-2.5 pb-1 font-semibold text-[8px] uppercase tracking-wider text-mist";
+  "px-1.5 pt-2.5 pb-1 font-semibold text-[8px] uppercase tracking-wider text-muted-foreground";
 
 function SideItem({
   icon,
@@ -220,11 +220,11 @@ function SideItem({
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-1.5 py-[3px] text-[10px] text-ink/80 transition-colors",
-        active ? "bg-ink/[0.09] font-medium text-ink" : "hover:bg-ink/[0.05]"
+        "flex items-center gap-1.5 rounded-md px-1.5 py-[3px] text-[10px] text-foreground/80 transition-colors",
+        active ? "bg-foreground/[0.09] font-medium text-foreground" : "hover:bg-foreground/[0.05]"
       )}
     >
-      <span className={cn("text-mist", active && "text-ink")}>{icon}</span>
+      <span className={cn("text-muted-foreground", active && "text-foreground")}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {right}
     </div>
@@ -248,7 +248,7 @@ function NavBtn({ children, label, dim }: { children: ReactNode; label: string; 
       type="button"
       aria-label={label}
       className={cn(
-        "grid size-6 place-items-center rounded-md text-ink/70 transition-colors hover:bg-ink/[0.06]",
+        "grid size-6 place-items-center rounded-md text-foreground/70 transition-colors hover:bg-foreground/[0.06]",
         dim && "opacity-40"
       )}
     >
@@ -270,43 +270,43 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-label="Search"
-        className="animate-in fade-in-0 zoom-in-95 mx-auto mt-9 w-[500px] max-w-[92%] overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-ink/10 duration-150"
+        className="animate-in fade-in-0 zoom-in-95 mx-auto mt-9 w-[500px] max-w-[92%] overflow-hidden rounded-xl bg-card shadow-2xl ring-1 ring-foreground/10 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input row */}
-        <div className="flex h-10 items-center gap-2 border-b border-ink/8 px-3.5">
+        <div className="flex h-10 items-center gap-2 border-b border-foreground/8 px-3.5">
           <Sparkles className="size-4 shrink-0 text-mint" />
-          <span className="flex-1 text-[12px] text-ink">receipts from tax season</span>
-          <kbd className="rounded border border-ink/15 bg-cloud px-1.5 py-0.5 font-mono text-[8px] text-mist">
+          <span className="flex-1 text-[12px] text-foreground">receipts from tax season</span>
+          <kbd className="rounded border border-foreground/15 bg-muted px-1.5 py-0.5 font-mono text-[8px] text-muted-foreground">
             esc
           </kbd>
         </div>
 
         {/* Filter chips */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-ink/8 px-3 py-2">
-          <div className="mr-1 flex items-center rounded-full bg-cloud p-0.5 text-[9px]">
-            <span className="rounded-full bg-white px-1.5 py-0.5 font-medium text-ink shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-foreground/8 px-3 py-2">
+          <div className="mr-1 flex items-center rounded-full bg-muted p-0.5 text-[9px]">
+            <span className="rounded-full bg-card px-1.5 py-0.5 font-medium text-foreground shadow-sm">
               Everywhere
             </span>
-            <span className="px-1.5 py-0.5 text-mist">This folder</span>
+            <span className="px-1.5 py-0.5 text-muted-foreground">This folder</span>
           </div>
           {TYPE_CHIPS.map((c) => (
             <span
               key={c.label}
               className={cn(
                 "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px]",
-                c.active ?? "border-ink/12 text-mist"
+                c.active ?? "border-foreground/12 text-muted-foreground"
               )}
             >
               <span className={cn("size-1.5 rounded-full", c.dot)} />
               {c.label}
             </span>
           ))}
-          <span className="flex items-center gap-1 rounded-full border border-ink/12 px-2 py-0.5 text-[9px] text-mist">
+          <span className="flex items-center gap-1 rounded-full border border-foreground/12 px-2 py-0.5 text-[9px] text-muted-foreground">
             <Tag className="size-2" />
             Tag
           </span>
-          <span className="flex items-center gap-1 rounded-full border border-ink/12 px-2 py-0.5 text-[9px] text-mist">
+          <span className="flex items-center gap-1 rounded-full border border-foreground/12 px-2 py-0.5 text-[9px] text-muted-foreground">
             <Clock className="size-2" />
             Any time
           </span>
@@ -314,7 +314,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
 
         {/* Results — one fused list, matching the real overlay */}
         <div className="max-h-[280px] overflow-hidden py-1.5">
-          <div className="flex items-center gap-1.5 px-4 pb-1 pt-2 font-semibold text-[8px] uppercase tracking-wider text-mist">
+          <div className="flex items-center gap-1.5 px-4 pb-1 pt-2 font-semibold text-[8px] uppercase tracking-wider text-muted-foreground">
             <Sparkles className="size-2.5 text-mint" />
             Results
           </div>
@@ -323,13 +323,13 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
               key={r.name}
               className={cn(
                 "mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5",
-                i === 0 && "bg-ink/[0.06]"
+                i === 0 && "bg-foreground/[0.06]"
               )}
             >
               <span className="shrink-0">{r.icon}</span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[11px] text-ink">{r.name}</div>
-                <div className="truncate text-[9px] text-mist">{r.sub}</div>
+                <div className="truncate text-[11px] text-foreground">{r.name}</div>
+                <div className="truncate text-[9px] text-muted-foreground">{r.sub}</div>
               </div>
               {r.best && (
                 <span className="shrink-0 rounded-sm bg-mint/15 px-1.5 py-0.5 text-[8px] font-medium text-mint">
@@ -341,7 +341,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Footer hints */}
-        <div className="flex items-center justify-between border-t border-ink/8 px-4 py-1.5 text-[8px] text-mist">
+        <div className="flex items-center justify-between border-t border-foreground/8 px-4 py-1.5 text-[8px] text-muted-foreground">
           <span>↑↓ Navigate · ↵ Open · ⌘↵ Show in Folder</span>
           <span className="flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-mint" />
@@ -361,17 +361,17 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
     <aside
       role="dialog"
       aria-label="Ask AI"
-      className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-ink/8 bg-white shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200"
+      className="animate-in slide-in-from-right-4 fade-in-0 absolute right-0 top-0 z-30 flex h-full w-[258px] flex-col border-l border-foreground/8 bg-card shadow-[-8px_0_24px_rgba(15,17,23,0.06)] duration-200"
     >
       {/* Header */}
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-foreground/8 px-3">
         <Sparkles className="size-3.5 text-mint" />
-        <span className="text-[11px] font-medium text-ink">Ask AI</span>
+        <span className="text-[11px] font-medium text-foreground">Ask AI</span>
         <span className="size-1.5 rounded-full bg-mint" />
         <button
           onClick={onClose}
           aria-label="Close Ask AI"
-          className="ml-auto grid size-6 place-items-center rounded-md text-mist transition-colors hover:bg-ink/[0.06] hover:text-ink"
+          className="ml-auto grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
         >
           <X className="size-3.5" />
         </button>
@@ -381,7 +381,7 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
       <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden p-3">
         {CHAT.map((m, i) =>
           m.role === "user" ? (
-            <div key={i} className="max-w-[82%] self-end rounded-2xl rounded-br-sm bg-ink px-2.5 py-1.5 text-[10px] leading-snug text-white">
+            <div key={i} className="max-w-[82%] self-end rounded-2xl rounded-br-sm bg-primary px-2.5 py-1.5 text-[10px] leading-snug text-primary-foreground">
               {m.text}
             </div>
           ) : (
@@ -389,17 +389,17 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
               <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-lg bg-mint/12 ring-1 ring-mint/20">
                 <Sparkles className="size-3 text-mint" />
               </span>
-              <div className="min-w-0 rounded-2xl rounded-bl-sm bg-cloud px-2.5 py-1.5 text-[10px] leading-snug text-ink/80">
+              <div className="min-w-0 rounded-2xl rounded-bl-sm bg-muted px-2.5 py-1.5 text-[10px] leading-snug text-foreground/80">
                 {m.text}
                 {m.files && (
                   <div className="mt-1.5 flex flex-col gap-1">
                     {m.files.map((f) => (
                       <div
                         key={f.name}
-                        className="flex items-center gap-1.5 rounded-md border border-ink/8 bg-white px-1.5 py-1"
+                        className="flex items-center gap-1.5 rounded-md border border-foreground/8 bg-card px-1.5 py-1"
                       >
                         <span className="shrink-0">{f.icon}</span>
-                        <span className="truncate font-mono text-[8.5px] text-ink/70">{f.name}</span>
+                        <span className="truncate font-mono text-[8.5px] text-foreground/70">{f.name}</span>
                       </div>
                     ))}
                   </div>
@@ -411,19 +411,19 @@ function AssistantRail({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Composer — mirrors the real one: Research toggle + @ # / triggers */}
-      <div className="shrink-0 border-t border-ink/8 p-2.5">
-        <div className="rounded-lg border border-ink/10 bg-white">
-          <div className="px-2.5 pb-1 pt-2 text-[10px] text-mist">Ask about your files…</div>
+      <div className="shrink-0 border-t border-foreground/8 p-2.5">
+        <div className="rounded-lg border border-foreground/10 bg-card">
+          <div className="px-2.5 pb-1 pt-2 text-[10px] text-muted-foreground">Ask about your files…</div>
           <div className="flex items-center gap-1 px-1.5 pb-1.5">
             <span className="flex items-center gap-1 rounded-md bg-mint/15 px-1.5 py-0.5 text-[8.5px] font-medium text-mint">
               <Search className="size-2.5" />
               Research
             </span>
             <span className="flex-1" />
-            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-blueberry">@</span>
-            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-grape">#</span>
-            <span className="rounded border border-ink/10 px-1 font-mono text-[8.5px] text-mint">/</span>
-            <span className="ml-0.5 grid size-4.5 place-items-center rounded-full bg-ink text-white">
+            <span className="rounded border border-foreground/10 px-1 font-mono text-[8.5px] text-blueberry">@</span>
+            <span className="rounded border border-foreground/10 px-1 font-mono text-[8.5px] text-grape">#</span>
+            <span className="rounded border border-foreground/10 px-1 font-mono text-[8.5px] text-mint">/</span>
+            <span className="ml-0.5 grid size-4.5 place-items-center rounded-full bg-primary text-primary-foreground">
               <Send className="size-2" />
             </span>
           </div>
@@ -471,11 +471,11 @@ export function AppMock({
 
   return (
     <div
-      className="relative flex cursor-default flex-col overflow-hidden bg-white text-ink"
+      className="relative flex cursor-default flex-col overflow-hidden bg-card text-foreground"
       style={{ width: MOCK_W, height: MOCK_H }}
     >
       {/* ── TopBar: window chrome + search + AI ─────────────────────────── */}
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-foreground/8 px-3">
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="size-2.5 rounded-full bg-[#ff5f57]" />
           <span className="size-2.5 rounded-full bg-[#febc2e]" />
@@ -497,27 +497,27 @@ export function AppMock({
           type="button"
           onClick={() => setOverlay("search")}
           className={cn(
-            "group flex h-7 w-full max-w-[300px] items-center gap-2 rounded-md border px-2.5 text-mist transition duration-150 ease-out hover:border-ink/15 hover:bg-cloud",
+            "group flex h-7 w-full max-w-[300px] items-center gap-2 rounded-md border px-2.5 text-muted-foreground transition duration-150 ease-out hover:border-foreground/15 hover:bg-muted",
             searchPressed
-              ? "scale-[0.97] border-mint/50 bg-mint/10 text-ink ring-2 ring-mint/30"
-              : "border-ink/10 bg-cloud/70"
+              ? "scale-[0.97] border-mint/50 bg-mint/10 text-foreground ring-2 ring-mint/30"
+              : "border-foreground/10 bg-muted/70"
           )}
         >
           <Search
             className={cn(
-              "size-3.5 shrink-0 transition-colors group-hover:text-ink/70",
+              "size-3.5 shrink-0 transition-colors group-hover:text-foreground/70",
               searchPressed && "text-mint"
             )}
           />
           <span
             className={cn(
-              "flex-1 text-left text-[10px] leading-none transition-colors group-hover:text-ink/70",
-              searchPressed && "text-ink/70"
+              "flex-1 text-left text-[10px] leading-none transition-colors group-hover:text-foreground/70",
+              searchPressed && "text-foreground/70"
             )}
           >
             Search
           </span>
-          <kbd className="flex items-center gap-0.5 rounded border border-ink/15 px-1 py-0.5 font-mono text-[7px] leading-none">
+          <kbd className="flex items-center gap-0.5 rounded border border-foreground/15 px-1 py-0.5 font-mono text-[7px] leading-none">
             <Command className="size-2" />K
           </kbd>
         </button>
@@ -528,7 +528,7 @@ export function AppMock({
             onClick={() => setOverlay((o) => (o === "ai" ? "none" : "ai"))}
             aria-pressed={overlay === "ai"}
             className={cn(
-              "flex items-center gap-1 rounded-md bg-ink px-2.5 py-1.5 text-[10px] font-medium text-white transition hover:bg-ink/85",
+              "flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[10px] font-medium text-primary-foreground transition hover:bg-primary/90",
               overlay === "ai" && "ring-2 ring-mint/50 ring-offset-1"
             )}
           >
@@ -541,7 +541,7 @@ export function AppMock({
       {/* ── Body: sidebar | content pane ────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <aside className="flex w-44 shrink-0 flex-col border-r border-ink/8 bg-white">
+        <aside className="flex w-44 shrink-0 flex-col border-r border-foreground/8 bg-card">
           <div className="flex h-9 shrink-0 items-center px-3">
             <Logo className="text-[13px]" />
           </div>
@@ -559,15 +559,15 @@ export function AppMock({
 
             <div className={sectionTitle}>Drives</div>
             <div className="rounded-md px-1.5 py-[3px]">
-              <div className="flex items-center gap-1.5 text-[10px] text-ink/80">
-                <HardDrive className="size-3 text-mist" />
+              <div className="flex items-center gap-1.5 text-[10px] text-foreground/80">
+                <HardDrive className="size-3 text-muted-foreground" />
                 Macintosh HD
               </div>
               <div className="mt-1 pl-[18px]">
-                <div className="h-1 w-full overflow-hidden rounded-full bg-cloud">
-                  <div className="h-full w-[62%] rounded-full bg-ink/30" />
+                <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="h-full w-[62%] rounded-full bg-foreground/30" />
                 </div>
-                <div className="mt-0.5 text-[7px] text-mist">616 GB of 994 GB</div>
+                <div className="mt-0.5 text-[7px] text-muted-foreground">616 GB of 994 GB</div>
               </div>
             </div>
 
@@ -588,7 +588,7 @@ export function AppMock({
                 key={label}
                 icon={<span className={cn("mx-0.5 block size-1.5 rounded-full", color)} />}
                 label={label}
-                right={<span className="text-[8px] text-mist">{count}</span>}
+                right={<span className="text-[8px] text-muted-foreground">{count}</span>}
               />
             ))}
 
@@ -602,23 +602,23 @@ export function AppMock({
         {/* Content pane */}
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* Toolbar / location row */}
-          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-ink/8 px-3">
+          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-foreground/8 px-3">
             <div className="flex min-w-0 flex-1 items-center gap-1 text-[10px] font-semibold whitespace-nowrap">
-              <span className="text-mist">Home</span>
-              <span className="text-mist opacity-60">›</span>
-              <span className="text-mist">Documents</span>
-              <span className="text-mist opacity-60">›</span>
+              <span className="text-muted-foreground">Home</span>
+              <span className="text-muted-foreground opacity-60">›</span>
+              <span className="text-muted-foreground">Documents</span>
+              <span className="text-muted-foreground opacity-60">›</span>
               <span>Finance</span>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <button className="flex items-center gap-1 rounded-md bg-cloud px-2 py-1 text-[10px] font-medium text-ink transition-colors hover:bg-ink/[0.09]">
+              <button className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-foreground/[0.09]">
                 <LayoutGrid className="size-3 text-mint" />
                 View
               </button>
-              <button className="grid size-6 place-items-center rounded-md bg-cloud text-ink/70 transition-colors hover:bg-ink/[0.09]">
+              <button className="grid size-6 place-items-center rounded-md bg-muted text-foreground/70 transition-colors hover:bg-foreground/[0.09]">
                 <FilePlus className="size-3.5" />
               </button>
-              <button className="grid size-6 place-items-center rounded-md bg-cloud text-ink/70 transition-colors hover:bg-ink/[0.09]">
+              <button className="grid size-6 place-items-center rounded-md bg-muted text-foreground/70 transition-colors hover:bg-foreground/[0.09]">
                 <FolderPlus className="size-3.5" />
               </button>
             </div>
@@ -632,8 +632,8 @@ export function AppMock({
                 className={cn(
                   "group flex flex-col items-center gap-1 rounded-lg p-1.5 pt-2.5 ring-1 ring-inset transition",
                   selected
-                    ? "bg-ink/[0.08] ring-ink/20"
-                    : "ring-transparent hover:-translate-y-0.5 hover:bg-ink/[0.05] hover:ring-ink/10"
+                    ? "bg-foreground/[0.08] ring-foreground/20"
+                    : "ring-transparent hover:-translate-y-0.5 hover:bg-foreground/[0.05] hover:ring-foreground/10"
                 )}
               >
                 <span className="transition-transform duration-200 group-hover:scale-110">
@@ -654,7 +654,7 @@ export function AppMock({
           </div>
 
           {/* Status bar */}
-          <div className="flex shrink-0 items-center justify-between border-t border-ink/8 px-3 py-1 text-[8px] text-mist">
+          <div className="flex shrink-0 items-center justify-between border-t border-foreground/8 px-3 py-1 text-[8px] text-muted-foreground">
             <span>10 items</span>
             <span>1 selected · 84 KB</span>
           </div>

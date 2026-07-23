@@ -2,12 +2,14 @@
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
-import { Space_Grotesk, Space_Mono } from "next/font/google";
+import { Inter, Space_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 
-const spaceGrotesk = Space_Grotesk({
+// Inter — UI · interface · display, matching the desktop app's font-sans
+// (see .claude/brand-guidelines.md). Variable font: all weights in one file.
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-space-grotesk",
+  variable: "--font-inter",
 });
 
 const spaceMono = Space_Mono({
@@ -91,10 +93,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${spaceGrotesk.variable} ${spaceMono.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${spaceMono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="font-sans antialiased">
-        {children}
-        <Analytics />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   );

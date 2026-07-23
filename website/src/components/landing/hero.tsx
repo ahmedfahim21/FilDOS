@@ -72,23 +72,13 @@ function Mug({ className }: { className?: string }) {
 function MarkBubble({ className }: { className?: string }) {
   return (
     <div className={className}>
-      <div className="relative rounded-2xl border-2 border-ink bg-white px-3.5 py-3 shadow-[4px_4px_0_0_#0f1117]">
+      <div className="relative rounded-2xl border-2 border-foreground bg-card px-3.5 py-3 shadow-[4px_4px_0_0_#0f1117]">
         <Mark className="size-9" />
-        <div className="absolute -bottom-2.25 left-6 size-4 rotate-45 border-b-2 border-r-2 border-ink bg-white" />
+        <div className="absolute -bottom-2.25 left-6 size-4 rotate-45 border-b-2 border-r-2 border-foreground bg-card" />
       </div>
     </div>
   );
 }
-
-/** Small floating scoop tiles scattered around the scene. */
-const FLOAT_TILES = [
-  "bg-strawberry left-[6%] top-[24%] size-4 rotate-12 animate-float",
-  "bg-blueberry left-[13%] top-[58%] size-3 -rotate-6 animate-float-slow",
-  "bg-mint right-[8%] top-[20%] size-5 rotate-6 animate-float-medium",
-  "bg-mango right-[16%] top-[52%] size-3 rotate-45 animate-float",
-  "bg-grape left-[22%] top-[12%] size-3 rotate-12 animate-float-medium",
-  "bg-bubblegum right-[26%] top-[10%] size-4 -rotate-12 animate-float-slow",
-];
 
 /* ------------------------------- The hero ------------------------------- */
 
@@ -147,7 +137,6 @@ export function LandingHero() {
   // expanded app screen underneath it.
   const copyPointer = useTransform(scrollYProgress, (v) => (v > 0.18 ? "none" : "auto"));
   const sceneOpacity = useTransform(scrollYProgress, [0.08, 0.4], [1, 0]);
-  const bgOpacity = useTransform(scrollYProgress, [0.12, 0.55], [1, 0]);
   const bezelOpacity = useTransform(scrollYProgress, [0.45, 0.75], [1, 0]);
   const hintOpacity = useTransform(scrollYProgress, [0, 0.08], [1, 0]);
 
@@ -162,26 +151,15 @@ export function LandingHero() {
   });
 
   return (
-    <section ref={sectionRef} className="relative h-[280vh] bg-white">
+    <section ref={sectionRef} className="relative h-[280vh] bg-card">
       <div ref={stickyRef} className="sticky top-0 flex h-screen flex-col overflow-hidden">
-        {/* Bright background — soft scoop washes + floating tiles, fades on scroll */}
-        <motion.div style={{ opacity: bgOpacity }} className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-24 -top-24 size-96 rounded-full bg-mint/20 blur-3xl" />
-          <div className="absolute -right-32 top-1/4 size-112 rounded-full bg-bubblegum/20 blur-3xl" />
-          <div className="absolute bottom-0 left-1/4 size-96 rounded-full bg-blueberry/15 blur-3xl" />
-          <div className="absolute -bottom-16 right-1/4 size-72 rounded-full bg-mango/15 blur-3xl" />
-          {FLOAT_TILES.map((cls) => (
-            <div key={cls} className={`absolute rounded-md ${cls}`} />
-          ))}
-        </motion.div>
-
         <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 pt-20 sm:pt-24">
           {/* Copy */}
           <motion.div
             style={{ opacity: copyOpacity, y: copyY, pointerEvents: copyPointer }}
             className="flex flex-col items-center text-center"
           >
-            <h1 className="max-w-3xl text-4xl font-medium tracking-tight text-ink sm:text-5xl lg:text-6xl mt-6">
+            <h1 className="max-w-2xl text-3xl font-medium tracking-tight text-foreground sm:text-4xl lg:text-5xl mt-6">
               Your files, finally{" "}
               <span className="relative">
                 connected
@@ -202,18 +180,15 @@ export function LandingHero() {
               </span>
               .
             </h1>
-            <p className="mt-6 max-w-xl text-base text-mist sm:text-lg">
+            <p className="mt-6 max-w-xl text-sm text-muted-foreground sm:text-md">
               FilDOS is an Open-Source AI-native File Browser for your PC.
               Search by meaning, chat with your documents, and see how your
               work connects. All running locally on-device.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
-              <DownloadButton className="flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-ink/85 sm:text-base" />
-              <StarOnGithubButton className="flex items-center gap-2 rounded-full border border-ink/15 bg-white/80 px-6 py-3 text-sm font-medium text-ink backdrop-blur-sm transition-colors hover:bg-cloud sm:text-base" />
+              <DownloadButton className="flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-lg transition-colors hover:bg-primary/90 sm:text-base" />
+              <StarOnGithubButton className="flex items-center gap-2 rounded-full border border-foreground/15 bg-card/80 px-6 py-3 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted sm:text-base" />
             </div>
-            <span className="mt-4 font-mono text-[10px] text-mist sm:text-xs">
-              Free &amp; open source · Runs entirely on your machine · No telemetry
-            </span>
           </motion.div>
 
           {/* Scene: monitor on a desk, one character, scoop props */}
@@ -229,7 +204,7 @@ export function LandingHero() {
                 className="pointer-events-none absolute inset-0"
               >
                 {/* desk */}
-                <div className="absolute -bottom-12 -left-10 -right-10 h-6 rounded-xl border border-ink/10 bg-[#f3d9a8] sm:-left-24 sm:-right-24" />
+                <div className="absolute -bottom-12 -left-10 -right-10 h-6 rounded-xl border border-foreground/10 bg-[#f3d9a8] sm:-left-24 sm:-right-24" />
                 <div className="absolute -bottom-[5.5rem] left-[6%] h-10 w-3.5 rounded-b-md bg-[#e0bd85]" />
                 <div className="absolute -bottom-[5.5rem] right-[6%] h-10 w-3.5 rounded-b-md bg-[#e0bd85]" />
                 {/* monitor stand */}
@@ -256,7 +231,7 @@ export function LandingHero() {
                   style={{ opacity: bezelOpacity }}
                   className="absolute -inset-2 rounded-2xl bg-ink shadow-2xl sm:-inset-2.5"
                 />
-                <div className="relative h-full w-full overflow-hidden rounded-xl border border-ink/10 bg-white shadow-xl">
+                <div className="relative h-full w-full overflow-hidden rounded-xl border border-foreground/10 bg-card shadow-xl">
                   <div ref={screenRef} className="absolute inset-0">
                     <div
                       style={{
@@ -277,10 +252,9 @@ export function LandingHero() {
         {/* Scroll hint */}
         <motion.div
           style={{ opacity: hintOpacity }}
-          className="pointer-events-none absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 font-mono text-[11px] text-mist"
+          className="pointer-events-none absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 font-mono text-[11px] text-muted-foreground"
         >
           <ArrowDown className="size-3.5 animate-bounce" />
-          scroll to look inside
         </motion.div>
       </div>
     </section>
