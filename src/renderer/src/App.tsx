@@ -49,6 +49,7 @@ import { GalleryView } from '@/components/GalleryView';
 import { ColumnView } from '@/components/ColumnView';
 import type { FileViewProps, SelectMods } from '@/components/viewTypes';
 import { ContextMenu, type ContextMenuState } from '@/components/ContextMenu';
+import { QuickLook } from '@/components/QuickLook';
 import { ConfirmDialog, PromptDialog } from '@/components/Dialog';
 import { InfoPanel } from '@/components/InfoPanel';
 import { StatusBar } from '@/components/StatusBar';
@@ -99,6 +100,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [infoPath, setInfoPath] = useState<string | null>(null);
+  /** The file Quick Look shows; null when closed. */
+  const [quickLook, setQuickLook] = useState<Entry | null>(null);
   const [sidebarCloudKey, setSidebarCloudKey] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   // A file dropped onto the search bar → open the overlay pre-seeded for
@@ -234,6 +237,20 @@ function Browser({ initialView }: { initialView: ViewState }) {
     },
     [visible, anchorPath],
   );
+
+  // Quick Look follows the selection as the arrows step through the folder.
+  const stepQuickLook = useCallback(
+    (delta: number) => {
+      const ix = quickLook ? visible.findIndex((e) => e.path === quickLook.path) : -1;
+      if (ix === -1) return; // shown from elsewhere (e.g. another column): nowhere to step
+      const next = visible[Math.max(0, Math.min(visible.length - 1, ix + delta))];
+      setSelection(new Set([next.path]));
+      setAnchorPath(next.path);
+      setQuickLook(next);
+    },
+    [visible, quickLook],
+  );
+  const closeQuickLook = useCallback(() => setQuickLook(null), []);
 
   const trash = useCallback(
     async (entries: Entry[]) => {
@@ -377,7 +394,10 @@ function Browser({ initialView }: { initialView: ViewState }) {
       // While a metadata page (Recents/tag) is shown the file browser is
       // hidden, so its selection-driven shortcuts must stay inert. The same
       // goes for the search overlay, which owns the keyboard while open.
-      if (isEditingTarget(e.target) || dialog || nav.page || searchOpen) return;
+      // A key something else already handled (Quick Look's Space) isn't ours:
+      // its state change can re-register this listener mid-event.
+      if (e.defaultPrevented) return;
+      if (isEditingTarget(e.target) || dialog || quickLook || nav.page || searchOpen) return;
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key;
 
@@ -461,12 +481,23 @@ function Browser({ initialView }: { initialView: ViewState }) {
         case 'F2':
           if (selectedEntries.length === 1) startRename(selectedEntries[0]);
           break;
+        case ' ': {
+          // Quick Look the focused file (the anchor of a multi-selection).
+          const target = selectedEntries.find((en) => en.path === anchorPath) ?? selectedEntries[0];
+          if (target && !isRemote(target.path)) {
+            e.preventDefault();
+            setQuickLook(target);
+          }
+          break;
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
     dialog,
+    quickLook,
+    anchorPath,
     searchOpen,
     selectedEntries,
     selectedPaths,
@@ -681,6 +712,8 @@ function Browser({ initialView }: { initialView: ViewState }) {
         )}
       </div>
 
+      {quickLook && <QuickLook entry={quickLook} onStep={stepQuickLook} onClose={closeQuickLook} />}
+
       {menu && (() => {
         // The menu acts on its explicit entries (e.g. a column-view row from
         // another folder) or, by default, the current folder's selection.
@@ -708,6 +741,7 @@ function Browser({ initialView }: { initialView: ViewState }) {
           onRename={() => startRename(targets[0])}
           onTrash={() => setDialog({ kind: 'delete', entries: targets })}
           onInfo={() => setInfoPath(targets[0].path)}
+          onQuickLook={isRemote(targets[0]?.path ?? nav.currentPath) ? undefined : () => setQuickLook(targets[0])}
           indexExcluded={indexExcluded}
           onToggleIndexExclude={
             ai.enabled && !isRemote(nav.currentPath)
