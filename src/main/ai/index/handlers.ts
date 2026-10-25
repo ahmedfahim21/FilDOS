@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { IMAGE_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import { EMBED_MODEL_ID, indexFingerprint, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
@@ -74,8 +75,7 @@ function broadcast(progress: IndexProgress): void {
 
 const indexer = new Indexer({
   provider: () => activeAiProvider(),
-  textModel: TEXT_MODEL_ID,
-  imageModel: IMAGE_MODEL_ID,
+  model: EMBED_MODEL_ID,
   config: async () => {
     const c = await indexConfig();
     return { roots: c.roots, excludes: await effectiveExcludes(), excludeExtensions: c.excludeExtensions };
@@ -110,20 +110,20 @@ const watcher = new IndexWatcher({
  */
 export async function searchIndex(
   query: string,
-  opts?: { rootPath?: string; k?: number },
+  opts?: { rootPath?: string; k?: number; role?: 'query' | 'question' },
 ): Promise<SemanticHit[]> {
   const provider = await activeAiProvider();
   if (!provider) {
     throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
   }
   const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-  return semanticSearch(
-    provider,
-    { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-    vectorStore,
-    query,
-    { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
-  );
+  return semanticSearch(provider, EMBED_MODEL_ID, vectorStore, query, {
+    rootPath,
+    k: opts?.k,
+    keywordStore,
+    rerankerModelId: RERANKER_MODEL_ID,
+    role: opts?.role,
+  });
 }
 
 /** Register the indexing IPC handlers. Call once after the AI providers exist. */
@@ -131,6 +131,7 @@ export function registerIndexHandlers(): void {
   ipcMain.handle(Channels.indexStart, () =>
     wrap<void>(async () => {
       await patchConfig({ enabled: true });
+      await ensureFingerprint();
       await watcher.refresh();
       void indexer.start(); // fire-and-forget; progress streams via events
     }),
@@ -250,30 +251,20 @@ export function registerIndexHandlers(): void {
         }
         const p = assertValidPath(path);
         const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return similarByFile(
-          provider,
-          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-          vectorStore,
-          p,
-          { rootPath, k: opts?.k },
-        );
+        return similarByFile(provider, EMBED_MODEL_ID, vectorStore, p, { rootPath, k: opts?.k });
       }),
   );
 }
 
 /**
- * Populate the in-memory BM25 store from all chunks already in the DB.
- * Skips the embedding BLOBs so this is fast at personal-filesystem scale.
- * Non-fatal: a failure leaves the store empty and search falls back to vector-only.
+ * Populate the in-memory BM25 store from all chunks already in the DB (every
+ * file has a keyword entry — a picture's is its humanized name). Skips the
+ * embedding BLOBs so this is fast at personal-filesystem scale.
  */
 async function rebuildKeywordIndex(): Promise<void> {
   const chunks = await aiIndex.allChunks();
   const byPath = new Map<string, { chunkIx: number; text: string }[]>();
   for (const c of chunks) {
-    // Image chunks (modelId === IMAGE_MODEL_ID) carry the basename as text and
-    // belong only in the vector lane. Exclude them so the keyword store stays
-    // consistent with how Indexer.process() updates it (text-only writes).
-    if (c.modelId === IMAGE_MODEL_ID) continue;
     const arr = byPath.get(c.path) ?? [];
     arr.push({ chunkIx: c.chunkIx, text: c.text });
     byPath.set(c.path, arr);
@@ -281,13 +272,33 @@ async function rebuildKeywordIndex(): Promise<void> {
   for (const [path, pathChunks] of byPath) keywordStore.upsert(path, pathChunks);
 }
 
+/**
+ * Empty the index when its vectors came from another model, precision,
+ * dimension or prompt format (`indexFingerprint`): old vectors can't be
+ * compared with new queries. Also covers upgrades from before fingerprints.
+ * Returns whether it wiped.
+ */
+async function ensureFingerprint(): Promise<boolean> {
+  const want = indexFingerprint(PROMPTS_VERSION);
+  if ((await getPrefs()).index?.fingerprint === want) return false;
+  await indexer.clear();
+  await clearGraph();
+  await setPrefs({ index: { ...(await getPrefs()).index, fingerprint: want } });
+  return true;
+}
+
 /** Arm the watcher and resume leftover jobs, if indexing was enabled. Call at startup. */
 export async function startIndexBackground(): Promise<void> {
   if (!(await indexConfig()).enabled) return;
+  const wiped = await ensureFingerprint();
   // Rebuild BM25 from DB before arming the watcher so keyword search is
   // available immediately on the first query after startup.
-  try { await rebuildKeywordIndex(); } catch { /* non-fatal; search falls back to vector-only */ }
+  await rebuildKeywordIndex();
   await watcher.start();
+  if (wiped) {
+    void indexer.reconcile();
+    return;
+  }
   void indexer.resume();
 }
 

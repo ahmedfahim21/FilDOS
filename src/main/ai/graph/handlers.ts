@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, Result } from '@shared/types';
 import type { GraphProgress, GraphSnapshot } from '@shared/graphTypes';
-import { IMAGE_MODEL_ID, NER_MODEL_ID } from '@shared/aiModels';
+import { NER_MODEL_ID } from '@shared/aiModels';
 import { getPrefs, setPrefs } from '../../prefs';
 import { activeAiProvider } from '../registry';
 import { pace } from '../pace';
@@ -35,7 +35,6 @@ function broadcast(progress: GraphProgress): void {
 const builder = new GraphBuilder({
   provider: () => activeAiProvider(),
   nerModel: NER_MODEL_ID,
-  imageModel: IMAGE_MODEL_ID,
   emit: broadcast,
   pace,
   prefs: { get: getPrefs, set: setPrefs },

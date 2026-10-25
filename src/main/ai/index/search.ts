@@ -1,21 +1,22 @@
-import { relative } from 'node:path';
+import { basename, relative } from 'node:path';
 import type { SemanticHit } from '@shared/types';
-import { relevanceOf } from '@shared/aiModels';
+import { relevanceOf, type EmbedRole } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
 import { extractText, isImage } from './extract';
+import { visionBudget } from './ignore';
 import { chunk } from './chunk';
 import * as service from '../../fs/service';
 
 /**
- * Semantic search across both indexed modalities. The text lane fuses vector
- * similarity and BM25 keyword ranking via Reciprocal Rank Fusion (RRF) when a
+ * Semantic search over the index. Text and pictures share one embedding space
+ * (EmbeddingGemma 2), so a single vector lane ranks every kind of file. It is
+ * fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF) when a
  * keyword store is provided — exact/identifier matches that embeddings handle
- * poorly (error codes, filenames, API names) get boosted without needing to
- * calibrate scores across two different scales. The image lane is vector-only;
- * CLIP already maps text and images into the same space, so BM25 adds nothing
- * there. Both lanes use calibrated [0,1] cosine for the final merged ranking.
+ * poorly (error codes, filenames, API names) get boosted without calibrating
+ * scores across two scales — and the top candidates can be reranked by a
+ * cross-encoder.
  *
  * Pure orchestration with injected deps (testable, no Electron).
  */
@@ -29,31 +30,11 @@ const OVERFETCH = 5;
  */
 const RRF_K = 60;
 
-export interface SearchModels {
-  text: string;
-  image: string;
-}
-
 interface Scored {
   path: string;
   text: string;
   /** Calibrated relevance in [0, 1]. */
   score: number;
-}
-
-/** Embed the query with one model and rank that model's chunks; calibrated. */
-async function searchOne(
-  provider: AiProvider,
-  modelId: string,
-  vectorStore: VectorStore,
-  query: string,
-  rootPath: string | undefined,
-  k: number,
-): Promise<Scored[]> {
-  const [vec] = await provider.embed(modelId, [query], 'query');
-  if (!vec) return [];
-  const matches = await vectorStore.search(vec, { underPath: rootPath, k, modelId });
-  return matches.map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
 }
 
 /**
@@ -162,10 +143,17 @@ async function resolveHits(
 
 export async function semanticSearch(
   provider: AiProvider,
-  models: SearchModels,
+  modelId: string,
   vectorStore: VectorStore,
   query: string,
-  opts: { rootPath?: string; k?: number; keywordStore?: KeywordStore; rerankerModelId?: string } = {},
+  opts: {
+    rootPath?: string;
+    k?: number;
+    keywordStore?: KeywordStore;
+    rerankerModelId?: string;
+    /** 'question' when the query is a question asked of the files (chat). */
+    role?: Exclude<EmbedRole, 'passage'>;
+  } = {},
 ): Promise<SemanticHit[]> {
   const q = query.trim();
   if (!q) return [];
@@ -173,79 +161,32 @@ export async function semanticSearch(
   const k = opts.k ?? DEFAULT_K;
   const fetchK = Math.max(k * OVERFETCH, 50);
 
-  // Text lane: fuse vector + BM25 via RRF when a keyword store is available.
-  const vecText = await searchOne(provider, models.text, vectorStore, q, opts.rootPath, fetchK);
+  const [vec] = await provider.embed(modelId, [q], opts.role ?? 'query');
+  const matches = await vectorStore.search(vec, { underPath: opts.rootPath, k: fetchK, modelId });
+  const vecHits = matches.map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
   const bm25Hits = opts.keywordStore?.search(q, { underPath: opts.rootPath, k: fetchK });
-  let textHits = bm25Hits ? rrfFuse(vecText, bm25Hits, fetchK) : bestPerFile(vecText, fetchK);
+  let hits = bm25Hits ? rrfFuse(vecHits, bm25Hits, fetchK) : bestPerFile(vecHits, fetchK);
 
-  // Cross-encoder reranking of text-lane top-N. Only activates when the model
-  // was already downloaded (we never trigger a download on the query path).
-  if (opts.rerankerModelId && provider.rerank && textHits.length > 0) {
-    try {
-      const st = await provider.status(opts.rerankerModelId);
-      if (st.state === 'ready') {
-        const toRerank = textHits.slice(0, RERANK_N);
-        const scores = await provider.rerank(
-          opts.rerankerModelId,
-          q,
-          toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
-        );
-        const reranked = toRerank
-          .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
-          .sort(([, a], [, b]) => b - a)
-          .map(([h]) => h);
-        textHits = [...reranked, ...textHits.slice(RERANK_N)];
-      }
-    } catch {
-      // Non-fatal: cross-encoder unavailable or errored; keep RRF order.
-    }
-  }
-
-  // Image lane: vector-only — CLIP maps text and images into one space natively.
-  // Gated on the model being downloaded already: embedding the query on demand
-  // would otherwise trigger a CLIP download from the query path.
-  let imageHits: Scored[] = [];
-  try {
-    const st = await provider.status(models.image);
+  // Cross-encoder reranking of the top-N. Only when the model is already
+  // downloaded (the query path never triggers a download).
+  if (opts.rerankerModelId && provider.rerank && hits.length > 0) {
+    const st = await provider.status(opts.rerankerModelId);
     if (st.state === 'ready') {
-      const vecImage = await searchOne(provider, models.image, vectorStore, q, opts.rootPath, fetchK);
-      imageHits = bestPerFile(vecImage, fetchK);
+      const toRerank = hits.slice(0, RERANK_N);
+      const scores = await provider.rerank(
+        opts.rerankerModelId,
+        q,
+        toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
+      );
+      const reranked = toRerank
+        .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
+        .sort(([, a], [, b]) => b - a)
+        .map(([h]) => h);
+      hits = [...reranked, ...hits.slice(RERANK_N)];
     }
-  } catch {
-    imageHits = [];
   }
 
-  // Merge text (RRF/rerank-ordered) and image (cosine-ordered).
-  //
-  // Two invariants to respect:
-  //  1. Text-lane ordering (RRF/rerank) is trusted within that lane — don't re-sort
-  //     by cosine, which would discard the BM25 boost.
-  //  2. Cross-lane comparison uses cosine score so a strongly-relevant image can
-  //     beat a weakly-relevant text hit.
-  //  3. BM25-only text hits (cosine = 0) are included at the bottom of the text lane
-  //     so exact keyword matches that have no embedding are not silently dropped.
-  //
-  // Strategy: keep text hits in their existing order; sort image hits by cosine;
-  // interleave the two streams by cosine at each step.
-  const textPaths = new Set(textHits.map((h) => h.path));
-  const sortedImages = imageHits
-    .filter((h) => h.score > 0 && !textPaths.has(h.path))
-    .sort((a, b) => b.score - a.score);
-
-  // Assign BM25-only text hits a tiny positive score so they're included but ranked last.
-  const textWithFloor = textHits.map((h) => (h.score > 0 ? h : { ...h, score: 1e-9 }));
-
-  // Two-pointer merge preserving within-text-lane order, interleaving images by cosine.
-  const best: Scored[] = [];
-  let ti = 0, ii = 0;
-  while (best.length < k * 3 && (ti < textWithFloor.length || ii < sortedImages.length)) {
-    const t = textWithFloor[ti];
-    const img = sortedImages[ii];
-    if (!t) { best.push(img!); ii++; }
-    else if (!img || t.score >= img.score) { best.push(t); ti++; }
-    else { best.push(img); ii++; }
-  }
-  return resolveHits(best, vectorStore, opts.rootPath, k);
+  return resolveHits(hits, vectorStore, opts.rootPath, k);
 }
 
 /** How many leading chunks of the probe file to average into the query vector. */
@@ -253,14 +194,13 @@ const SIMILAR_PROBE_CHUNKS = 4;
 
 /**
  * "Find similar" search: rank indexed files by similarity to a given file
- * instead of a text query. Images are embedded with the CLIP model and matched
- * against the image lane; text/document files are embedded with the text model
- * (the first few chunks averaged into one probe vector) and matched against the
- * text lane. The probe file itself is excluded from the results.
+ * instead of a text query. Pictures and documents share one space, so a photo
+ * can surface related notes and the other way round. A document's probe is
+ * the average of its first few passages; the file itself is excluded.
  */
 export async function similarByFile(
   provider: AiProvider,
-  models: SearchModels,
+  modelId: string,
   vectorStore: VectorStore,
   filePath: string,
   opts: { rootPath?: string; k?: number } = {},
@@ -269,12 +209,9 @@ export async function similarByFile(
   const fetchK = Math.max(k * OVERFETCH, 50);
 
   let vec: Float32Array | undefined;
-  let modelId: string;
   if (isImage(filePath)) {
-    modelId = models.image;
-    [vec] = await provider.embedImages(modelId, [filePath]);
+    [vec] = await provider.embedMedia(modelId, 'image', [filePath], { budget: visionBudget(filePath) });
   } else {
-    modelId = models.text;
     const text = await extractText(filePath);
     if (!text) {
       throw Object.assign(
@@ -283,7 +220,8 @@ export async function similarByFile(
       );
     }
     const probes = chunk(text).slice(0, SIMILAR_PROBE_CHUNKS).map((c) => c.text);
-    const vecs = await provider.embed(modelId, probes, 'passage');
+    const title = basename(filePath);
+    const vecs = await provider.embed(modelId, probes, 'passage', probes.map(() => title));
     if (vecs.length) {
       // Average the chunk vectors; cosine ignores magnitude, so no renorm needed.
       const dim = vecs[0].length;
@@ -294,11 +232,7 @@ export async function similarByFile(
   }
   if (!vec) return [];
 
-  const matches = await vectorStore.search(vec, {
-    underPath: opts.rootPath,
-    k: fetchK,
-    modelId,
-  });
+  const matches = await vectorStore.search(vec, { underPath: opts.rootPath, k: fetchK, modelId });
   const scored = matches
     .filter((m) => m.path !== filePath)
     .map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));

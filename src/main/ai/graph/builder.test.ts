@@ -49,7 +49,7 @@ function fakeProvider(opts: { nerReady?: boolean } = {}) {
     async embed(_m, texts) {
       return texts.map(() => unit(0));
     },
-    async embedImages() {
+    async embedMedia() {
       return [];
     },
     async extractEntities(_m, texts): Promise<EntitySpan[][]> {
@@ -68,7 +68,6 @@ function makeBuilder(provider: AiProvider) {
   const builder = new GraphBuilder({
     provider: async () => provider,
     nerModel: 'ner-model',
-    imageModel: 'clip',
     emit: (p) => emits.push(`${p.state}:${p.phase ?? '-'}`),
     prefs: {
       get: async () => prefs,

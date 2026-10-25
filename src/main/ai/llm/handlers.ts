@@ -61,7 +61,7 @@ const manager = new LlmManager();
 const contextDeps: ChatContextDeps = {
   extract: extractText,
   list: listDir,
-  search: (query, k) => searchIndex(query, { k }),
+  search: (query, k) => searchIndex(query, { k, role: 'question' }),
 };
 
 /** Real environment for the file tools (tests inject fakes via executeChatTool). */
@@ -74,7 +74,7 @@ const toolDeps: ChatToolDeps = {
     if (under.length) await aiIndex.remove(under);
   },
   extract: extractText,
-  search: (query, k) => searchIndex(query, { k }),
+  search: (query, k) => searchIndex(query, { k, role: 'question' }),
   home: homedir,
 };
 

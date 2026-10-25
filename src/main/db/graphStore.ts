@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { EntityType } from '@shared/graphTypes';
 import { db } from './index';
 import { entities, entityState, fileChunks, fileEntities, fileTags, graphEdges } from './schema';
@@ -146,14 +146,10 @@ export async function allEdges(): Promise<SimilarityEdge[]> {
 
 /**
  * The text NER runs over: each file's first chunks (a file's entities are
- * overwhelmingly in its opening), skipping image chunks (their "text" is just
- * the basename). Returned joined per path, in chunk order.
+ * overwhelmingly in its opening). Returned joined per path, in chunk order.
+ * Callers leave pictures out (their only "text" is the humanized name).
  */
-export async function nerTexts(
-  paths: string[],
-  excludeModelId: string,
-  maxChunks = 3,
-): Promise<Map<string, string>> {
+export async function nerTexts(paths: string[], maxChunks = 3): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (let i = 0; i < paths.length; i += CHUNK) {
     const rows = await db()
@@ -162,7 +158,6 @@ export async function nerTexts(
       .where(
         and(
           inArray(fileChunks.path, paths.slice(i, i + CHUNK)),
-          ne(fileChunks.modelId, excludeModelId),
           lt(fileChunks.chunkIx, maxChunks),
         ),
       )

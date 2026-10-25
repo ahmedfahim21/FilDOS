@@ -4,6 +4,7 @@ import * as aiIndex from '../../db/aiIndex';
 import * as graphStore from '../../db/graphStore';
 import { listTags } from '../../db/tags';
 import { decodeVector } from '../index/vectorStore';
+import { isImage } from '../index/extract';
 import type { AiProvider } from '../providers/types';
 import { centroids, knnEdges, type FileCentroid } from './similarity';
 import { normalizeEntities } from './ner';
@@ -19,15 +20,13 @@ import { assembleSnapshot } from './snapshot';
  * Provider/emit/pace are injected (mirroring IndexerDeps) so tests drive a
  * build with a fake provider and an in-memory db, no Electron. Entity
  * extraction is gated on the NER model already being downloaded — a build
- * never triggers a download, matching the reranker/CLIP lanes.
+ * never triggers a download, matching the reranker.
  */
 
 export interface GraphBuilderDeps {
   provider: () => Promise<AiProvider | null>;
   /** NER model id (must be 'ready' before the entity stage runs). */
   nerModel: string;
-  /** The image-embedding model id, whose chunks NER must skip. */
-  imageModel: string;
   emit: (progress: GraphProgress) => void;
   /** Cooperative duty-cycle: rest proportionally to the elapsed work. */
   pace?: (elapsedMs: number) => Promise<void>;
@@ -187,7 +186,7 @@ export class GraphBuilder {
     for (let i = 0; i < stale.length && !this.stopped; i += NER_BATCH) {
       const batch = stale.slice(i, i + NER_BATCH);
       const started = Date.now();
-      const texts = await graphStore.nerTexts(batch.map((s) => s.path), this.deps.imageModel);
+      const texts = await graphStore.nerTexts(batch.filter((s) => !isImage(s.path)).map((s) => s.path));
 
       const jobs: { state: IndexState; text: string }[] = [];
       for (const s of batch) {

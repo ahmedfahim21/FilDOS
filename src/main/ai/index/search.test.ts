@@ -12,6 +12,9 @@ import { semanticSearch, similarByFile } from './search';
 const tmp = useTempDir();
 const store = new SqliteVectorStore();
 
+/** Roles the fake was asked to embed with, for asserting the task prefix choice. */
+const roles: (string | undefined)[] = [];
+
 /** A provider that embeds any query to a fixed vector (the test controls ranking). */
 function fakeProvider(queryVec: number[]): AiProvider {
   return {
@@ -21,11 +24,12 @@ function fakeProvider(queryVec: number[]): AiProvider {
       return { state: 'ready', modelId, dim: queryVec.length };
     },
     async download() {},
-    async embed() {
+    async embed(_m, _texts, role) {
+      roles.push(role);
       return [Float32Array.from(queryVec)];
     },
-    async embedImages() {
-      return [];
+    async embedMedia() {
+      return [Float32Array.from(queryVec)];
     },
   };
 }
@@ -60,7 +64,7 @@ describe('semanticSearch', () => {
     await indexFile(b, [0, 1, 0], 'beta content about trains');
     await indexFile(c, [0, 0, 1], 'gamma content about planes');
 
-    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), { text: 'm1', image: 'clip' }, store, 'vessels at sea');
+    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), 'm1', store, 'vessels at sea');
 
     expect(hits[0].path).toBe(a);
     expect(hits[0].snippet).toContain('alpha');
@@ -77,7 +81,7 @@ describe('semanticSearch', () => {
       { chunkIx: 1, text: 'strong match', embedding: Float32Array.from([1, 0, 0]), modelId: 'm1' },
     ]);
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
 
     expect(hits).toHaveLength(1);
     expect(hits[0].snippet).toContain('strong');
@@ -91,7 +95,7 @@ describe('semanticSearch', () => {
     await indexFile(inDocs, [1, 0, 0], 'in docs');
     await indexFile(outside, [1, 0, 0], 'outside');
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q', {
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q', {
       rootPath: join(tmp(), 'docs'),
     });
 
@@ -99,8 +103,8 @@ describe('semanticSearch', () => {
   });
 
   it('returns empty for a blank query or an empty index', async () => {
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, '   ')).toEqual([]);
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'anything')).toEqual([]);
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, '   ')).toEqual([]);
+    expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'anything')).toEqual([]);
   });
 
   it('ignores chunks embedded by a different model', async () => {
@@ -112,7 +116,7 @@ describe('semanticSearch', () => {
       { chunkIx: 0, text: 'alpha', embedding: Float32Array.from([1, 0, 0]), modelId: 'OTHER' },
     ]);
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
 
     expect(hits).toEqual([]); // no same-model chunks → clean empty, not a false match
   });
@@ -124,7 +128,7 @@ describe('semanticSearch', () => {
     await indexFile(b, [0, 1, 0], 'beta');
     await fs.rm(a); // deleted after indexing
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
+    const hits = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
 
     expect(hits.map((h) => h.path)).not.toContain(a);
     expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index
@@ -141,7 +145,7 @@ describe('similarByFile', () => {
     await indexFile(far, [0, 1, 0], 'something unrelated');
 
     // Provider embeds every text to the probe's direction.
-    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe);
+    const hits = await similarByFile(fakeProvider([1, 0, 0]), 'm1', store, probe);
 
     expect(hits.map((h) => h.path)).not.toContain(probe);
     expect(hits[0].path).toBe(near);
@@ -157,7 +161,7 @@ describe('similarByFile', () => {
     await indexFile(inDocs, [1, 0, 0], 'in docs');
     await indexFile(outside, [1, 0, 0], 'outside');
 
-    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe, {
+    const hits = await similarByFile(fakeProvider([1, 0, 0]), 'm1', store, probe, {
       rootPath: join(tmp(), 'docs'),
     });
 
@@ -169,33 +173,33 @@ describe('similarByFile', () => {
     await fs.writeFile(bin, 'not really a movie');
 
     await expect(
-      similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, bin),
+      similarByFile(fakeProvider([1, 0, 0]), 'm1', store, bin),
     ).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
   });
 
-  it('uses the image lane for image probes', async () => {
+  it('embeds picture probes as media and matches any file in the shared space', async () => {
     const probeImg = join(tmp(), 'photo.png');
     const otherImg = join(tmp(), 'other.png');
-    const textFile = join(tmp(), 'a.txt');
+    const note = join(tmp(), 'a.txt');
     await fs.writeFile(probeImg, 'png-bytes');
-    // Index one image chunk (CLIP lane) and one text chunk (text lane).
-    await fs.writeFile(otherImg, 'png-bytes-2');
-    await aiIndex.upsertState(state(otherImg));
-    await store.upsert(otherImg, [
-      { chunkIx: 0, text: 'other.png', embedding: Float32Array.from([1, 0, 0]), modelId: 'clip' },
-    ]);
-    await indexFile(textFile, [1, 0, 0], 'text content');
+    await indexFile(otherImg, [1, 0, 0], 'other png');
+    await indexFile(note, [0.9, 0.1, 0], 'a note about the same scene');
 
-    const provider = {
+    let budget: number | undefined;
+    const provider: AiProvider = {
       ...fakeProvider([1, 0, 0]),
-      async embedImages() {
+      async embedMedia(_m, kind, paths, opts) {
+        expect(kind).toBe('image');
+        expect(paths).toEqual([probeImg]);
+        budget = opts?.budget;
         return [Float32Array.from([1, 0, 0])];
       },
     };
-    const hits = await similarByFile(provider, { text: 'm1', image: 'clip' }, store, probeImg);
+    const hits = await similarByFile(provider, 'm1', store, probeImg);
 
-    // Only the CLIP-lane chunk matches; the text-lane file must not leak in.
-    expect(hits.map((h) => h.path)).toEqual([otherImg]);
+    // One space: the picture and the related note both match, picture first.
+    expect(hits.map((h) => h.path)).toEqual([otherImg, note]);
+    expect(budget).toBe(140);
   });
 });
 
@@ -216,13 +220,24 @@ describe('semanticSearch — RRF hybrid fusion', () => {
     ks.upsert(b, [{ chunkIx: 0, text: 'fetchUser function signature docs' }]);
 
     // Without BM25: A wins (higher cosine).
-    const vecOnly = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser');
+    const vecOnly = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'fetchUser');
     expect(vecOnly[0].path).toBe(a);
 
     // With BM25: B surfaces first because 'fetchUser' is an exact identifier match.
-    const hybrid = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser', {
+    const hybrid = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'fetchUser', {
       keywordStore: ks,
     });
     expect(hybrid[0].path).toBe(b);
+  });
+});
+
+describe('semanticSearch — task prefixes', () => {
+  it('embeds the query as a search query by default and as a question when asked', async () => {
+    const a = join(tmp(), 'a.txt');
+    await indexFile(a, [1, 0, 0], 'alpha');
+    roles.length = 0;
+    await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+    await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'when is it due?', { role: 'question' });
+    expect(roles).toEqual(['query', 'question']);
   });
 });
