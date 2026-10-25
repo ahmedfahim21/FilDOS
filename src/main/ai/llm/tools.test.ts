@@ -312,3 +312,44 @@ describe('executeChatTool', () => {
     expect(call.ok).toBe(false);
   });
 });
+
+describe('executeChatTool — paths the model writes', () => {
+  const tmp = useTempDir();
+
+  async function tree() {
+    await fs.mkdir(join(tmp(), 'Home', 'Travel'), { recursive: true });
+    await fs.mkdir(join(tmp(), 'Home', 'Recipes'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'Home', 'Travel', 'packing-list.md'), 'passport');
+    await fs.writeFile(join(tmp(), 'Home', 'Recipes', 'pasta.md'), 'garlic and tomatoes');
+    await fs.writeFile(join(tmp(), 'notes.md'), 'top-level notes');
+  }
+
+  it('resolves a path written from home or a parent folder', async () => {
+    await tree();
+    const cwd = join(tmp(), 'Home', 'Travel');
+    const deps = fakeDeps(tmp());
+    const renamed = await executeChatTool('rename_file', { path: 'Home/Travel/packing-list.md', new_name: 'packing.md' }, cwd, deps);
+    expect(renamed.call.ok).toBe(true);
+    expect(await namesIn(cwd)).toEqual(['packing.md']);
+    const read = await executeChatTool('read_file', { path: 'Recipes/pasta.md' }, cwd, deps);
+    expect(read.call).toMatchObject({ ok: true, paths: [join(tmp(), 'Home', 'Recipes', 'pasta.md')] });
+  });
+
+  it('never guesses a bare name from outside the open folder', async () => {
+    await tree();
+    const cwd = join(tmp(), 'Home', 'Travel');
+    const deps = fakeDeps(tmp());
+    await executeChatTool('delete_files', { paths: ['notes.md'] }, cwd, deps);
+    // Only the open folder's (missing) notes.md was asked for; the top-level one is untouched.
+    expect(deps.trashed).toEqual([join(cwd, 'notes.md')]);
+    expect(await namesIn(tmp())).toContain('notes.md');
+  });
+
+  it('prefers the open folder when the path exists there too', async () => {
+    await tree();
+    await fs.mkdir(join(tmp(), 'Home', 'Travel', 'Recipes'));
+    await fs.writeFile(join(tmp(), 'Home', 'Travel', 'Recipes', 'pasta.md'), 'local copy');
+    const { call } = await executeChatTool('read_file', { path: 'Recipes/pasta.md' }, join(tmp(), 'Home', 'Travel'), fakeDeps(tmp()));
+    expect(call.paths).toEqual([join(tmp(), 'Home', 'Travel', 'Recipes', 'pasta.md')]);
+  });
+});
