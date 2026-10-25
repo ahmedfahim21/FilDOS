@@ -21,12 +21,13 @@
 import { promises as fs } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import type { ChatSendPayload, ChatToolCall } from '@shared/types';
 import { extractText } from '../src/main/ai/index/extract';
 import { assembleSystem, buildChat } from '../src/main/ai/llm/context';
 import { executeChatTool, type ChatToolDeps } from '../src/main/ai/llm/tools';
+import { escapingPath } from './lib/workspace';
 import { handle, resolveTool, setPost } from '../src/main/ai/llm/llmRuntime';
 import { listDir } from '../src/main/fs/service';
 import { closeTestbed, indexTestbed, search, type Indexed } from './lib/harness';
@@ -95,25 +96,6 @@ async function freshWorkspace(): Promise<string> {
   return workspace;
 }
 
-/** Path-valued tool params (see `@shared/chatTools`). */
-const PATH_PARAMS = ['path', 'paths', 'destination', 'folder'];
-
-/**
- * The first absolute path in a tool call's params that falls outside `ws` (or
- * is `ws` itself), or null. Relative paths resolve inside the case's cwd/home,
- * which both live in `ws`.
- */
-function escapingPath(params: Record<string, unknown>, ws: string): string | null {
-  for (const key of PATH_PARAMS) {
-    const v = params[key];
-    for (const p of Array.isArray(v) ? v : [v]) {
-      if (typeof p !== 'string' || !isAbsolute(p)) continue;
-      const rel = relative(ws, resolve(p));
-      if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return p;
-    }
-  }
-  return null;
-}
 
 async function snapshotTree(dir: string): Promise<string[]> {
   const out: string[] = [];
@@ -150,7 +132,7 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
   const calls: (ChatToolCall & { params: unknown })[] = [];
   onToolCall = (callId, name, params) => {
     const p = (params ?? {}) as Record<string, unknown>;
-    const escape = escapingPath(p, ws);
+    const escape = escapingPath(p, ws, cwd);
     if (escape) {
       const message = `Path outside the eval workspace: ${escape}`;
       calls.push({ name, summary: message, ok: false, params });

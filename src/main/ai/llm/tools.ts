@@ -116,7 +116,7 @@ function assertToolPathAllowed(resolved: string): void {
  * paths are untrusted input — but so is every path in a file manager; we
  * reject malformed ones and block protected credential directories.
  */
-function resolveToolPath(input: unknown, cwd: string | undefined, home: string): string {
+export function resolveToolPath(input: unknown, cwd: string | undefined, home: string): string {
   const raw = str(input);
   if (!raw || raw.includes('\0')) throw new ChatToolError('No valid path given.');
   let p = raw;
