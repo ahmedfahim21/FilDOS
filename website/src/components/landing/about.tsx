@@ -67,7 +67,7 @@ const FEATURES: Array<{
       <Search key="b" className="size-6 text-foreground/70" />,
     ],
     title: "Search by meaning",
-    desc: "Ask for ‘receipts from tax season’ or ‘photos from Japan trip’. FilDOS finds files by meaning, not just filenames.",
+    desc: "Ask for ‘receipts from tax season’ or ‘the part of the lecture about kestrels’. FilDOS finds documents, photos, audio and video by meaning, and opens them at the page or moment that matched.",
   },
   {
     blend: "grapeBlueberry",
@@ -98,7 +98,7 @@ const FEATURES: Array<{
       <Columns3 key="d" className="size-6 text-mango" />,
     ],
     title: "File manager first",
-    desc: "List, grid, gallery or column view. Sort, group and filter however you work.",
+    desc: "List, grid, gallery or column view, and Quick Look on Space. Sort, group and filter however you work.",
   },
   {
     blend: "mintMango",
