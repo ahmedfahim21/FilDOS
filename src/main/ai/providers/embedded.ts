@@ -14,6 +14,9 @@ export function vectors(data: unknown): Float32Array[] {
   return data as Float32Array[];
 }
 
+/** Unused this long, the embedding worker exits (freeing the model's memory). */
+export const WORKER_IDLE_MS = 2 * 60_000;
+
 interface Pending {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
@@ -42,6 +45,8 @@ export class EmbeddedAiProvider implements AiProvider {
   /** Model ids whose download was deliberately cancelled, so the worker-exit
    * rejection it causes can be told apart from a real crash. */
   private readonly cancelling = new Set<string>();
+  /** Shuts the worker down once nothing has asked it anything for a while. */
+  private idleTimer: NodeJS.Timeout | null = null;
 
   /** Subscribe to model download/state progress. Returns an unsubscribe fn. */
   onProgress(cb: (status: AiModelStatus) => void): () => void {
@@ -82,6 +87,7 @@ export class EmbeddedAiProvider implements AiProvider {
     const p = this.pending.get(msg.id);
     if (!p) return;
     this.pending.delete(msg.id);
+    if (this.pending.size === 0) this.scheduleIdleExit();
     if (msg.ok) {
       p.resolve(msg.data);
     } else {
@@ -91,7 +97,22 @@ export class EmbeddedAiProvider implements AiProvider {
     }
   }
 
+  /**
+   * The loaded model holds ~0.5–1 GB; free it when idle. The worker forks
+   * again (and reloads lazily) on the next request.
+   */
+  private scheduleIdleExit(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.pending.size === 0 && this.worker) this.worker.kill();
+    }, WORKER_IDLE_MS);
+    this.idleTimer.unref?.();
+  }
+
   private request<T>(type: string, payload?: Record<string, unknown>): Promise<T> {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
     const worker = this.ensureWorker();
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {

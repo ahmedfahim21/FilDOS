@@ -49,11 +49,31 @@ const toCached = (chunks: ChunkVector[]): CachedChunk[] =>
     c.embedding ? [{ chunkIx: c.chunkIx, modelId: c.modelId, vec: c.embedding, kind: c.kind, pass: c.pass ?? 1 }] : [],
   );
 
+/** Unsearched this long, the vector cache is dropped (the next search reloads it). */
+export const CACHE_IDLE_MS = 10 * 60_000;
+
 export class SqliteVectorStore implements VectorStore {
   /** path → its chunk vectors; null until the first search warms it. */
   private cache: Map<string, CachedChunk[]> | null = null;
+  private idleTimer: NodeJS.Timeout | null = null;
+
+  /** Whether the vectors are in memory now (for tests and diagnostics). */
+  get warm(): boolean {
+    return this.cache !== null;
+  }
+
+  /** Searches warm the cache; after CACHE_IDLE_MS without one it's freed. */
+  private touch(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      this.cache = null;
+    }, CACHE_IDLE_MS);
+    this.idleTimer.unref?.();
+  }
 
   private async ensureCache(): Promise<Map<string, CachedChunk[]>> {
+    this.touch();
     if (this.cache) return this.cache;
     const cache = new Map<string, CachedChunk[]>();
     for (const row of await aiIndex.allEmbeddings()) {

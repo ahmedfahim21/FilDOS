@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import type { AiModelStatus } from '@shared/types';
-import { EmbeddedAiProvider, vectors } from './providers/embedded';
+import { EmbeddedAiProvider, vectors, WORKER_IDLE_MS } from './providers/embedded';
 
 /**
  * Fake utilityProcess worker. Replies to each request the way the real
@@ -11,8 +11,11 @@ import { EmbeddedAiProvider, vectors } from './providers/embedded';
 const DIM = 768;
 /** Every request the fake worker saw, for asserting what the provider sent. */
 const sent: Record<string, unknown>[] = [];
-function fakeWorker(): EventEmitter & { postMessage(msg: unknown): void } {
-  const emitter = new EventEmitter() as EventEmitter & { postMessage(msg: unknown): void };
+let forks = 0;
+function fakeWorker(): EventEmitter & { postMessage(msg: unknown): void; kill(): void } {
+  forks++;
+  const emitter = new EventEmitter() as EventEmitter & { postMessage(msg: unknown): void; kill(): void };
+  emitter.kill = () => queueMicrotask(() => emitter.emit('exit', 0));
   emitter.postMessage = (msg: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[] }) => {
     sent.push(msg);
     queueMicrotask(() => {
@@ -81,5 +84,24 @@ describe('EmbeddedAiProvider', () => {
     p.onProgress((s) => seen.push(s));
     await p.download(MODEL);
     expect(seen.some((s) => s.state === 'downloading' && s.progress === 0.5)).toBe(true);
+  });
+
+  it('shuts the worker down when idle and forks a fresh one on the next request', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const p = new EmbeddedAiProvider();
+      const before = forks;
+      await p.status(MODEL);
+      expect(forks).toBe(before + 1);
+      // Busy again before the timeout: no restart.
+      await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS - 1000);
+      await p.status(MODEL);
+      expect(forks).toBe(before + 1);
+      await vi.advanceTimersByTimeAsync(WORKER_IDLE_MS + 1);
+      await p.embed(MODEL, ['a']);
+      expect(forks).toBe(before + 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
