@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import type { ChunkKind, IndexInfo, IndexProgress, IndexState } from '@shared/types';
+import type { ChunkKind, ChunkVector, DecodedInput, IndexInfo, IndexProgress, IndexState } from '@shared/types';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMostlyNumeric } from './extract';
+import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMedia, isMostlyNumeric } from './extract';
+import { audioWindows, keepShots, type DecodedMedia } from '../../media/signals';
 import { chunk, chunkPages, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import {
   hasCodebaseMarker,
@@ -43,6 +44,8 @@ const PIPELINE_DEPTH = 4;
  * in-flight job. Small batches keep the worker responsive and failures scoped.
  */
 const EMBED_BATCH = 16;
+/** Frames or audio windows per embed request (each is hundreds of soft tokens). */
+const MEDIA_BATCH = 4;
 
 /**
  * Bump this when chunking or extraction logic changes. Any file whose stored
@@ -140,6 +143,7 @@ type Prep =
   | { kind: 'remove' } // drop from the index: deleted, excluded, or no longer indexable
   | { kind: 'done' } // nothing to embed: fresh, or a metadata-only touch already recorded
   | { kind: 'image'; stat: { mtimeMs: number; size: number } }
+  | { kind: 'media'; stat: { mtimeMs: number; size: number } }
   | { kind: 'text'; chunks: Piece[]; keywordOnly: boolean; state: IndexState }
   | { kind: 'error'; error: unknown };
 
@@ -173,6 +177,12 @@ export interface IndexerDeps {
    * battery so a long index run never heats a laptop someone is typing on.
    */
   pace?: (elapsedMs: number) => Promise<void>;
+  /**
+   * Decode an audio or video file (frames + mono 16 kHz sound). Electron's
+   * Chromium in the app (`media/decoder.ts`); without it, media files aren't
+   * indexed.
+   */
+  decodeMedia?: (path: string) => Promise<DecodedMedia>;
 }
 
 export class Indexer {
@@ -504,6 +514,8 @@ export class Indexer {
       // Pictures: one embedding per file, keyword-searchable by name. No
       // content hash — the name can't change without the file moving.
       if (isImage(path)) return { kind: 'image', stat };
+      // Audio/video: decoding is the expensive part and happens in commit.
+      if (isMedia(path)) return { kind: 'media', stat };
 
       // For text files, compute a content hash and skip re-embedding when only
       // metadata changed (mtime bumped by git/sync/backup, bytes unchanged).
@@ -709,6 +721,11 @@ export class Indexer {
     const modelId = this.deps.model;
     await this.ensureModel(provider, modelId);
 
+    if (prep.kind === 'media') {
+      await this.commitMedia(provider, path, prep.stat);
+      return;
+    }
+
     if (prep.kind === 'image') {
       const t0 = Date.now();
       const [embedding] = await provider.embedMedia(modelId, 'image', [path], { budget: visionBudget(path) });
@@ -794,7 +811,50 @@ export class Indexer {
    */
   private indexable(path: string): boolean {
     if (this.excludeExts.has(extname(path).slice(1).toLowerCase())) return false;
-    return isExtractable(path) || isImage(path);
+    return isExtractable(path) || isImage(path) || (isMedia(path) && this.deps.decodeMedia !== undefined);
+  }
+
+  /**
+   * Audio/video: a keyword-only name chunk, one vector per distinct shot of a
+   * video (frames sampled every few seconds, near-duplicates dropped), and one
+   * per 30 s window of its sound (overlapping by 5 s). Frames and windows
+   * carry their moment (`loc`/`locEnd`, seconds), so a hit plays from there.
+   */
+  private async commitMedia(provider: AiProvider, path: string, stat: { mtimeMs: number; size: number }): Promise<void> {
+    const modelId = this.deps.model;
+    const decoded = await this.deps.decodeMedia!(path);
+    const name = nameChunkText(path);
+    const rows: ChunkVector[] = [{ chunkIx: 0, text: name, embedding: null, modelId, kind: 'name' }];
+    const embedBatches = async (inputs: DecodedInput[], batch: number): Promise<Float32Array[]> => {
+      const out: Float32Array[] = [];
+      for (let i = 0; i < inputs.length; i += batch) {
+        const t0 = Date.now();
+        out.push(...(await provider.embedDecoded(modelId, inputs.slice(i, i + batch))));
+        await this.deps.pace?.(Date.now() - t0);
+      }
+      return out;
+    };
+    const shots = keepShots(decoded.frames);
+    const frameVecs = await embedBatches(
+      shots.map((f) => ({ kind: 'frame', width: f.width, height: f.height, rgba: f.rgba })),
+      MEDIA_BATCH,
+    );
+    shots.forEach((f, i) =>
+      rows.push({ chunkIx: rows.length, text: '', embedding: frameVecs[i], modelId, kind: 'frame', loc: f.t, locEnd: f.t }),
+    );
+    const windows = decoded.audio ? audioWindows(decoded.audio) : [];
+    const audioVecs = await embedBatches(
+      windows.map((w) => ({ kind: 'audio', samples: w.samples })),
+      MEDIA_BATCH,
+    );
+    windows.forEach((w, i) =>
+      rows.push({ chunkIx: rows.length, text: '', embedding: audioVecs[i], modelId, kind: 'audio', loc: w.start, locEnd: w.end }),
+    );
+    // Nothing decodable: still findable by name, like an unreadable document.
+    const status: IndexState['status'] = rows.length > 1 ? 'indexed' : 'skipped';
+    await aiIndex.upsertState(this.stateFor(path, stat, modelId, status));
+    await this.deps.vectorStore.upsert(path, rows);
+    this.deps.keywordStore?.upsert(path, [{ chunkIx: 0, text: name }]);
   }
 
   private stateFor(

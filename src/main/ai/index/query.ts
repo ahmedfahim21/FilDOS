@@ -4,14 +4,14 @@
  * an error code), and which kind of file it names ("a screenshot of…", "the
  * PDF about…"). Pure, so ranking rules are unit-testable.
  */
-import { isImage } from './extract';
+import { isAudio, isImage, isVideo } from './extract';
 import { isScreenshot } from './ignore';
 
 /** Splits like MiniSearch's default tokenizer, so query terms line up with indexed ones. */
 const SPACE_OR_PUNCTUATION = /[\n\r\p{Z}\p{P}]+/u;
 
 /** File kinds a query can name. */
-export type FileKind = 'image' | 'screenshot' | 'pdf' | 'doc';
+export type FileKind = 'image' | 'screenshot' | 'pdf' | 'doc' | 'video' | 'audio';
 
 /** Words that say what kind of file to look for, not what's in it. */
 const KIND_WORDS: Record<string, FileKind> = {
@@ -19,6 +19,9 @@ const KIND_WORDS: Record<string, FileKind> = {
   screenshot: 'screenshot', screenshots: 'screenshot', screengrab: 'screenshot',
   pdf: 'pdf', pdfs: 'pdf', paper: 'pdf', papers: 'pdf',
   document: 'doc', documents: 'doc', doc: 'doc', docs: 'doc', note: 'doc', notes: 'doc',
+  video: 'video', videos: 'video', clip: 'video', clips: 'video', movie: 'video', movies: 'video', footage: 'video',
+  audio: 'audio', recording: 'audio', recordings: 'audio', podcast: 'audio', song: 'audio', songs: 'audio',
+  music: 'audio', voice: 'audio', sound: 'audio',
 };
 
 /** Function words and search filler: they say how to look, not what for. */
@@ -70,6 +73,8 @@ export function kindHints(query: string): Set<FileKind> {
 export function fileKinds(path: string): Set<FileKind> {
   if (isScreenshot(path)) return new Set(['screenshot', 'image']);
   if (isImage(path)) return new Set(['image']);
+  if (isVideo(path)) return new Set(['video']);
+  if (isAudio(path)) return new Set(['audio']);
   if (/\.pdf$/i.test(path)) return new Set(['pdf', 'doc']);
   return new Set(['doc']);
 }

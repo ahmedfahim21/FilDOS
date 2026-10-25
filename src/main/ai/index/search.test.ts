@@ -35,6 +35,9 @@ function fakeProvider(queryVec: number[]): AiProvider {
     async embedMedia() {
       return [Float32Array.from(queryVec)];
     },
+    async embedDecoded() {
+      return [Float32Array.from(queryVec)];
+    },
   };
 }
 
@@ -105,6 +108,17 @@ describe('zScores', () => {
     const z = zScores([...text, ...images, chunk(0.7), chunk(0.5, 'image')]);
     // Both sit 0.1 above their modality's mean, so they stand out equally.
     expect(z.at(-1)).toBeCloseTo(z.at(-2)!, 1);
+  });
+
+  it('treats video frames as pictures and sound as its own modality', () => {
+    const images = Array.from({ length: 10 }, () => chunk(0.4, 'image'));
+    const frames = Array.from({ length: 10 }, () => chunk(0.4, 'frame'));
+    const audio = Array.from({ length: 20 }, () => chunk(0.3, 'audio'));
+    const text = Array.from({ length: 20 }, () => chunk(0.6));
+    const z = zScores([...images, ...frames, ...audio, ...text, chunk(0.5, 'frame'), chunk(0.4, 'audio'), chunk(0.7)]);
+    // Each sits 0.1 above its own modality's mean (pictures pooled with frames).
+    expect(z.at(-3)).toBeCloseTo(z.at(-1)!, 1);
+    expect(z.at(-2)).toBeCloseTo(z.at(-1)!, 1);
   });
 
   it('scores later-pass chunks without letting them set the scale', () => {
@@ -228,6 +242,19 @@ describe('semanticSearch — meaning gate', () => {
   it('embeds chat questions with the question prefix', async () => {
     await semanticSearch(fakeProvider(at(0)), 'm1', store, 'when is it due?', { role: 'question' });
     expect(roles).toEqual(['question']);
+  });
+});
+
+describe('semanticSearch — moments', () => {
+  it('points at the moment of a recording, with nothing to quote', async () => {
+    await filler();
+    const talk = await indexFile('talk.mp3', [
+      { vec: null, text: 'talk mp3', kind: 'name' },
+      { vec: at(1.5), text: '', kind: 'audio', loc: 0 },
+      { vec: at(0.01), text: '', kind: 'audio', loc: 25 },
+    ]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'where they talk about sleep');
+    expect(hits[0]).toMatchObject({ path: talk, segment: 'audio', loc: 25, snippet: '', passage: '' });
   });
 });
 

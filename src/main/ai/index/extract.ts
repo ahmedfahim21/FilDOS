@@ -101,6 +101,24 @@ export function isImage(path: string): boolean {
   return IMAGE_EXTENSIONS.has(extOf(path));
 }
 
+/** Audio formats Chromium decodes — embedded as sound, a window at a time. */
+export const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus']);
+/** Video formats Chromium plays — embedded as keyframes plus their soundtrack. */
+export const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'mov', 'webm']);
+
+export function isAudio(path: string): boolean {
+  return AUDIO_EXTENSIONS.has(extOf(path));
+}
+
+export function isVideo(path: string): boolean {
+  return VIDEO_EXTENSIONS.has(extOf(path));
+}
+
+/** Audio or video. */
+export function isMedia(path: string): boolean {
+  return isAudio(path) || isVideo(path);
+}
+
 /** Trim to the text cap. */
 function cap(text: string): string {
   return text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text;

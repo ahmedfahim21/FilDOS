@@ -58,7 +58,9 @@ const SNIPPET_CHARS = 240;
 
 /** Per-chunk z-scores on this query's scale (see the module comment). */
 export function zScores(chunks: ScoredChunk[]): number[] {
-  const modality = (c: ScoredChunk) => (c.kind === 'image' ? 'image' : 'text');
+  // Video frames are pictures; sound sits at its own level.
+  const modality = (c: ScoredChunk) =>
+    c.kind === 'image' || c.kind === 'frame' ? 'image' : c.kind === 'audio' ? 'audio' : 'text';
   const sum = new Map<string, number>();
   const count = new Map<string, number>();
   let all = 0;
@@ -78,6 +80,11 @@ export function zScores(chunks: ScoredChunk[]): number[] {
   for (const c of chunks) if (c.pass === 1) sq += (c.score - mean(modality(c))) ** 2;
   const sd = Math.sqrt(sq / n) || 1;
   return chunks.map((c) => (c.score - mean(modality(c))) / sd);
+}
+
+/** Segments with no text of their own to quote (a picture, a moment of a recording, a file name). */
+function textless(segment: ChunkKind): boolean {
+  return segment === 'image' || segment === 'frame' || segment === 'audio' || segment === 'name';
 }
 
 /** Display relevance in [0, 1) from a fused score (monotone; 2 ≈ 0.55, 4 ≈ 0.8). */
@@ -219,8 +226,8 @@ async function resolveHits(
       ...info,
       relativePath: rootPath ? relative(rootPath, c.path) : c.path,
       score: relevance(c.score),
-      snippet: segment === 'image' || segment === 'name' ? '' : markedSnippet(text, c.byWords ? terms : []),
-      passage: segment === 'image' || segment === 'name' ? '' : text.replace(/\s+/g, ' ').trim().slice(0, PASSAGE_CHARS),
+      snippet: textless(segment) ? '' : markedSnippet(text, c.byWords ? terms : []),
+      passage: textless(segment) ? '' : text.replace(/\s+/g, ' ').trim().slice(0, PASSAGE_CHARS),
       segment,
       loc: d?.loc ?? null,
       locEnd: d?.locEnd ?? null,

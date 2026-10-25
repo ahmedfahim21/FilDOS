@@ -36,6 +36,8 @@ describe('kindHints / fileKinds', () => {
     expect([...kindHints('photos from the beach')]).toEqual(['image']);
     expect([...kindHints('the PDF about leases')]).toEqual(['pdf']);
     expect(kindHints('red lentil soup').size).toBe(0);
+    expect([...kindHints('the clip with the turtle')]).toEqual(['video']);
+    expect([...kindHints('podcast about sleep')]).toEqual(['audio']);
   });
 
   it('classifies files', () => {
@@ -43,5 +45,7 @@ describe('kindHints / fileKinds', () => {
     expect([...fileKinds('/a/cat.jpg')]).toEqual(['image']);
     expect([...fileKinds('/a/lease.PDF')].sort()).toEqual(['doc', 'pdf']);
     expect([...fileKinds('/a/notes.md')]).toEqual(['doc']);
+    expect([...fileKinds('/a/trip.MOV')]).toEqual(['video']);
+    expect([...fileKinds('/a/talk.m4a')]).toEqual(['audio']);
   });
 });

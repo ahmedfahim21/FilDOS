@@ -16,6 +16,7 @@ import { Indexer } from './indexer';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
+import { MediaDecoder } from '../../media/decoder';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -64,6 +65,7 @@ async function effectiveExcludes(): Promise<string[]> {
 }
 
 const vectorStore = new SqliteVectorStore();
+const mediaDecoder = new MediaDecoder();
 const keywordStore = new MiniSearchKeywordStore();
 
 function broadcast(progress: IndexProgress): void {
@@ -84,6 +86,7 @@ const indexer = new Indexer({
   keywordStore,
   emit: broadcast,
   pace,
+  decodeMedia: (path) => mediaDecoder.decode(path),
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -305,4 +308,5 @@ export async function startIndexBackground(): Promise<void> {
 export function stopIndexBackground(): void {
   watcher.stop();
   indexer.pause();
+  mediaDecoder.close();
 }

@@ -15,6 +15,7 @@ import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
 import { FIRST_PASS_CHUNKS, FIRST_PASS_PAGES, INDEX_VERSION, isStale, PASS_PAGES } from './indexer';
 import { MiniSearchKeywordStore } from './keywordStore';
+import { AUDIO_RATE, type DecodedMedia, type Frame } from '../../media/signals';
 
 // ---------------------------------------------------------------------------
 // isStale — truth table
@@ -58,6 +59,7 @@ function fakeProvider(boom?: string) {
   let calls = 0;
   const seen: { texts: string[]; role?: string; titles?: string[] }[] = [];
   const media: { paths: string[]; budget?: number }[] = [];
+  const decoded: string[][] = [];
   const provider: AiProvider = {
     id: 'fake',
     capabilities: { embed: true, generate: false, images: false },
@@ -75,8 +77,12 @@ function fakeProvider(boom?: string) {
       media.push({ paths, budget: opts?.budget });
       return paths.map(() => Float32Array.from([0, 0, 1]));
     },
+    async embedDecoded(_modelId, inputs) {
+      decoded.push(inputs.map((i) => i.kind));
+      return inputs.map((i) => Float32Array.from(i.kind === 'audio' ? [0, 1, 0] : [1, 0, 0]));
+    },
   };
-  return { provider, calls: () => calls, seen, media };
+  return { provider, calls: () => calls, seen, media, decoded };
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
@@ -498,5 +504,83 @@ describe('Indexer — places and the later pass', () => {
     const rows = await db().select().from(fileChunks);
     expect(rows.map((r) => [r.kind, r.text])).toEqual([['name', 'Broken Report pdf']]);
     expect((await aiIndex.getState(join(tmp(), 'Broken_Report.pdf')))?.status).toBe('skipped');
+  });
+});
+
+describe('Indexer — audio and video', () => {
+  const frame = (t: number, gray: number): Frame => ({
+    t,
+    width: 8,
+    height: 8,
+    rgba: new Uint8Array(256).map((_, i) => (i % 4 === 3 ? 255 : gray)),
+  });
+
+  function mediaIndexer(provider: AiProvider, decode: (path: string) => Promise<DecodedMedia>) {
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      decodeMedia: decode,
+    });
+    return { indexer, keywordStore };
+  }
+
+  it('embeds a video’s distinct shots and its sound windows, each at its moment', async () => {
+    await fs.writeFile(join(tmp(), 'Trip_to_Lisbon.mp4'), 'video bytes');
+    const { provider, decoded } = fakeProvider();
+    const { indexer, keywordStore } = mediaIndexer(provider, async () => ({
+      duration: 70,
+      // 3 and 6 look alike: one shot.
+      frames: [frame(0.5, 10), frame(3.5, 11), frame(6.5, 200)],
+      audio: new Float32Array(70 * AUDIO_RATE),
+    }));
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.map((r) => [r.kind, r.loc, r.locEnd, r.embedding === null])).toEqual([
+      ['name', null, null, true],
+      ['frame', 0.5, 0.5, false],
+      ['frame', 6.5, 6.5, false],
+      ['audio', 0, 30, false],
+      ['audio', 25, 55, false],
+      ['audio', 50, 70, false],
+    ]);
+    expect(rows[0].text).toBe('Trip to Lisbon mp4');
+    expect(decoded).toEqual([['frame', 'frame'], ['audio', 'audio', 'audio']]);
+    expect(await aiIndex.getState(join(tmp(), 'Trip_to_Lisbon.mp4'))).toMatchObject({ status: 'indexed', modelId: 'm1' });
+    // Keyword search finds it by name; moments have no text to match.
+    expect(keywordStore.search('lisbon').map((m) => [m.path, m.chunkIx])).toEqual([[join(tmp(), 'Trip_to_Lisbon.mp4'), 0]]);
+  });
+
+  it('keeps a recording with nothing decodable findable by name, as skipped', async () => {
+    await fs.writeFile(join(tmp(), 'empty.mp3'), 'x');
+    const { provider, decoded } = fakeProvider();
+    const { indexer } = mediaIndexer(provider, async () => ({ duration: 0, frames: [], audio: null }));
+    await indexer.start();
+    expect((await db().select().from(fileChunks)).map((r) => r.kind)).toEqual(['name']);
+    expect(decoded).toEqual([]);
+    expect((await aiIndex.getState(join(tmp(), 'empty.mp3')))?.status).toBe('skipped');
+  });
+
+  it('marks the file errored when decoding fails, and leaves media alone without a decoder', async () => {
+    await fs.writeFile(join(tmp(), 'broken.mp4'), 'x');
+    const { provider } = fakeProvider();
+    const { indexer } = mediaIndexer(provider, async () => {
+      throw new Error('Unreadable media');
+    });
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'broken.mp4'))).toBeNull();
+    expect(indexer.status().errors).toBe(1);
+
+    // No decoder (e.g. a host without Chromium): media isn't indexable at all.
+    const plain = makeIndexer(fakeProvider().provider);
+    await plain.indexer.start();
+    expect(plain.progress()?.errors ?? 0).toBe(0);
   });
 });
