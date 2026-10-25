@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../fs/fixtures';
+import { AI_MODELS } from '@shared/aiModels';
 import { removeRetiredModels, RETIRED_MODEL_IDS } from './retiredModels';
 
 describe('removeRetiredModels', () => {
@@ -22,8 +23,8 @@ describe('removeRetiredModels', () => {
 
     const removed = await removeRetiredModels(dir());
 
-    expect(removed).toEqual(['Xenova/bge-base-en-v1.5', 'Xenova/clip-vit-base-patch32']);
-    expect((await fs.readdir(join(dir(), 'Xenova'))).sort()).toEqual(['bert-base-NER', 'ms-marco-MiniLM-L-6-v2']);
+    expect(removed).toEqual(['Xenova/bge-base-en-v1.5', 'Xenova/clip-vit-base-patch32', 'Xenova/ms-marco-MiniLM-L-6-v2']);
+    expect(await fs.readdir(join(dir(), 'Xenova'))).toEqual(['bert-base-NER']);
     expect(await fs.readdir(join(dir(), 'onnx-community'))).toEqual(['embeddinggemma-2-ONNX']);
   });
 
@@ -33,7 +34,6 @@ describe('removeRetiredModels', () => {
   });
 
   it('never lists a model the app still uses', () => {
-    expect(RETIRED_MODEL_IDS).not.toContain('Xenova/ms-marco-MiniLM-L-6-v2');
-    expect(RETIRED_MODEL_IDS).not.toContain('Xenova/bert-base-NER');
+    for (const m of AI_MODELS) expect(RETIRED_MODEL_IDS).not.toContain(m.id);
   });
 });

@@ -11,7 +11,7 @@
  *     model alone (270M); the vision encoder is added the first time a picture
  *     needs embedding, and then serves text too, so at most one copy of the
  *     text model is resident.
- *   - 'reranker' / 'ner' — transformers.js pipelines.
+ *   - 'ner' — a transformers.js token-classification pipeline.
  *
  * Every vector is checked (NaN/Inf/zero rows throw — EmbeddingGemma 2 degrades
  * silently under float16, so the dtype is q8 and never fp16), truncated to the
@@ -71,7 +71,6 @@ export type RuntimeRequest =
   | { type: 'embed'; modelId: string; texts: string[]; role?: EmbedRole; titles?: string[] }
   | { type: 'embedMedia'; modelId: string; kind: 'image'; paths: string[]; budget?: number }
   | { type: 'countTokens'; modelId: string; texts: string[] }
-  | { type: 'rerank'; modelId: string; query: string; passages: string[] }
   | { type: 'extractEntities'; modelId: string; texts: string[] }
   | { type: 'deviceCheck'; modelId: string; devices: EmbedDevice[]; images: string[] };
 
@@ -91,11 +90,6 @@ interface Disposable {
   dispose(): Promise<unknown>;
 }
 
-/** Cross-encoder pipeline: one `{label, score}[]` per input. */
-type ClassifierFn = (
-  inputs: { text: string; text_pair: string }[],
-  opts?: { topk: number | null },
-) => Promise<Array<Array<{ label: string; score: number }>>>;
 /** Token-classification pipeline (NER): BIO subword tokens per text. */
 type NerFn = (text: string) => Promise<BioToken[]>;
 
@@ -109,7 +103,7 @@ interface Multimodal {
   inFlight: number;
   retired: boolean;
 }
-type Loaded = Multimodal | { kind: 'reranker'; classify: ClassifierFn } | { kind: 'ner'; ner: NerFn };
+type Loaded = Multimodal | { kind: 'ner'; ner: NerFn };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
 const loaders = new Map<string, Promise<Loaded>>();
@@ -238,9 +232,6 @@ function get(modelId: string, opts: { vision?: boolean } = {}): Promise<Loaded> 
     const t = await lib();
     const opts2 = { dtype: def.dtype, progress_callback: progressReporter(def) };
     if (def.kind === 'multimodal') return loadMultimodal(def, opts.vision ?? false, visionDevice());
-    if (def.kind === 'reranker') {
-      return { kind: 'reranker', classify: (await t.pipeline('text-classification', def.id, opts2)) as unknown as ClassifierFn };
-    }
     return { kind: 'ner', ner: (await t.pipeline('token-classification', def.id, opts2)) as unknown as NerFn };
   })();
   return track(modelId, promise);
@@ -319,23 +310,6 @@ async function countTokens(modelId: string, texts: string[]): Promise<number[]> 
   );
 }
 
-/**
- * Cross-encoder reranking: one relevance score per passage (higher = more
- * relevant). All labels are fetched so a binary classifier's positive class
- * can be picked reliably.
- */
-async function rerankText(modelId: string, query: string, passages: string[]): Promise<number[]> {
-  const model = await get(modelId);
-  if (model.kind !== 'reranker') fail('EUNSUPPORTED', 'This model cannot rerank; it was not loaded as a cross-encoder.');
-  const results = await model.classify(passages.map((p) => ({ text: query, text_pair: p })), { topk: null });
-  return results.map((labels) => {
-    if (!labels?.length) return 0;
-    if (labels.length === 1) return labels[0].score;
-    const pos = labels.find((l) => /^(1|label_1|relevant|true)$/i.test(l.label));
-    return pos ? pos.score : Math.max(...labels.map((l) => l.score));
-  });
-}
-
 /** Named-entity recognition: one EntitySpan[] per text, sequentially. */
 async function extractEntitiesForModel(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
   const model = await get(modelId);
@@ -401,8 +375,6 @@ export async function handle(req: RuntimeRequest): Promise<unknown> {
       return embedImages(req.modelId, req.paths, req.budget);
     case 'countTokens':
       return countTokens(req.modelId, req.texts);
-    case 'rerank':
-      return rerankText(req.modelId, req.query, req.passages);
     case 'extractEntities':
       return extractEntitiesForModel(req.modelId, req.texts);
     case 'deviceCheck':

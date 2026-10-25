@@ -120,7 +120,7 @@ export class EmbeddedAiProvider implements AiProvider {
    * cancellation hook, so the only way to stop a fetch already underway is to
    * kill the worker process doing it — it forks again lazily on the next
    * request. Only acts while the given model is actually downloading, so a
-   * stale/late cancel can't kill an unrelated in-flight embed/rerank call.
+   * stale/late cancel can't kill an unrelated in-flight embed call.
    */
   async cancelDownload(modelId: string): Promise<void> {
     if (!this.worker) return;
@@ -143,10 +143,6 @@ export class EmbeddedAiProvider implements AiProvider {
 
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {
     return this.request<number[]>('countTokens', { modelId, texts });
-  }
-
-  async rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
-    return this.request<number[]>('rerank', { modelId, query, passages });
   }
 
   async extractEntities(modelId: string, texts: string[]): Promise<EntitySpan[][]> {

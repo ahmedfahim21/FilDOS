@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AiModelStatus, LlmModelStatus, Prefs, Theme } from '@shared/types';
-import { EMBED_MODEL_ID, getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { EMBED_MODEL_ID, getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID } from '@shared/aiModels';
 import { getLlmModelDef, LLM_MODELS, recommendLlmModel } from '@shared/llmModels';
 import { modelLogo } from '@/lib/modelLogo';
 import { applyTheme } from '@/lib/theme';
@@ -502,7 +502,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [requestingAccess, setRequestingAccess] = useState(false);
   // The optional models step: extras toggles + the Assistant model choice
   // (recommended per the worker's hardware probe; null = pick later).
-  const [extras, setExtras] = useState({ reranker: false, ner: false });
+  const [extras, setExtras] = useState({ ner: false });
   const [llmChoice, setLlmChoice] = useState<string | null>(null);
   const [llmRecommended, setLlmRecommended] = useState<string | null>(null);
   const [llmQuery, setLlmQuery] = useState('');
@@ -514,7 +514,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   const refreshStatuses = useCallback(async () => {
     const entries = await Promise.all(
-      [...INDEX_MODEL_IDS, RERANKER_MODEL_ID, NER_MODEL_ID].map(async (id) => {
+      [...INDEX_MODEL_IDS, NER_MODEL_ID].map(async (id) => {
         const res = await window.ai.status(id);
         return res.ok ? ([id, res.data] as const) : null;
       }),
@@ -571,7 +571,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const kicked = useRef(new Set<string>());
   const kickExtras = useCallback(() => {
     const wants: string[] = [];
-    if (extras.reranker) wants.push(RERANKER_MODEL_ID);
     if (extras.ner) wants.push(NER_MODEL_ID);
     const fresh = wants.filter((id) => !kicked.current.has(id));
     for (const id of fresh) kicked.current.add(id);
@@ -1062,31 +1061,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div>
               <StepHeading
                 title="Power it up"
-                sub="Two optional extras, each running entirely on your machine. Queue them now so they're ready when you are or add them later in Settings."
+                sub="An optional extra, running entirely on your machine. Queue it now so it's ready when you are, or add it later in Settings."
               />
               <div className="mt-8 flex flex-col gap-3">
                 <Reveal order={2}>
                   <div className="border-border bg-card divide-border divide-y rounded-xl border px-4">
-                    <div className="flex items-center justify-between gap-3 py-3.5">
-                      <div className="min-w-0">
-                        <div className="text-foreground text-sm font-medium">
-                          Sharper search ranking
-                        </div>
-                        <p className="text-muted-foreground mt-1 text-2xs leading-relaxed">
-                          A second model double-checks the top results so the best match lands
-                          first.
-                        </p>
-                        <p className="text-muted-foreground mt-1.5 font-mono text-3xs">
-                          {getModelDef(RERANKER_MODEL_ID)?.label} ·{' '}
-                          {fmtSize(getModelDef(RERANKER_MODEL_ID)?.sizeMb ?? 0)}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={extras.reranker}
-                        onChange={(v) => setExtras((e) => ({ ...e, reranker: v }))}
-                        label="Download the search reranker"
-                      />
-                    </div>
                     <div className="flex items-center justify-between gap-3 py-3.5">
                       <div className="min-w-0">
                         <div className="text-foreground text-sm font-medium">Canvas entity map</div>
@@ -1199,9 +1178,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   <div className="border-border bg-card flex flex-col gap-2.5 rounded-xl border p-4">
                     {[
                       { id: EMBED_MODEL_ID, label: 'Text & pictures', status: statuses[EMBED_MODEL_ID] },
-                      ...(extras.reranker
-                        ? [{ id: RERANKER_MODEL_ID, label: 'Search ranking', status: statuses[RERANKER_MODEL_ID] }]
-                        : []),
                       ...(extras.ner
                         ? [{ id: NER_MODEL_ID, label: 'Canvas entities', status: statuses[NER_MODEL_ID] }]
                         : []),

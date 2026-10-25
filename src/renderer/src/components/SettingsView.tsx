@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AiModelStatus, Theme } from '@shared/types';
-import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID } from '@shared/aiModels';
 import {
   HF_GGUF_MODELS_URL,
   LLM_CONFIG_LIMITS,
@@ -1017,21 +1017,8 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                       }
                     />
                   ))}
-                  <div className="border-border mt-1 border-t pt-1.5">
-                    <ModelRow
-                      id={RERANKER_MODEL_ID}
-                      status={ai.statuses[RERANKER_MODEL_ID]}
-                      onDownload={() =>
-                        ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
-                          if (!r.ok) notifyError(r.error);
-                          ai.refreshStatuses();
-                        })
-                      }
-                    />
-                  </div>
                   <p className="text-muted-foreground mt-1 text-2xs leading-snug">
-                    These download automatically when embeddings are enabled. The reranker is optional
-                    and sharpens search precision.
+                    Downloads automatically when embeddings are enabled.
                   </p>
                 </div>
               </Section>

@@ -20,7 +20,7 @@ import { assembleSnapshot } from './snapshot';
  * Provider/emit/pace are injected (mirroring IndexerDeps) so tests drive a
  * build with a fake provider and an in-memory db, no Electron. Entity
  * extraction is gated on the NER model already being downloaded — a build
- * never triggers a download, matching the reranker.
+ * never triggers a download.
  */
 
 export interface GraphBuilderDeps {

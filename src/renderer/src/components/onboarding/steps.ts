@@ -6,7 +6,7 @@ import type { Prefs } from '@shared/types';
  * Desktop/Documents/Downloads there; other platforms have no such prompt),
  * and the assistant + models + privacy steps only when the user opted into
  * AI — the chat model (mandatory pick on its own page), the optional models
- * (reranker/NER) and everything on the privacy step (Hide from AI, ambient
+ * (NER) and everything on the privacy step (Hide from AI, ambient
  * indexing) are meaningless without the AI layer.
  */
 

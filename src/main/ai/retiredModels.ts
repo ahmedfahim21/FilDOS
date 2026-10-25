@@ -2,10 +2,11 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Embedding models earlier versions downloaded and nothing uses any more
- * (EmbeddingGemma 2 replaced them all). Their folders are deleted from the
- * model cache at startup so upgrades don't leave ~500 MB behind. The reranker
- * and NER models are still in use and are never listed here.
+ * Models earlier versions downloaded and nothing uses any more: the embedding
+ * models EmbeddingGemma 2 replaced, and the cross-encoder reranker (search's
+ * score gate made it redundant). Their folders are deleted from the model
+ * cache at startup so upgrades don't leave ~600 MB behind. The NER model is
+ * still in use and is never listed here.
  */
 export const RETIRED_MODEL_IDS = [
   'Xenova/all-MiniLM-L6-v2',
@@ -14,6 +15,7 @@ export const RETIRED_MODEL_IDS = [
   'Xenova/gte-small',
   'Xenova/multilingual-e5-small',
   'Xenova/clip-vit-base-patch32',
+  'Xenova/ms-marco-MiniLM-L-6-v2',
 ];
 
 /** Delete retired model folders under `modelsDir`; returns the ids removed. */

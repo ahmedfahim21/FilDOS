@@ -98,10 +98,6 @@ export class RuntimeProvider implements AiProvider {
     return handle({ type: 'countTokens', modelId, texts }) as Promise<number[]>;
   }
 
-  rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
-    return handle({ type: 'rerank', modelId, query, passages }) as Promise<number[]>;
-  }
-
   extractEntities(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
     return handle({ type: 'extractEntities', modelId, texts }) as Promise<EntitySpan[][]>;
   }

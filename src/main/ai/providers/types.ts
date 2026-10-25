@@ -40,15 +40,8 @@ export interface AiProvider {
    */
   countTokens?(modelId: string, texts: string[]): Promise<number[]>;
   /**
-   * Cross-encoder reranking: score each (query, passage) pair. Higher score =
-   * more relevant. Only supported by providers with a reranker model loaded;
-   * callers must check `provider.status(modelId)` before calling to avoid
-   * triggering a download on the query path.
-   */
-  rerank?(modelId: string, query: string, passages: string[]): Promise<number[]>;
-  /**
    * Named-entity recognition: one EntitySpan[] per input text (people, orgs,
-   * places for the knowledge graph). Same contract as `rerank`: callers must
+   * places for the knowledge graph). Callers must
    * check `provider.status(modelId)` first so a build never triggers a download.
    */
   extractEntities?(modelId: string, texts: string[]): Promise<EntitySpan[][]>;
