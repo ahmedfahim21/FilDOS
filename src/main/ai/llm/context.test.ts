@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSendPayload, Entry, SemanticHit } from '@shared/types';
 import {
+  assembleSystem,
   buildChat,
   CONTENT_BUDGET,
   MAX_FOLDER_ENTRIES,
   RESEARCH_BUDGETS,
+  TOOLS_SYSTEM,
   type ChatContextDeps,
 } from './context';
 
@@ -206,5 +208,24 @@ describe('buildChat', () => {
       deps({ search: async () => [] }),
     );
     expect(built.prompt).toContain('none — nothing in the index matched');
+  });
+});
+
+describe('assembleSystem', () => {
+  const built = { system: 'You are FilDOS.', prompt: 'hi' };
+
+  it('appends the tool guidance to the built system prompt', () => {
+    expect(assembleSystem(built)).toBe(`You are FilDOS. ${TOOLS_SYSTEM}`);
+  });
+
+  it('adds the open folder and the user instructions, in that order', () => {
+    expect(assembleSystem(built, { cwd: '/home/me/Docs', instructions: 'Answer in French.' })).toBe(
+      `You are FilDOS. ${TOOLS_SYSTEM}\nThe folder currently open in the browser: /home/me/Docs` +
+        '\n\nAdditional instructions from the user: Answer in French.',
+    );
+  });
+
+  it('omits empty instructions', () => {
+    expect(assembleSystem(built, { instructions: '' })).toBe(`You are FilDOS. ${TOOLS_SYSTEM}`);
   });
 });

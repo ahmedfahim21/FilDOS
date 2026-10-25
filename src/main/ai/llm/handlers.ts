@@ -29,7 +29,7 @@ import { remapPaths } from '../../db';
 import * as aiIndex from '../../db/aiIndex';
 import { extractText } from '../index/extract';
 import { searchIndex } from '../index/handlers';
-import { buildChat, type ChatContextDeps } from './context';
+import { assembleSystem, buildChat, type ChatContextDeps } from './context';
 import { executeChatTool, type ChatToolDeps } from './tools';
 import { LlmManager } from './manager';
 
@@ -77,14 +77,6 @@ const toolDeps: ChatToolDeps = {
   search: (query, k) => searchIndex(query, { k }),
   home: homedir,
 };
-
-/** Appended to the system prompt when the file tools are available. */
-const TOOLS_SYSTEM = [
-  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, read files, and search the index.',
-  'Only call an action that changes files (create/copy/move/rename/delete) when the user clearly asks for it — never delete, move, or modify anything they did not ask about.',
-  'To research or answer questions about the user\'s files, use search_index to find relevant files, then read_file to read them; you may search several times to gather what you need before answering.',
-  'Prefer paths from the message or the current folder. After acting, briefly confirm what you did, naming the files.',
-].join(' ');
 
 /** Most prior turns replayed to the model, each capped, so context stays bounded. */
 const MAX_HISTORY_TURNS = 8;
@@ -198,12 +190,7 @@ export function registerLlmHandlers(): void {
             manager.toolResult(callId, result);
           });
         });
-        // The user's standing instructions ride along with the system prompt.
-        let system = `${built.system} ${TOOLS_SYSTEM}`;
-        if (payload.cwd) system += `\nThe folder currently open in the browser: ${payload.cwd}`;
-        if (config.systemPrompt) {
-          system += `\n\nAdditional instructions from the user: ${config.systemPrompt}`;
-        }
+        const system = assembleSystem(built, { cwd: payload.cwd, instructions: config.systemPrompt });
         let answer: string;
         try {
           answer = await manager.chat({

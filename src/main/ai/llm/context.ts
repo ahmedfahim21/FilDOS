@@ -194,3 +194,22 @@ export async function buildChat(
 
   return { system: SYSTEM_PROMPT, prompt: parts.join('\n\n'), hits };
 }
+
+/** Appended to the system prompt when the file tools are available. */
+export const TOOLS_SYSTEM = [
+  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, read files, and search the index.',
+  'Only call an action that changes files (create/copy/move/rename/delete) when the user clearly asks for it — never delete, move, or modify anything they did not ask about.',
+  'To research or answer questions about the user\'s files, use search_index to find relevant files, then read_file to read them; you may search several times to gather what you need before answering.',
+  'Prefer paths from the message or the current folder. After acting, briefly confirm what you did, naming the files.',
+].join(' ');
+
+/**
+ * The full system prompt for a tool-enabled turn: the built context, the tool
+ * guidance, the open folder, and the user's standing instructions.
+ */
+export function assembleSystem(built: BuiltChat, opts: { cwd?: string; instructions?: string } = {}): string {
+  let system = `${built.system} ${TOOLS_SYSTEM}`;
+  if (opts.cwd) system += `\nThe folder currently open in the browser: ${opts.cwd}`;
+  if (opts.instructions) system += `\n\nAdditional instructions from the user: ${opts.instructions}`;
+  return system;
+}
