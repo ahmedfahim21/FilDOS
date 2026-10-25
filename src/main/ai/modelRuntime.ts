@@ -264,7 +264,15 @@ function get(modelId: string, opts: { encoders?: Encoder[] } = {}): Promise<Load
   if (existing && def.kind === 'multimodal' && wanted.length) {
     const upgraded = existing.then(async (m) => {
       if (m.kind !== 'multimodal' || wanted.every((e) => m.encoders.has(e))) return m;
-      const next = await loadMultimodal(def, new Set([...m.encoders, ...wanted]), visionDevice());
+      let next: Loaded;
+      try {
+        next = await loadMultimodal(def, new Set([...m.encoders, ...wanted]), visionDevice());
+      } catch (err) {
+        // The failed upgrade drops this loader; retire the narrower instance
+        // too, or it stays loaded (~300 MB) with nothing referencing it.
+        await retire(m);
+        throw err;
+      }
       await retire(m);
       return next;
     });

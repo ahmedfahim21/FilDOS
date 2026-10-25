@@ -9,6 +9,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    // No implicit @types: on Windows, macOS-only optional deps (dmg-license) leave
+    // @types/plist behind without its files, which fails the build (TS2688).
+    // Vite's client types come from src/renderer/src/vite-env.d.ts.
+    "types": [],
     "noEmit": true,
     "useDefineForClassFields": true,
     "allowSyntheticDefaultImports": true,
