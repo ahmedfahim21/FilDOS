@@ -86,12 +86,25 @@ export interface DeviceCheckResult {
   images: string[];
 }
 
-/** A semantic-search hit: a file ranked by meaning, with the matching snippet. */
+/** A semantic-search hit: a file ranked by meaning and words, pointing at where it matched. */
 export interface SemanticHit extends SearchHit {
-  /** Cosine similarity of the best-matching chunk, in [0, 1]. */
+  /** Relevance in [0, 1) for display (fused meaning + word evidence). */
   score: number;
-  /** A slice of the matching chunk's text, for preview. */
+  /** A slice of the matched segment's text; query words marked «like this» when they matched there. */
   snippet: string;
+  /** The matched segment's text (up to ~1.5K chars), what chat answers from. Absent in older saved chats. */
+  passage?: string;
+  /** What the hit points at: a passage, a PDF page, a picture, the file name. */
+  segment?: ChunkKind;
+  /** PDF page (1-based) of the matched segment, when it's a page. */
+  loc?: number | null;
+  locEnd?: number | null;
+}
+
+/** A search's hits, best first; the first `strong` are clear matches, the rest weaker ones. */
+export interface SearchResult {
+  hits: SemanticHit[];
+  strong: number;
 }
 
 /** Column the file views sort by. */
@@ -213,8 +226,23 @@ export interface AiModelStatus {
   message?: string;
 }
 
-/** Outcome of indexing a single file. */
-export type IndexStatus = 'indexed' | 'skipped' | 'error';
+/**
+ * Outcome of indexing a single file. 'partial': a long file whose first pages
+ * or passages are searchable and whose rest the later pass is still reading.
+ */
+export type IndexStatus = 'indexed' | 'partial' | 'skipped' | 'error';
+
+/** Progress of a long file's later pass (index_state.info, JSON). */
+export interface IndexInfo {
+  /** PDFs: pages in the file, and pages read so far (from the start). */
+  pages?: number;
+  pagesRead?: number;
+  /** Documents: passages in the file, and passages read so far. */
+  chunks?: number;
+  chunksRead?: number;
+  /** The chunk index the next step's chunks start at. */
+  nextChunkIx?: number;
+}
 
 /** Bookkeeping row for an indexed file (mirrors the index_state table). */
 export interface IndexState {
@@ -236,18 +264,16 @@ export interface IndexState {
   /** When the file was last indexed, in ms. */
   indexedAt: number;
   status: IndexStatus;
+  /** Later-pass progress for long files; absent otherwise. */
+  info?: IndexInfo | null;
 }
 
-/** A stored text chunk with its (optional) embedding. */
-export interface FileChunk {
-  path: string;
-  /** 0-based position of the chunk within the file. */
-  chunkIx: number;
-  text: string;
-  /** Embedding vector; null until the embedder has run. */
-  embedding: Float32Array | null;
-  modelId: string;
-}
+/**
+ * What a chunk is, so a hit can say where it points: a document passage, a PDF
+ * page's text, a picture, or the humanized file name (the fallback for files
+ * whose content can't be read).
+ */
+export type ChunkKind = 'text' | 'page' | 'image' | 'name';
 
 /** A chunk paired with its embedding, ready to persist in the vector store.
  * A null embedding is a keyword-only chunk (e.g. mostly-numeric text). */
@@ -256,6 +282,12 @@ export interface ChunkVector {
   text: string;
   embedding: Float32Array | null;
   modelId: string;
+  kind: ChunkKind;
+  /** Page number (1-based) for 'page' chunks. */
+  loc?: number | null;
+  locEnd?: number | null;
+  /** 2 for chunks the later pass added (they don't set the score scale). */
+  pass?: number;
 }
 
 /** A vector-search hit: the matching chunk plus its cosine similarity. */
@@ -329,7 +361,7 @@ export interface IndexApi {
   /** Keep indexing in the background after the last window closes. */
   setAmbient(enabled: boolean): Promise<Result<void>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
-  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
+  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SearchResult>>;
   /** "Find similar": rank indexed files by similarity to the given file. */
   searchFile(path: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */

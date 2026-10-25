@@ -82,6 +82,8 @@ export const indexState = sqliteTable('index_state', {
   indexVersion: integer('index_version').notNull().default(0),
   indexedAt: integer('indexed_at').notNull(),
   status: text('status').notNull(),
+  /** JSON `IndexInfo`: progress of a long file's later pass. */
+  info: text('info'),
 });
 
 /** Extracted, chunked text per file with optional embedding (Float32 LE BLOB). */
@@ -96,6 +98,13 @@ export const fileChunks = sqliteTable(
     text: text('text').notNull(),
     embedding: blob('embedding', { mode: 'buffer' }),
     modelId: text('model_id').notNull(),
+    /** `ChunkKind`: what the chunk is (passage, page, picture, filename…). */
+    kind: text('kind').notNull().default('text'),
+    /** Page number, or seconds into a recording; null for plain passages. */
+    loc: real('loc'),
+    locEnd: real('loc_end'),
+    /** 1 = first pass, 2 = the later pass over the rest of a long file. */
+    pass: integer('pass').notNull().default(1),
   },
   (t) => [index('idx_file_chunks_path').on(t.path)],
 );
