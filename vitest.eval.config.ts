@@ -2,14 +2,13 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 /**
- * Separate Vitest config for the recall@k eval harness.
- * Run with: npm run eval
- *
- * Intentionally excluded from npm test so CI stays fast. The eval harness
- * uses bag-of-words embeddings by default (no model download required), but
- * results improve significantly with real models — see eval/recall.eval.ts.
+ * Vitest config for the eval suites (`eval/*.eval.ts`): search, index, graph
+ * and chat quality over the generated testbed. Run with `npm run eval` (real
+ * models) or `npm run eval:smoke` (`--mode smoke`: bag-of-words embeddings, no
+ * model downloads — what CI runs).
+ * Excluded from `npm test`. See eval/README.md.
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@shared': resolve('src/shared'),
@@ -21,5 +20,8 @@ export default defineConfig({
     include: ['eval/**/*.eval.ts'],
     environment: 'node',
     reporters: ['verbose'],
+    // Suites load models and index the testbed; one at a time keeps memory sane.
+    fileParallelism: false,
+    env: mode === 'smoke' ? { FILDOS_EVAL_PROVIDER: 'bow' } : {},
   },
-});
+}));

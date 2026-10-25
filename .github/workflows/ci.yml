@@ -21,6 +21,20 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  eval-smoke:
+    # Eval wiring on bag-of-words embeddings (no model downloads): builds the
+    # testbed, indexes it, runs the search/index/graph suites end to end.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Eval (smoke)
+        run: npm run eval:smoke
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -29,6 +29,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "vitest run --config vitest.eval.config.ts",
+    "eval:smoke": "vitest run --config vitest.eval.config.ts --mode smoke",
+    "eval:search": "vitest run --config vitest.eval.config.ts eval/search.eval.ts",
+    "eval:index": "vitest run --config vitest.eval.config.ts eval/index.eval.ts",
+    "eval:graph": "vitest run --config vitest.eval.config.ts eval/graph.eval.ts",
+    "eval:chat": "vitest run --config vitest.eval.config.ts eval/chat.eval.ts",
     "test:e2e": "electron-vite build && playwright test",
     "prepare": "node scripts/install-hooks.mjs",
     "db:generate": "drizzle-kit generate"

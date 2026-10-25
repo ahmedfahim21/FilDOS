@@ -1,0 +1,81 @@
+{
+  "suite": "graph",
+  "provider": "real",
+  "label": "baseline",
+  "date": "2026-10-25",
+  "files": 266,
+  "edges": 802,
+  "buildMs": 35.07041699999996,
+  "mean": {
+    "recall": 0.4,
+    "precision": 0.2018939393939394,
+    "cohesion": 0.49000000000000005
+  },
+  "purity": 0.5333333333333333,
+  "clustered": 15,
+  "perGroup": [
+    {
+      "group": "cooking",
+      "files": 5,
+      "recall": 0.4,
+      "precision": 0.3333333333333333,
+      "cohesion": 0.4,
+      "crossModal": 0,
+      "images": 1,
+      "unplaced": [
+        "Home/Recipes/bread.png"
+      ]
+    },
+    {
+      "group": "finance",
+      "files": 5,
+      "recall": 0.6,
+      "precision": 0.36363636363636365,
+      "cohesion": 0.6,
+      "crossModal": 0,
+      "images": 2,
+      "unplaced": [
+        "Home/Finance/receipt.png",
+        "Home/Desktop/Screenshot 2026-10-01 at 14.22.10.png"
+      ]
+    },
+    {
+      "group": "travel",
+      "files": 4,
+      "recall": 0,
+      "precision": 0,
+      "cohesion": 0.25,
+      "crossModal": 0,
+      "images": 2,
+      "unplaced": [
+        "Home/Travel/lisbon-itinerary.md",
+        "Home/Travel/photos/beach.png",
+        "Home/Travel/photos/airport.jpg"
+      ]
+    },
+    {
+      "group": "animals",
+      "files": 5,
+      "recall": 0,
+      "precision": 0,
+      "cohesion": 0.2,
+      "crossModal": 0,
+      "images": 3,
+      "unplaced": [
+        "Home/Pets/corgi-care.md",
+        "Home/Pictures/cats.jpg",
+        "Home/Pictures/tiger.jpg"
+      ]
+    },
+    {
+      "group": "engineering",
+      "files": 5,
+      "recall": 1,
+      "precision": 0.3125,
+      "cohesion": 1,
+      "crossModal": 0,
+      "images": 0,
+      "unplaced": []
+    }
+  ]
+}

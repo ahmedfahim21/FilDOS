@@ -21,7 +21,7 @@ const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
 export default tseslint.config(
   // `website/` is a separate Next.js project with its own ESLint config; it is
   // not linted from here.
-  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**', 'website/**'] },
+  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**', 'website/**', 'eval/testbed-data/**', 'eval/.media-cache/**', 'eval/.models/**', 'eval/.cache/**'] },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -85,6 +85,7 @@ export default tseslint.config(
       'scripts/**/*.mjs',
       '*.{ts,js,mjs}',
       'e2e/**/*.ts',
+      'eval/**/*.ts',
     ],
     languageOptions: { globals: { ...globals.node } },
   },
