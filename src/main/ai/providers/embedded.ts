@@ -166,8 +166,8 @@ export class EmbeddedAiProvider implements AiProvider {
     return vectors(await this.request<unknown>('embedMedia', { modelId, kind, paths, budget: opts?.budget }));
   }
 
-  async embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
-    return vectors(await this.request<unknown>('embedDecoded', { modelId, inputs }));
+  async embedDecoded(modelId: string, inputs: DecodedInput[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embedDecoded', { modelId, inputs, budget: opts?.budget }));
   }
 
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {

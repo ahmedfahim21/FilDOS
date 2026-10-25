@@ -99,8 +99,8 @@ export class RuntimeProvider implements AiProvider {
     return handle({ type: 'embedMedia', modelId, kind, paths, budget: opts?.budget }) as Promise<Float32Array[]>;
   }
 
-  embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
-    return handle({ type: 'embedDecoded', modelId, inputs }) as Promise<Float32Array[]>;
+  embedDecoded(modelId: string, inputs: DecodedInput[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return handle({ type: 'embedDecoded', modelId, inputs, budget: opts?.budget }) as Promise<Float32Array[]>;
   }
 
   countTokens(modelId: string, texts: string[]): Promise<number[]> {

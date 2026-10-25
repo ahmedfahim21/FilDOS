@@ -17,8 +17,8 @@ import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMedia, isMostlyNumeric } from './extract';
-import { audioWindows, keepShots, type DecodedMedia } from '../../media/signals';
+import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMedia, isMostlyNumeric, needsOsDecode } from './extract';
+import { audioWindows, keepShots, type DecodedImage, type DecodedMedia } from '../../media/signals';
 import { chunk, chunkPages, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import {
   hasCodebaseMarker,
@@ -214,6 +214,12 @@ export interface IndexerDeps {
   recordCost?: (kind: UnitKind, seconds: number, units: number) => void;
   /** Seconds per unit to estimate the ETA with (measured costs, or seeds). */
   costs?: () => Promise<Units>;
+  /**
+   * Decode a picture the model runtime can't read (HEIC/HEIF) with the OS's
+   * codecs (`media/osImage.ts`, macOS + Windows). Without it such pictures are
+   * indexed by name only.
+   */
+  decodeImage?: (path: string) => Promise<DecodedImage>;
 }
 
 export class Indexer {
@@ -875,14 +881,12 @@ export class Indexer {
     }
 
     if (prep.kind === 'image') {
-      const t0 = Date.now();
-      const [embedding] = await provider.embedMedia(modelId, 'image', [path], { budget: visionBudget(path) });
-      const took = Date.now() - t0;
-      this.deps.recordCost?.('image', took / 1000, 1);
-      await this.deps.pace?.(took);
-      await aiIndex.upsertState(this.stateFor(path, prep.stat, modelId, 'indexed'));
       const text = nameChunkText(path);
-      await this.deps.vectorStore.upsert(path, [{ chunkIx: 0, text, embedding, modelId, kind: 'image' }]);
+      const embedding = await this.embedPicture(provider, path);
+      await aiIndex.upsertState(this.stateFor(path, prep.stat, modelId, embedding ? 'indexed' : 'skipped'));
+      await this.deps.vectorStore.upsert(path, [
+        embedding ? { chunkIx: 0, text, embedding, modelId, kind: 'image' } : { chunkIx: 0, text, embedding: null, modelId, kind: 'name' },
+      ]);
       this.deps.keywordStore?.upsert(path, [{ chunkIx: 0, text }]);
       return;
     }
@@ -962,6 +966,31 @@ export class Indexer {
   private indexable(path: string): boolean {
     if (this.excludeExts.has(extname(path).slice(1).toLowerCase())) return false;
     return isExtractable(path) || isImage(path) || (isMedia(path) && this.deps.decodeMedia !== undefined);
+  }
+
+  /**
+   * One picture's vector, or null when nothing on this machine can decode it
+   * (HEIC without an OS decoder) — it's then kept by its name, as skipped.
+   */
+  private async embedPicture(provider: AiProvider, path: string): Promise<Float32Array | null> {
+    const modelId = this.deps.model;
+    const budget = visionBudget(path);
+    const t0 = Date.now();
+    let embedding: Float32Array;
+    if (needsOsDecode(path)) {
+      if (!this.deps.decodeImage) {
+        console.warn('[fildos] no decoder for this picture format here, indexing its name only:', path);
+        return null;
+      }
+      const img = await this.deps.decodeImage(path);
+      [embedding] = await provider.embedDecoded(modelId, [{ kind: 'frame', ...img }], { budget });
+    } else {
+      [embedding] = await provider.embedMedia(modelId, 'image', [path], { budget });
+    }
+    const took = Date.now() - t0;
+    this.deps.recordCost?.('image', took / 1000, 1);
+    await this.deps.pace?.(took);
+    return embedding;
   }
 
   /**

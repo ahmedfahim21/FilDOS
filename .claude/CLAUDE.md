@@ -237,6 +237,17 @@ frames at 70 vision tokens. The indexer stores a keyword-only name chunk plus
 modality on the score scale); the audio encoder downloads with the first
 recording (`lazy` component). Media queue last (`costClass` 3); hits get a
 "0:25" pill that plays in `MediaPreview` (through `fildos-media://`).
+**HEIC/HEIF** (HEVC — neither the runtime's image reader nor Chromium decodes
+it; `needsOsDecode`) goes through the OS instead: `osImage.ts` reads the
+primary picture's size from the container (`heif.ts`, since the thumbnailer
+stretches to the box it's given) and asks `nativeImage.createThumbnailFromPath`
+(QuickLook / Windows shell) for ≤ 1024 px, then the pixels embed via
+`embedDecoded` at the photo budget. Linux has no decoder: such pictures keep a
+name chunk, as skipped.
+**Worker crash rule:** inside Electron, ONNX Runtime SIGTRAPs on large or
+reshaped batches unless the session runs with `enableCpuMemArena: false` and
+`enableMemPattern: false`, and every call stays under `MAX_CALL_TOKENS`
+(`tokenGroups`) — keep both when touching `modelRuntime.ts`.
 `indexer.ts` is the orchestrator: it crawls the configured roots (default the
 home dir; `ignore.ts` skips dotfiles, system trees (Library/AppData/Windows/…),
 `node_modules`/caches/bundles — these segment rules apply **below the crawl

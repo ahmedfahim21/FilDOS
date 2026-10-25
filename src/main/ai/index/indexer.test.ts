@@ -9,13 +9,13 @@ import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
-import { isIgnored, isUnder } from './ignore';
+import { isIgnored, isUnder, PHOTO_BUDGET } from './ignore';
 
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
 import { FIRST_PASS_CHUNKS, FIRST_PASS_PAGES, INDEX_VERSION, isStale, PASS_PAGES } from './indexer';
 import { MiniSearchKeywordStore } from './keywordStore';
-import { AUDIO_RATE, type DecodedMedia, type Frame } from '../../media/signals';
+import { AUDIO_RATE, type DecodedImage, type DecodedMedia, type Frame } from '../../media/signals';
 
 // ---------------------------------------------------------------------------
 // isStale — truth table
@@ -60,6 +60,7 @@ function fakeProvider(boom?: string) {
   const seen: { texts: string[]; role?: string; titles?: string[] }[] = [];
   const media: { paths: string[]; budget?: number }[] = [];
   const decoded: string[][] = [];
+  const decodedBudgets: (number | undefined)[] = [];
   const provider: AiProvider = {
     id: 'fake',
     capabilities: { embed: true, generate: false, images: false },
@@ -77,12 +78,13 @@ function fakeProvider(boom?: string) {
       media.push({ paths, budget: opts?.budget });
       return paths.map(() => Float32Array.from([0, 0, 1]));
     },
-    async embedDecoded(_modelId, inputs) {
+    async embedDecoded(_modelId, inputs, opts) {
       decoded.push(inputs.map((i) => i.kind));
+      decodedBudgets.push(opts?.budget);
       return inputs.map((i) => Float32Array.from(i.kind === 'audio' ? [0, 1, 0] : [1, 0, 0]));
     },
   };
-  return { provider, calls: () => calls, seen, media, decoded };
+  return { provider, calls: () => calls, seen, media, decoded, decodedBudgets };
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
@@ -700,3 +702,69 @@ describe('Indexer — estimates', () => {
     expect(indexer.status().etaSeconds).toBeUndefined();
   });
 });
+
+describe('Indexer — pictures only the OS decodes (HEIC)', () => {
+  function heicIndexer(provider: AiProvider, decodeImage?: (path: string) => Promise<DecodedImage>) {
+    return new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      decodeImage,
+    });
+  }
+
+  it('embeds the OS-decoded pixels at the photo budget, never through the path reader', async () => {
+    await fs.writeFile(join(tmp(), 'IMG_6921.HEIC'), 'heic bytes');
+    const { provider, media, decoded, decodedBudgets } = fakeProvider();
+    const asked: string[] = [];
+    const indexer = heicIndexer(provider, async (path) => {
+      asked.push(path);
+      return { width: 4, height: 3, rgba: new Uint8Array(48) };
+    });
+
+    await indexer.start();
+
+    expect(asked).toEqual([join(tmp(), 'IMG_6921.HEIC')]);
+    expect(media).toEqual([]);
+    expect(decoded).toEqual([['frame']]);
+    expect(decodedBudgets).toEqual([PHOTO_BUDGET]);
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.chunkIx, r.kind, r.text, r.embedding === null])).toEqual([[0, 'image', 'IMG 6921 HEIC', false]]);
+    expect(await aiIndex.getState(join(tmp(), 'IMG_6921.HEIC'))).toMatchObject({ status: 'indexed', modelId: 'm1' });
+  });
+
+  it('keeps it by name, as skipped, where nothing can decode it', async () => {
+    await fs.writeFile(join(tmp(), 'Beach.heif'), 'heif bytes');
+    const { provider, media, decoded } = fakeProvider();
+    await heicIndexer(provider).start();
+    expect(media).toEqual([]);
+    expect(decoded).toEqual([]);
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.chunkIx, r.kind, r.text, r.embedding])).toEqual([[0, 'name', 'Beach heif', null]]);
+    expect((await aiIndex.getState(join(tmp(), 'Beach.heif')))?.status).toBe('skipped');
+  });
+
+  it('marks it errored when the OS fails to decode it', async () => {
+    await fs.writeFile(join(tmp(), 'bad.heic'), 'x');
+    const indexer = heicIndexer(fakeProvider().provider, async () => {
+      throw new Error('The system could not decode this picture.');
+    });
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'bad.heic'))).toBeNull();
+    expect(indexer.status().errors).toBe(1);
+  });
+
+  it('still reads ordinary pictures by path', async () => {
+    await fs.writeFile(join(tmp(), 'cat.jpg'), 'jpg bytes');
+    const { provider, media, decoded } = fakeProvider();
+    await heicIndexer(provider, async () => {
+      throw new Error('should not be called');
+    }).start();
+    expect(media).toEqual([{ paths: [join(tmp(), 'cat.jpg')], budget: PHOTO_BUDGET }]);
+    expect(decoded).toEqual([]);
+  });
+});
+
