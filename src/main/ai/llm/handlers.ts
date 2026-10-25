@@ -198,7 +198,8 @@ export function registerLlmHandlers(): void {
             requestId,
             system,
             history: capHistory(payload.history),
-            prompt: built.prompt,
+            prompt: built.question,
+            material: built.material,
             config,
             tools: true,
           });

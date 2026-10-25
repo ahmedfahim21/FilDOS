@@ -138,7 +138,10 @@ export class LlmManager {
     requestId: string;
     system: string;
     history: ChatTurn[];
+    /** The user's words and the command's instruction. */
     prompt: string;
+    /** Attached file contents / search results — trimmed by the worker to the window. */
+    material?: string;
     config?: Partial<LlmModelConfig>;
     tools?: boolean;
   }): Promise<string> {

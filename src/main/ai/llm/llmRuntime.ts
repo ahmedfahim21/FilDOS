@@ -38,6 +38,7 @@ import type {
   ModelDownloader,
 } from 'node-llama-cpp';
 import type * as LlamaCpp from 'node-llama-cpp';
+import { capToolResult, fitTurn } from './fitTurn';
 import type { ChatTurn, LlmModelStatus } from '@shared/types';
 import { CHAT_TOOLS } from '@shared/chatTools';
 import {
@@ -284,7 +285,13 @@ export function resolveTool(callId: string, result: unknown): void {
 }
 
 /** Session functions for one request, built from the shared tool catalog. */
-function buildToolFunctions(lib: Lib, requestId: string, used: { count: number }): ChatSessionModelFunctions {
+function buildToolFunctions(
+  lib: Lib,
+  requestId: string,
+  used: { count: number },
+  /** Shrinks a result to its share of the context window before the model sees it. */
+  cap: (result: unknown) => unknown,
+): ChatSessionModelFunctions {
   // The library's generics infer the params type from a schema literal; ours
   // come from the shared catalog at runtime, so narrow the signature instead.
   const define = lib.defineChatSessionFunction as (options: {
@@ -297,9 +304,9 @@ function buildToolFunctions(lib: Lib, requestId: string, used: { count: number }
     fns[def.name] = define({
       description: def.description,
       params: def.params as GbnfJsonSchema,
-      handler: (params) => {
+      handler: async (params) => {
         used.count++;
-        return requestTool(requestId, def.name, params);
+        return cap(await requestTool(requestId, def.name, params));
       },
     });
   }
@@ -311,14 +318,17 @@ interface ChatArgs {
   requestId: string;
   system: string;
   history: ChatTurn[];
+  /** The user's message plus the command's instruction — never trimmed. */
   prompt: string;
+  /** File contents, search results and listings for this message — trimmed to fit the window. */
+  material?: string;
   /** Resolved generation settings (defaults applied by the caller). */
   config?: Partial<LlmModelConfig>;
   /** Expose the file tools to the model for this request. */
   tools?: boolean;
 }
 
-async function runChat({ modelId, requestId, system, history, prompt, config, tools }: ChatArgs): Promise<string> {
+async function runChat({ modelId, requestId, system, history, prompt, material, config, tools }: ChatArgs): Promise<string> {
   const abort = new AbortController();
   aborts.set(requestId, abort);
   try {
@@ -334,10 +344,48 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
         contextSequence: context.getSequence(),
         systemPrompt: system,
       });
-      if (history.length) {
+      // Budget the turn against the window llama.cpp actually allocated (it can
+      // be smaller than asked for when memory is short) — see fitTurn.ts. The
+      // fixed part is measured the way llama.cpp will count it: rendered by
+      // this model's chat template, tool definitions included.
+      const count = (text: string) => model.tokenize(text).length;
+      let resultBudget = 0;
+      const used = { count: 0 };
+      const functions = tools
+        ? buildToolFunctions(lib, requestId, used, (r) => capToolResult(r, resultBudget, count))
+        : undefined;
+      const baseTokens = session.chatWrapper
+        .generateContextState({
+          chatHistory: [
+            { type: 'system', text: system },
+            { type: 'user', text: prompt },
+            { type: 'model', response: [] },
+          ],
+          availableFunctions: functions,
+        })
+        .contextText.tokenize(model.tokenizer).length;
+      const fit = fitTurn({
+        window: context.contextSize,
+        answer: cfg.maxTokens,
+        baseTokens,
+        tools: !!tools,
+        material: material ?? '',
+        history,
+        count,
+      });
+      resultBudget = fit.toolResultTokens;
+      if (fit.trimmedMaterial || fit.droppedTurns) {
+        console.info(
+          `[fildos] chat fitted to a ${context.contextSize}-token window (base ${baseTokens}):`,
+          fit.trimmedMaterial ? 'attached material trimmed;' : '',
+          fit.droppedTurns ? `${fit.droppedTurns} earlier turn(s) left out` : '',
+        );
+      }
+      const fullPrompt = fit.material ? `${fit.material}\n\n${prompt}` : prompt;
+      if (fit.history.length) {
         session.setChatHistory([
           { type: 'system', text: system },
-          ...history.map((t): ChatHistoryItem =>
+          ...fit.history.map((t): ChatHistoryItem =>
             t.role === 'user'
               ? { type: 'user', text: t.content }
               : { type: 'model', response: [t.content] },
@@ -360,23 +408,19 @@ async function runChat({ modelId, requestId, system, history, prompt, config, to
           post({ type: 'chunk', requestId, text });
         },
       };
-      if (tools) {
-        const used = { count: 0 };
+      if (functions) {
         try {
-          return await session.prompt(prompt, {
-            ...options,
-            functions: buildToolFunctions(lib, requestId, used),
-          });
+          return await session.prompt(fullPrompt, { ...options, functions });
         } catch (err) {
           // Some chat wrappers can't drive function calling. Fall back to a
           // plain generation only when nothing has run or streamed yet — an
           // answer without tools beats an error, but a mid-stream failure must
           // surface rather than duplicate text onto the same message.
           if (used.count > 0 || streamed || abort.signal.aborted) throw err;
-          return await session.prompt(prompt, options);
+          return await session.prompt(fullPrompt, options);
         }
       }
-      return await session.prompt(prompt, options);
+      return await session.prompt(fullPrompt, options);
     } finally {
       await context.dispose();
     }
@@ -401,6 +445,7 @@ export interface InMessage {
   system?: string;
   history?: ChatTurn[];
   prompt?: string;
+  material?: string;
   config?: Partial<LlmModelConfig>;
   tools?: boolean;
 }
@@ -434,6 +479,7 @@ export async function handle(msg: InMessage): Promise<unknown> {
         system: msg.system ?? '',
         history: msg.history ?? [],
         prompt: msg.prompt ?? '',
+        material: msg.material,
         config: msg.config,
         tools: msg.tools,
       };
