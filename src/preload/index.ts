@@ -115,8 +115,6 @@ const aiApi: AiApi = {
   status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
   download: (modelId) => ipcRenderer.invoke(Channels.aiDownload, modelId),
   cancelDownload: (modelId) => ipcRenderer.invoke(Channels.aiCancelDownload, modelId),
-  embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
-  embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
   onModelProgress: (cb: (status: AiModelStatus) => void) => {
     const listener = (_e: IpcRendererEvent, status: AiModelStatus) => cb(status);
     ipcRenderer.on(Events.aiModelProgress, listener);

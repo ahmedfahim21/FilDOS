@@ -3,8 +3,7 @@
  * `process.parentPort`. All model logic lives in the runtime, which the eval
  * harness also runs in-process.
  */
-import type { EmbedRole } from '@shared/aiModels';
-import { handle, setPost } from './modelRuntime';
+import { handle, setPost, type RuntimeRequest } from './modelRuntime';
 
 function post(message: unknown): void {
   process.parentPort.postMessage(message);
@@ -12,25 +11,11 @@ function post(message: unknown): void {
 
 setPost(post);
 
-process.parentPort.on(
-  'message',
-  (e: {
-    data: {
-      id: number;
-      type: string;
-      modelId: string;
-      texts?: string[];
-      paths?: string[];
-      role?: EmbedRole;
-      query?: string;
-      passages?: string[];
-    };
-  }) => {
-    const { id, type, modelId, texts, paths, role, query, passages } = e.data;
-    handle(type, modelId, texts, paths, role, query, passages)
-      .then((data) => post({ id, ok: true, data }))
-      .catch((err: NodeJS.ErrnoException) =>
-        post({ id, ok: false, error: { code: err.code ?? 'EAIFAILED', message: err.message } }),
-      );
-  },
-);
+process.parentPort.on('message', (e: { data: RuntimeRequest & { id: number } }) => {
+  const { id, ...req } = e.data;
+  handle(req as RuntimeRequest)
+    .then((data) => post({ id, ok: true, data }))
+    .catch((err: NodeJS.ErrnoException) =>
+      post({ id, ok: false, error: { code: err.code ?? 'EAIFAILED', message: err.message } }),
+    );
+});

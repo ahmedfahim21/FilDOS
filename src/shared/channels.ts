@@ -47,8 +47,6 @@ export const Channels = {
   aiStatus: 'ai:status',
   aiDownload: 'ai:download',
   aiCancelDownload: 'ai:cancelDownload',
-  aiEmbed: 'ai:embed',
-  aiEmbedImages: 'ai:embedImages',
   indexStart: 'index:start',
   indexPause: 'index:pause',
   indexClear: 'index:clear',

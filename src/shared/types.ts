@@ -75,6 +75,17 @@ export interface SearchHit extends Entry {
   relativePath: string;
 }
 
+/** Where EmbeddingGemma 2's vision encoder runs (its text model always runs on the CPU). */
+export type EmbedDevice = 'cpu' | 'coreml' | 'dml' | 'cuda';
+
+/** Outcome of the one-time device check: timings and agreement with the CPU per device. */
+export interface DeviceCheckResult {
+  chosen: EmbedDevice;
+  results: { device: EmbedDevice; msPerImage?: number; agreement?: number; error?: string }[];
+  /** The pictures it timed (base names). */
+  images: string[];
+}
+
 /** A semantic-search hit: a file ranked by meaning, with the matching snippet. */
 export interface SemanticHit extends SearchHit {
   /** Cosine similarity of the best-matching chunk, in [0, 1]. */
@@ -154,7 +165,6 @@ export interface Prefs {
   ai?: {
     enabled: boolean;
     activeProvider: string;
-    modelId?: string;
     /** The chat model the Assistant uses. */
     llmModelId?: string;
     /** Per-chat-model generation settings (partial; see `@shared/llmModels`). */
@@ -173,6 +183,8 @@ export interface Prefs {
     intervalMinutes?: number;
     /** Keep indexing (app resident in the tray) after the last window closes. */
     ambient?: boolean;
+    /** What produced the stored vectors (`indexFingerprint`); a mismatch rebuilds the index. */
+    fingerprint?: string;
   };
   /** Knowledge-graph build bookkeeping (see src/main/ai/graph/builder.ts). */
   graph?: {
@@ -237,11 +249,12 @@ export interface FileChunk {
   modelId: string;
 }
 
-/** A chunk paired with its embedding, ready to persist in the vector store. */
+/** A chunk paired with its embedding, ready to persist in the vector store.
+ * A null embedding is a keyword-only chunk (e.g. mostly-numeric text). */
 export interface ChunkVector {
   chunkIx: number;
   text: string;
-  embedding: Float32Array;
+  embedding: Float32Array | null;
   modelId: string;
 }
 
@@ -272,6 +285,8 @@ export interface IndexProgress {
   currentFile: string | null;
   /** Error detail when `state === 'error'`. */
   message?: string;
+  /** Folders the last crawl left out because they look like datasets. */
+  datasets?: string[];
 }
 
 /** Indexing configuration persisted in `prefs.index`. */
@@ -560,16 +575,12 @@ export interface LlmApi {
 
 /** The API surface exposed on `window.ai` by the preload bridge. */
 export interface AiApi {
-  /** State of a model (defaults to the active one when modelId is omitted). */
+  /** State of a model (defaults to the embedding model when modelId is omitted). */
   status(modelId?: string): Promise<Result<AiModelStatus>>;
-  /** Ensure a model is downloaded (defaults to the text model; progress via onModelProgress). */
+  /** Ensure a model is downloaded (defaults to the embedding model; progress via onModelProgress). */
   download(modelId?: string): Promise<Result<void>>;
-  /** Abort an in-flight download (defaults to the text model). */
+  /** Abort an in-flight download (defaults to the embedding model). */
   cancelDownload(modelId?: string): Promise<Result<void>>;
-  /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
-  embed(texts: string[]): Promise<Result<number[][]>>;
-  /** Embed each image file by path; image-capable models (CLIP) only. */
-  embedImages(paths: string[]): Promise<Result<number[][]>>;
   /** Subscribe to model download/state progress; returns an unsubscribe fn. */
   onModelProgress(cb: (status: AiModelStatus) => void): () => void;
 }

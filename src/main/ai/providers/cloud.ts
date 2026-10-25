@@ -30,7 +30,7 @@ export class CloudAiProvider implements AiProvider {
     throw notSupported();
   }
 
-  async embedImages(): Promise<Float32Array[]> {
+  async embedMedia(): Promise<Float32Array[]> {
     throw notSupported();
   }
 

@@ -4,75 +4,111 @@
  * loop) so model download and inference never block the UI; the eval harness
  * runs the same code in-process.
  *
- * It loads `@huggingface/transformers` with the WASM backend and serves the
- * whole model catalog (`@shared/aiModels`), memoizing one loaded model per id.
- * Two model kinds:
- *   - 'feature-extraction' — sentence-transformers; mean-pool + normalize text.
- *   - 'clip'               — a text encoder and an image encoder into one space,
- *                            so text queries can match image files.
+ * It loads `@huggingface/transformers` on onnxruntime-node (native CPU — in
+ * Node, transformers.js has no WASM backend) and serves the model catalog
+ * (`@shared/aiModels`):
+ *   - 'multimodal' — EmbeddingGemma 2. Text queries and documents load the text
+ *     model alone (270M); the vision encoder is added the first time a picture
+ *     needs embedding, and then serves text too, so at most one copy of the
+ *     text model is resident.
+ *   - 'reranker' / 'ner' — transformers.js pipelines.
  *
- * Protocol (over `process.parentPort` in the worker):
- *   in:  { id, type: 'status'|'download'|'embed'|'embedImages', modelId, texts?, paths? }
- *   out: { id, ok: true, data } | { id, ok: false, error: { code, message } }
- *        { type: 'progress', status: AiModelStatus }   // unsolicited, during download
+ * Every vector is checked (NaN/Inf/zero rows throw — EmbeddingGemma 2 degrades
+ * silently under float16, so the dtype is q8 and never fp16), truncated to the
+ * catalog dimension and L2-normalized, and returned as a Float32Array.
+ *
+ * Protocol (over `process.parentPort` in the worker): requests are
+ * `{ id, type, modelId, ...args }` (see `RuntimeRequest`), replies
+ * `{ id, ok: true, data } | { id, ok: false, error: { code, message } }`, plus
+ * unsolicited `{ type: 'progress', status }` during downloads.
  *
  * `@huggingface/transformers` is ESM-only, so it's pulled in with a dynamic
- * import from this CJS bundle. WASM binaries are copied next to this file at
- * build time (see `copyOnnxWasm` in electron.vite.config.ts); pointing
- * `wasmPaths` at __dirname keeps the runtime fully offline for WASM.
+ * import from this CJS bundle.
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, join } from 'node:path';
 import type { ProgressInfo } from '@huggingface/transformers';
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, EmbedDevice, DeviceCheckResult } from '@shared/types';
 import type { EntitySpan } from '@shared/graphTypes';
-import { getModelDef, promptFor, type EmbedRole } from '@shared/aiModels';
+import { getModelDef, type AiModelDef, type EmbedRole, type ModelDtype } from '@shared/aiModels';
+import { promptedText } from '@shared/embeddingPrompts';
 import { mergeBioSpans, type BioToken } from './graph/ner';
+import { rowsOf } from './vectors';
 
 /** Read on use, so an in-process host can set the env before the first call. */
 function cacheDir(): string {
   return process.env.FILDOS_MODELS_DIR ?? join(__dirname, 'models');
 }
 
-interface EmbedTensor {
-  tolist(): number[][];
+/**
+ * The device EmbeddingGemma 2's vision encoder runs on (the text model is
+ * always CPU: CoreML rejects its empty modality inputs). CPU unless
+ * `FILDOS_EMBED_DEVICE` names another — set by the devices eval, which
+ * measures whether a GPU is faster *and* agrees with the CPU before anyone
+ * should ship it as a default.
+ */
+function visionDevice(): EmbedDevice {
+  const d = process.env.FILDOS_EMBED_DEVICE;
+  return d === 'coreml' || d === 'dml' || d === 'cuda' ? d : 'cpu';
 }
-type FeatureExtractor = (
-  texts: string[],
-  opts: { pooling: 'mean'; normalize: boolean },
-) => Promise<EmbedTensor>;
-type ModelCall = (inputs: unknown) => Promise<Record<string, EmbedTensor>>;
-type Tokenize = (texts: string[], opts: { padding: boolean; truncation: boolean }) => unknown;
-/** Subset of AutoTokenizer used for cheap token-count queries (no inference). */
-type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boolean }) => {
+
+/** Soft tokens per picture when the caller names no budget (the model's default). */
+const DEFAULT_VISION_BUDGET = 280;
+
+/** Longest text input, in tokens. Chunks are ~512 tokens; this bounds a runaway one. */
+const MAX_TEXT_TOKENS = 2048;
+
+/** Inference threads: half the cores (max 4), so indexing never monopolises the machine. */
+function threads(): number {
+  return Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
+}
+
+export type RuntimeRequest =
+  | { type: 'status'; modelId: string }
+  | { type: 'download'; modelId: string }
+  | { type: 'embed'; modelId: string; texts: string[]; role?: EmbedRole; titles?: string[] }
+  | { type: 'embedMedia'; modelId: string; kind: 'image'; paths: string[]; budget?: number }
+  | { type: 'countTokens'; modelId: string; texts: string[] }
+  | { type: 'rerank'; modelId: string; query: string; passages: string[] }
+  | { type: 'extractEntities'; modelId: string; texts: string[] }
+  | { type: 'deviceCheck'; modelId: string; devices: EmbedDevice[]; images: string[] };
+
+
+interface Tensor {
+  data: ArrayLike<number>;
+  dims: number[];
+}
+type Callable = (inputs: unknown) => Promise<Record<string, Tensor>>;
+type Processor = ((text: unknown, images?: unknown) => Promise<unknown>) & {
+  image_processor: { max_soft_tokens: number };
+};
+type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boolean; max_length?: number }) => {
   input_ids: { dims: number[] };
 };
-type Process = (image: unknown) => Promise<unknown>;
+interface Disposable {
+  dispose(): Promise<unknown>;
+}
 
-/**
- * Cross-encoder text-classification pipeline. Each call receives one or more
- * `{text, text_pair}` objects and returns one array of `{label, score}` per
- * input (outer array = inputs, inner array = labels). With `topk: null` all
- * labels are returned; with `topk: 1` the inner array has exactly one entry.
- */
+/** Cross-encoder pipeline: one `{label, score}[]` per input. */
 type ClassifierFn = (
   inputs: { text: string; text_pair: string }[],
   opts?: { topk: number | null },
 ) => Promise<Array<Array<{ label: string; score: number }>>>;
-
-/**
- * Token-classification pipeline (NER). One call per text; returns one BIO
- * subword token at a time — transformers.js has no aggregation strategy, so
- * spans are assembled by `mergeBioSpans` (pure, unit-tested).
- */
+/** Token-classification pipeline (NER): BIO subword tokens per text. */
 type NerFn = (text: string) => Promise<BioToken[]>;
 
-type Loaded =
-  | { kind: 'feature-extraction'; extract: FeatureExtractor; tokenizer: TokenizerFn }
-  | { kind: 'clip'; tokenize: Tokenize; textModel: ModelCall; process: Process; visionModel: ModelCall }
-  | { kind: 'reranker'; classify: ClassifierFn }
-  | { kind: 'ner'; ner: NerFn };
+interface Multimodal {
+  kind: 'multimodal';
+  vision: boolean;
+  model: Callable & Disposable;
+  processor: Processor;
+  tokenizer: TokenizerFn;
+  /** Calls running on this instance; a retired instance is disposed when it drops to 0. */
+  inFlight: number;
+  retired: boolean;
+}
+type Loaded = Multimodal | { kind: 'reranker'; classify: ClassifierFn } | { kind: 'ner'; ner: NerFn };
 
 let libPromise: ReturnType<typeof loadLib> | null = null;
 const loaders = new Map<string, Promise<Loaded>>();
@@ -89,265 +125,284 @@ function emit(status: AiModelStatus): void {
   post({ type: 'progress', status });
 }
 
-/** Dynamically import (transformers is ESM) and configure the runtime. */
+function fail(code: string, message: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+/** Dynamically import (transformers is ESM) and point its cache at userData. */
 function loadLib() {
   return import('@huggingface/transformers').then((t) => {
-    // Cache models under userData; never reach a CDN for the WASM runtime.
     t.env.cacheDir = cacheDir();
     t.env.allowRemoteModels = true;
     t.env.allowLocalModels = true;
-    if (t.env.backends?.onnx?.wasm) {
-      t.env.backends.onnx.wasm.wasmPaths = __dirname + sep;
-      // Multi-threaded inference, capped at half the cores (max 4) so a long
-      // indexing run speeds up without monopolising the machine — the process
-      // also runs at low OS priority (see providers/embedded.ts).
-      t.env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
-    }
     return t;
   });
 }
 
-/** Load (once) and configure the transformers runtime. */
 function lib() {
   if (!libPromise) libPromise = loadLib();
   return libPromise;
 }
 
-/** True once a model's onnx weights exist in the cache dir. */
-function modelCached(modelId: string): boolean {
-  const dir = join(cacheDir(), ...modelId.split('/'), 'onnx');
-  try {
-    return existsSync(dir) && readdirSync(dir).some((f) => f.endsWith('.onnx'));
-  } catch {
-    return false;
-  }
+function defOf(modelId: string): AiModelDef {
+  return getModelDef(modelId) ?? fail('EINVAL', `Unknown model: ${modelId}`);
+}
+
+/** The ONNX file transformers.js loads for a session at a dtype. */
+function onnxFile(session: string, dtype: ModelDtype): string {
+  return `${session}${dtype === 'q8' ? '_quantized' : ''}.onnx`;
+}
+
+/** True once every file a model needs is in the cache dir. */
+function modelCached(def: AiModelDef): boolean {
+  const dir = join(cacheDir(), ...def.id.split('/'), 'onnx');
+  const sessions = def.components?.map((c) => c.session) ?? ['model'];
+  return sessions.every((s) => {
+    const file = join(dir, onnxFile(s, def.dtype));
+    // Multimodal exports keep their weights beside the graph.
+    return existsSync(file) && (def.kind !== 'multimodal' || existsSync(`${file}_data`));
+  });
 }
 
 function statusFor(modelId: string): AiModelStatus {
-  const dim = getModelDef(modelId)?.dim ?? 0;
-  if (downloading.has(modelId)) return { state: 'downloading', modelId, dim };
-  return { state: modelCached(modelId) ? 'ready' : 'absent', modelId, dim };
+  const def = defOf(modelId);
+  if (downloading.has(modelId)) return { state: 'downloading', modelId, dim: def.dim };
+  return { state: modelCached(def) ? 'ready' : 'absent', modelId, dim: def.dim };
 }
 
-/** L2-normalize each row so vectors are comparable by cosine / dot product. */
-function l2normalize(rows: number[][]): number[][] {
-  return rows.map((row) => {
-    let sum = 0;
-    for (const v of row) sum += v * v;
-    const norm = Math.sqrt(sum) || 1;
-    return row.map((v) => v / norm);
-  });
-}
-
-/** Lazily load (and memoize) a catalog model, emitting download progress. */
-function get(modelId: string): Promise<Loaded> {
-  const existing = loaders.get(modelId);
-  if (existing) return existing;
-
-  const def = getModelDef(modelId);
-  if (!def) {
-    return Promise.reject(Object.assign(new Error(`Unknown model: ${modelId}`), { code: 'EINVAL' }));
-  }
-
-  const onProgress = (info: ProgressInfo) => {
-    if (info.status === 'progress') {
-      emit({
-        state: 'downloading',
-        modelId,
-        dim: def.dim,
-        progress: Math.max(0, Math.min(1, info.progress / 100)),
-      });
+function progressReporter(def: AiModelDef) {
+  return (info: ProgressInfo) => {
+    if (info.status === 'progress_total') {
+      emit({ state: 'downloading', modelId: def.id, dim: def.dim, progress: Math.max(0, Math.min(1, info.progress / 100)) });
     }
   };
-  const opts = { dtype: 'q8' as const, progress_callback: onProgress };
+}
+
+async function loadMultimodal(def: AiModelDef, vision: boolean, device: EmbedDevice): Promise<Multimodal> {
+  const t = await lib();
+  const onProgress = progressReporter(def);
+  const config = (await t.AutoConfig.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Record<string, unknown>;
+  config.audio_config = null;
+  if (!vision) config.vision_config = null;
+  const model = (await t.AutoModel.from_pretrained(def.id, {
+    config: config as never,
+    dtype: { model: def.dtype, vision_encoder: def.dtype },
+    device: { model: 'cpu', vision_encoder: device },
+    session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1 },
+    progress_callback: onProgress,
+  })) as unknown as Callable & Disposable;
+  const processor = (await t.AutoProcessor.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Processor;
+  const tokenizer = (await t.AutoTokenizer.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as TokenizerFn;
+  return { kind: 'multimodal', vision, model, processor, tokenizer, inFlight: 0, retired: false };
+}
+
+/** Run `fn` on an instance, disposing it afterwards if it was retired meanwhile. */
+async function using<T>(m: Multimodal, fn: () => Promise<T>): Promise<T> {
+  m.inFlight++;
+  try {
+    return await fn();
+  } finally {
+    m.inFlight--;
+    if (m.retired && m.inFlight === 0) await m.model.dispose();
+  }
+}
+
+/** Stop handing out an instance; it's disposed once its last call finishes. */
+async function retire(m: Multimodal): Promise<void> {
+  m.retired = true;
+  if (m.inFlight === 0) await m.model.dispose();
+}
+
+/**
+ * Load (once) a catalog model. For the multimodal model, `vision` asks for the
+ * vision encoder too: a loaded text-only instance is then disposed and replaced,
+ * and a vision instance already loaded serves text requests as well.
+ */
+function get(modelId: string, opts: { vision?: boolean } = {}): Promise<Loaded> {
+  const def = defOf(modelId);
+  const existing = loaders.get(modelId);
+  if (existing && def.kind === 'multimodal' && opts.vision) {
+    // Upgrade a text-only instance to one with the vision encoder.
+    const upgraded = existing.then(async (m) => {
+      if (m.kind !== 'multimodal' || m.vision) return m;
+      const next = await loadMultimodal(def, true, visionDevice());
+      await retire(m);
+      return next;
+    });
+    return track(modelId, upgraded);
+  }
+  if (existing) return existing;
 
   const promise = (async (): Promise<Loaded> => {
     const t = await lib();
-    if (!modelCached(modelId)) downloading.add(modelId);
-    let loaded: Loaded;
-    if (def.kind === 'clip') {
-      const tokenize = (await t.AutoTokenizer.from_pretrained(modelId, opts)) as unknown as Tokenize;
-      const textModel = (await t.CLIPTextModelWithProjection.from_pretrained(
-        modelId,
-        opts,
-      )) as unknown as ModelCall;
-      const process = (await t.AutoProcessor.from_pretrained(modelId, opts)) as unknown as Process;
-      const visionModel = (await t.CLIPVisionModelWithProjection.from_pretrained(
-        modelId,
-        opts,
-      )) as unknown as ModelCall;
-      loaded = { kind: 'clip', tokenize, textModel, process, visionModel };
-    } else if (def.kind === 'reranker') {
-      const classify = (await t.pipeline(
-        'text-classification',
-        modelId,
-        opts,
-      )) as unknown as ClassifierFn;
-      loaded = { kind: 'reranker', classify };
-    } else if (def.kind === 'ner') {
-      const ner = (await t.pipeline('token-classification', modelId, opts)) as unknown as NerFn;
-      loaded = { kind: 'ner', ner };
-    } else {
-      // Load the tokenizer separately so countTokens can run without inference.
-      // AutoTokenizer.from_pretrained reads the same cached vocab files as the
-      // pipeline; no extra download, but a second in-memory allocation (~few MB).
-      const tokenizer = (await t.AutoTokenizer.from_pretrained(modelId, opts)) as unknown as TokenizerFn;
-      const extract = (await t.pipeline('feature-extraction', modelId, opts)) as unknown as FeatureExtractor;
-      loaded = { kind: 'feature-extraction', extract, tokenizer };
+    const opts2 = { dtype: def.dtype, progress_callback: progressReporter(def) };
+    if (def.kind === 'multimodal') return loadMultimodal(def, opts.vision ?? false, visionDevice());
+    if (def.kind === 'reranker') {
+      return { kind: 'reranker', classify: (await t.pipeline('text-classification', def.id, opts2)) as unknown as ClassifierFn };
     }
-    downloading.delete(modelId);
-    emit({ state: 'ready', modelId, dim: def.dim });
-    return loaded;
-  })().catch((err) => {
-    loaders.delete(modelId);
-    downloading.delete(modelId);
-    emit({
-      state: 'error',
-      modelId,
-      dim: def.dim,
-      message: err instanceof Error ? err.message : String(err),
-    });
-    throw err;
+    return { kind: 'ner', ner: (await t.pipeline('token-classification', def.id, opts2)) as unknown as NerFn };
+  })();
+  return track(modelId, promise);
+}
+
+/** Memoize a load, report its state, and forget it if it fails (so a retry reloads). */
+function track(modelId: string, promise: Promise<Loaded>): Promise<Loaded> {
+  const def = defOf(modelId);
+  const wasCached = modelCached(def);
+  if (!wasCached) downloading.add(modelId);
+  const tracked = promise.then(
+    (loaded) => {
+      downloading.delete(modelId);
+      if (!wasCached) emit({ state: 'ready', modelId, dim: def.dim });
+      return loaded;
+    },
+    (err: unknown) => {
+      loaders.delete(modelId);
+      downloading.delete(modelId);
+      emit({ state: 'error', modelId, dim: def.dim, message: err instanceof Error ? err.message : String(err) });
+      throw err;
+    },
+  );
+  loaders.set(modelId, tracked);
+  return tracked;
+}
+
+async function multimodal(modelId: string, vision = false): Promise<Multimodal> {
+  const m = await get(modelId, { vision });
+  if (m.kind !== 'multimodal') fail('EUNSUPPORTED', `${modelId} is not an embedding model.`);
+  return m;
+}
+
+/** The pooled, normalized sentence embeddings of a processed batch, at the catalog dim. */
+async function sentenceEmbeddings(m: Multimodal, inputs: unknown, rows: number, dim: number): Promise<Float32Array[]> {
+  const out = await m.model(inputs);
+  const e = out.sentence_embedding ?? fail('EAIFAILED', 'The model returned no sentence embedding.');
+  if (e.dims[0] !== rows) fail('EAIFAILED', `Expected ${rows} embeddings, got ${e.dims[0]}.`);
+  return rowsOf(e.data, rows, e.dims[1], dim);
+}
+
+async function embedText(modelId: string, texts: string[], role: EmbedRole = 'passage', titles?: string[]): Promise<Float32Array[]> {
+  if (!texts.length) return [];
+  const def = defOf(modelId);
+  const m = await multimodal(modelId);
+  const prompted = texts.map((t, i) => promptedText(t, role, titles?.[i]));
+  return using(m, () => {
+    const inputs = m.tokenizer(prompted, { padding: true, truncation: true, max_length: MAX_TEXT_TOKENS });
+    return sentenceEmbeddings(m, inputs, texts.length, def.dim);
   });
-
-  loaders.set(modelId, promise);
-  return promise;
-}
-
-async function embedText(
-  modelId: string,
-  texts: string[],
-  role: EmbedRole = 'passage',
-): Promise<number[][]> {
-  const model = await get(modelId);
-  if (model.kind === 'feature-extraction') {
-    // Asymmetric models (BGE/E5) want an instruction prefix on queries vs passages.
-    const prefix = promptFor(modelId, role);
-    const input = prefix ? texts.map((t) => prefix + t) : texts;
-    const out = await model.extract(input, { pooling: 'mean', normalize: true });
-    return out.tolist();
-  }
-  if (model.kind !== 'clip') {
-    throw Object.assign(new Error('This model cannot embed text.'), { code: 'EUNSUPPORTED' });
-  }
-  // CLIP text encoder → projected embeddings (normalized to match image space).
-  const inputs = model.tokenize(texts, { padding: true, truncation: true });
-  const out = await model.textModel(inputs);
-  return l2normalize(out.text_embeds.tolist());
 }
 
 /**
- * Count tokens for each text using the model's own tokenizer — pure tokenization,
- * no inference. Used by the indexer to calibrate chunk window size per file so
- * dense code or non-Latin text never silently overflows the model's token limit.
+ * Embed pictures, one input each, at a vision budget (soft tokens per image:
+ * 70–1120; more reads finer detail and costs more). Pictures carry no prefix.
  */
-async function countTokensForModel(modelId: string, texts: string[]): Promise<number[]> {
-  const model = await get(modelId);
-  if (model.kind === 'feature-extraction') {
-    return texts.map((text) => {
-      try {
-        const out = model.tokenizer([text], { padding: false, truncation: false });
-        return out.input_ids.dims[1] ?? Math.ceil(text.length / 4);
-      } catch {
-        return Math.ceil(text.length / 4);
-      }
-    });
-  }
-  // CLIP has its own truncation during tokenization; char-approx is fine here.
-  return texts.map((t) => Math.ceil(t.length / 4));
+async function embedImages(modelId: string, paths: string[], budget?: number): Promise<Float32Array[]> {
+  if (!paths.length) return [];
+  const def = defOf(modelId);
+  const m = await multimodal(modelId, true);
+  const t = await lib();
+  const images = await Promise.all(paths.map((p) => t.RawImage.read(p)));
+  return using(m, async () => {
+    m.processor.image_processor.max_soft_tokens = budget ?? DEFAULT_VISION_BUDGET;
+    // One list per sample: a flat list would be a single input made of all images.
+    const inputs = await m.processor(null, images.map((img) => [img]));
+    return sentenceEmbeddings(m, inputs, paths.length, def.dim);
+  });
+}
+
+/** Token counts from the model's own tokenizer — no inference. */
+async function countTokens(modelId: string, texts: string[]): Promise<number[]> {
+  const m = await multimodal(modelId);
+  return using(m, async () =>
+    texts.map((text) => m.tokenizer([text], { padding: false, truncation: false }).input_ids.dims[1]),
+  );
 }
 
 /**
- * Cross-encoder reranking: score each (query, passage) pair and return one
- * relevance score per passage. The ms-marco family returns a logit/probability
- * where higher = more relevant; callers sort descending to reorder candidates.
+ * Cross-encoder reranking: one relevance score per passage (higher = more
+ * relevant). All labels are fetched so a binary classifier's positive class
+ * can be picked reliably.
  */
 async function rerankText(modelId: string, query: string, passages: string[]): Promise<number[]> {
   const model = await get(modelId);
-  if (model.kind !== 'reranker') {
-    throw Object.assign(new Error('This model cannot rerank; it was not loaded as a cross-encoder.'), {
-      code: 'EUNSUPPORTED',
-    });
-  }
-  const inputs = passages.map((p) => ({ text: query, text_pair: p }));
-  // Fetch ALL labels (topk: null) so we can consistently select the positive/relevant
-  // class. With topk: 1, binary classifiers (LABEL_0 = non-relevant, LABEL_1 = relevant)
-  // can return LABEL_0 when its probability is highest, silently inverting reranking.
-  const results = await model.classify(inputs, { topk: null });
+  if (model.kind !== 'reranker') fail('EUNSUPPORTED', 'This model cannot rerank; it was not loaded as a cross-encoder.');
+  const results = await model.classify(passages.map((p) => ({ text: query, text_pair: p })), { topk: null });
   return results.map((labels) => {
-    if (!labels || !labels.length) return 0;
-    // Single output (regression / single-label cross-encoder): return it directly.
+    if (!labels?.length) return 0;
     if (labels.length === 1) return labels[0].score;
-    // Binary classifiers: find the positive/relevant label by common naming conventions
-    // (LABEL_1, "relevant", "true", "1"). ms-marco MiniLM uses LABEL_0/LABEL_1.
     const pos = labels.find((l) => /^(1|label_1|relevant|true)$/i.test(l.label));
-    if (pos) return pos.score;
-    // Fallback: take max score — for softmax outputs this is the dominant class;
-    // for sigmoid the highest logit represents the strongest signal.
-    return Math.max(...labels.map((l) => l.score));
+    return pos ? pos.score : Math.max(...labels.map((l) => l.score));
   });
 }
 
-/**
- * Named-entity recognition: one EntitySpan[] per input text. Texts run one at
- * a time — NER input is short file excerpts, and sequential calls keep the
- * WASM heap bounded the same way EMBED_BATCH does for embeddings.
- */
+/** Named-entity recognition: one EntitySpan[] per text, sequentially. */
 async function extractEntitiesForModel(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
   const model = await get(modelId);
-  if (model.kind !== 'ner') {
-    throw Object.assign(new Error('This model cannot extract entities.'), { code: 'EUNSUPPORTED' });
-  }
+  if (model.kind !== 'ner') fail('EUNSUPPORTED', 'This model cannot extract entities.');
   const out: EntitySpan[][] = [];
-  for (const text of texts) {
-    const tokens = await model.ner(text);
-    out.push(mergeBioSpans(tokens));
-  }
+  for (const text of texts) out.push(mergeBioSpans(await model.ner(text)));
   return out;
 }
 
-async function embedImages(modelId: string, paths: string[]): Promise<number[][]> {
-  const model = await get(modelId);
-  if (model.kind !== 'clip') {
-    throw Object.assign(new Error('This model cannot embed images.'), { code: 'EUNSUPPORTED' });
-  }
+/**
+ * Which device embeds pictures fastest *and* identically: each candidate's
+ * vision encoder embeds the same pictures as the CPU's; a device qualifies
+ * only if every vector agrees with the CPU's to cosine ≥ 0.999. Failures are
+ * reported per device, not thrown — an unusable GPU just isn't chosen.
+ */
+async function deviceCheck(modelId: string, devices: EmbedDevice[], images: string[]): Promise<DeviceCheckResult> {
+  const def = defOf(modelId);
   const t = await lib();
-  const rows: number[][] = [];
-  for (const path of paths) {
-    const image = await t.RawImage.read(path);
-    const inputs = await model.process(image);
-    const out = await model.visionModel(inputs);
-    rows.push(...l2normalize(out.image_embeds.tolist()));
+  const raw = await Promise.all(images.map((p) => t.RawImage.read(p)));
+  const run = async (device: EmbedDevice) => {
+    const m = await loadMultimodal(def, true, device);
+    try {
+      const inputs = await m.processor(null, raw.map((img) => [img]));
+      await m.model(inputs); // warm-up: first runs compile kernels
+      const started = performance.now();
+      const vecs = await sentenceEmbeddings(m, inputs, raw.length, def.dim);
+      return { vecs, msPerImage: (performance.now() - started) / raw.length };
+    } finally {
+      await m.model.dispose();
+    }
+  };
+  const cpu = await run('cpu');
+  const results: DeviceCheckResult['results'] = [{ device: 'cpu', msPerImage: cpu.msPerImage, agreement: 1 }];
+  for (const device of devices.filter((d) => d !== 'cpu')) {
+    try {
+      const r = await run(device);
+      const agreement = Math.min(...r.vecs.map((v, i) => v.reduce((s, x, j) => s + x * cpu.vecs[i][j], 0)));
+      results.push({ device, msPerImage: r.msPerImage, agreement });
+    } catch (err) {
+      results.push({ device, error: err instanceof Error ? err.message : String(err) });
+    }
   }
-  return rows;
+  const usable = results.filter((r) => r.agreement !== undefined && r.agreement >= 0.999);
+  const best = usable.reduce((a, b) => ((b.msPerImage ?? Infinity) < (a.msPerImage ?? Infinity) ? b : a));
+  return { chosen: best.device, results, images: images.map((p) => basename(p)) };
 }
 
-export async function handle(
-  type: string,
-  modelId: string,
-  texts?: string[],
-  paths?: string[],
-  role?: EmbedRole,
-  query?: string,
-  passages?: string[],
-): Promise<unknown> {
-  switch (type) {
+export async function handle(req: RuntimeRequest): Promise<unknown> {
+  switch (req.type) {
     case 'status':
-      return statusFor(modelId);
+      return statusFor(req.modelId);
     case 'download':
-      await get(modelId);
+      // Multimodal: fetch every component (text + vision) so indexing never waits.
+      await get(req.modelId, { vision: defOf(req.modelId).kind === 'multimodal' });
       return undefined;
     case 'embed':
-      return embedText(modelId, texts ?? [], role);
-    case 'embedImages':
-      return embedImages(modelId, paths ?? []);
+      return embedText(req.modelId, req.texts, req.role, req.titles);
+    case 'embedMedia':
+      return embedImages(req.modelId, req.paths, req.budget);
     case 'countTokens':
-      return countTokensForModel(modelId, texts ?? []);
+      return countTokens(req.modelId, req.texts);
     case 'rerank':
-      return rerankText(modelId, query ?? '', passages ?? []);
+      return rerankText(req.modelId, req.query, req.passages);
     case 'extractEntities':
-      return extractEntitiesForModel(modelId, texts ?? []);
+      return extractEntitiesForModel(req.modelId, req.texts);
+    case 'deviceCheck':
+      return deviceCheck(req.modelId, req.devices, req.images);
     default:
-      throw Object.assign(new Error(`Unknown AI request: ${type}`), { code: 'EINVAL' });
+      return fail('EINVAL', `Unknown AI request: ${(req as { type: string }).type}`);
   }
 }

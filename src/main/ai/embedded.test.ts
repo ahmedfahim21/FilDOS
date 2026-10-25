@@ -1,17 +1,20 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import type { AiModelStatus } from '@shared/types';
-import { EmbeddedAiProvider } from './providers/embedded';
+import { EmbeddedAiProvider, vectors } from './providers/embedded';
 
 /**
  * Fake utilityProcess worker. Replies to each request the way the real
  * modelWorker would, so the provider's request/response plumbing is exercised
  * without loading the (large, network-bound) embedding model.
  */
-const DIM = 384;
+const DIM = 768;
+/** Every request the fake worker saw, for asserting what the provider sent. */
+const sent: Record<string, unknown>[] = [];
 function fakeWorker(): EventEmitter & { postMessage(msg: unknown): void } {
   const emitter = new EventEmitter() as EventEmitter & { postMessage(msg: unknown): void };
   emitter.postMessage = (msg: { id: number; type: string; modelId: string; texts?: string[]; paths?: string[] }) => {
+    sent.push(msg);
     queueMicrotask(() => {
       if (msg.type === 'status') {
         const status: AiModelStatus = { state: 'ready', modelId: msg.modelId, dim: DIM };
@@ -23,10 +26,11 @@ function fakeWorker(): EventEmitter & { postMessage(msg: unknown): void } {
         });
         emitter.emit('message', { id: msg.id, ok: true, data: undefined });
       } else if (msg.type === 'embed') {
-        const rows = (msg.texts ?? []).map(() => Array.from({ length: DIM }, () => 0.1));
+        // The real runtime replies with Float32Arrays (structured clone keeps them).
+        const rows = (msg.texts ?? []).map(() => new Float32Array(DIM).fill(0.1));
         emitter.emit('message', { id: msg.id, ok: true, data: rows });
-      } else if (msg.type === 'embedImages') {
-        const rows = (msg.paths ?? []).map(() => Array.from({ length: 512 }, () => 0.2));
+      } else if (msg.type === 'embedMedia') {
+        const rows = (msg.paths ?? []).map(() => new Float32Array(DIM).fill(0.2));
         emitter.emit('message', { id: msg.id, ok: true, data: rows });
       }
     });
@@ -39,34 +43,43 @@ vi.mock('electron', () => ({
 }));
 
 describe('EmbeddedAiProvider', () => {
+  const MODEL = 'onnx-community/embeddinggemma-2-ONNX';
+
   it('reports the worker status for the requested model', async () => {
     const p = new EmbeddedAiProvider();
-    const status = await p.status('Xenova/bge-small-en-v1.5');
-    expect(status.state).toBe('ready');
-    expect(status.modelId).toBe('Xenova/bge-small-en-v1.5');
+    const status = await p.status(MODEL);
+    expect(status).toEqual({ state: 'ready', modelId: MODEL, dim: DIM });
   });
 
-  it('embeds text into Float32Array rows of the model dimension', async () => {
+  it('embeds text into Float32Array rows, sending role and titles', async () => {
     const p = new EmbeddedAiProvider();
-    const vecs = await p.embed('Xenova/all-MiniLM-L6-v2', ['a', 'b']);
+    const vecs = await p.embed(MODEL, ['a', 'b'], 'passage', ['a.md', 'b.md']);
     expect(vecs).toHaveLength(2);
     expect(vecs[0]).toBeInstanceOf(Float32Array);
     expect(vecs[0]).toHaveLength(DIM);
+    expect(sent.at(-1)).toMatchObject({ type: 'embed', modelId: MODEL, texts: ['a', 'b'], role: 'passage', titles: ['a.md', 'b.md'] });
   });
 
-  it('embeds images into Float32Array rows', async () => {
+  it('embeds pictures into Float32Array rows, sending the vision budget', async () => {
     const p = new EmbeddedAiProvider();
-    const vecs = await p.embedImages('Xenova/clip-vit-base-patch32', ['/a.png', '/b.jpg']);
+    const vecs = await p.embedMedia(MODEL, 'image', ['/a.png', '/b.jpg'], { budget: 140 });
     expect(vecs).toHaveLength(2);
-    expect(vecs[0]).toBeInstanceOf(Float32Array);
-    expect(vecs[0]).toHaveLength(512);
+    expect(vecs[1]).toBeInstanceOf(Float32Array);
+    expect(vecs[1]).toHaveLength(DIM);
+    expect(sent.at(-1)).toMatchObject({ type: 'embedMedia', kind: 'image', paths: ['/a.png', '/b.jpg'], budget: 140 });
+  });
+
+  it('rejects vectors that did not arrive as Float32Arrays', () => {
+    expect(() => vectors([[0.1, 0.2]])).toThrow(expect.objectContaining({ code: 'EAIFAILED' }));
+    expect(() => vectors('nope')).toThrow(/malformed/);
+    expect(vectors([new Float32Array([1])])).toHaveLength(1);
   });
 
   it('streams download progress to subscribers', async () => {
     const p = new EmbeddedAiProvider();
     const seen: AiModelStatus[] = [];
     p.onProgress((s) => seen.push(s));
-    await p.download('Xenova/all-MiniLM-L6-v2');
+    await p.download(MODEL);
     expect(seen.some((s) => s.state === 'downloading' && s.progress === 0.5)).toBe(true);
   });
 });

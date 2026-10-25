@@ -6,6 +6,14 @@ import type { EmbedRole } from '@shared/aiModels';
 import type { EntitySpan } from '@shared/graphTypes';
 import type { AiProvider } from './types';
 
+/** Vectors cross the utilityProcess port as Float32Arrays (structured clone keeps typed arrays). */
+export function vectors(data: unknown): Float32Array[] {
+  if (!Array.isArray(data) || !data.every((v) => v instanceof Float32Array)) {
+    throw Object.assign(new Error('The AI worker returned malformed vectors.'), { code: 'EAIFAILED' });
+  }
+  return data as Float32Array[];
+}
+
 interface Pending {
   resolve: (value: unknown) => void;
   reject: (err: Error) => void;
@@ -125,14 +133,12 @@ export class EmbeddedAiProvider implements AiProvider {
     }
   }
 
-  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage'): Promise<Float32Array[]> {
-    const rows = await this.request<number[][]>('embed', { modelId, texts, role });
-    return rows.map((row) => Float32Array.from(row));
+  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage', titles?: string[]): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embed', { modelId, texts, role, titles }));
   }
 
-  async embedImages(modelId: string, paths: string[]): Promise<Float32Array[]> {
-    const rows = await this.request<number[][]>('embedImages', { modelId, paths });
-    return rows.map((row) => Float32Array.from(row));
+  async embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embedMedia', { modelId, kind, paths, budget: opts?.budget }));
   }
 
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {

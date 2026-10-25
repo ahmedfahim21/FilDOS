@@ -27,10 +27,12 @@ export interface AiProvider {
   /** Abort an in-flight download for a model, if one is running. */
   cancelDownload?(modelId: string): Promise<void>;
   /** Embed each input string into a vector; one Float32Array per input. The
-   * `role` lets asymmetric retrieval models prefix queries vs. passages. */
-  embed(modelId: string, texts: string[], role?: EmbedRole): Promise<Float32Array[]>;
-  /** Embed each image file (by path) into a vector; image-capable models only. */
-  embedImages(modelId: string, paths: string[]): Promise<Float32Array[]>;
+   * `role` picks the task prefix (query, question or passage); `titles` (one per
+   * passage, usually the file name) title the documents. */
+  embed(modelId: string, texts: string[], role?: EmbedRole, titles?: string[]): Promise<Float32Array[]>;
+  /** Embed media files by path, one vector each, into the same space as text.
+   * `budget` is the vision soft-token budget per picture (70–1120). */
+  embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]>;
   /**
    * Count tokens for each text using the model's own tokenizer. One IPC call,
    * no inference — used by the indexer to calibrate chunk window size so dense
