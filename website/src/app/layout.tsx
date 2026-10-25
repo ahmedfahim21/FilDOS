@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s | FilDOS",
   },
   description:
-    "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
+    "FilDOS is an AI-native file browser for your PC. Search documents, photos, audio and video by meaning — and open them at the page or moment that matched. Private, fast, and fully on-device.",
   keywords: [
     "FilDOS",
     "file browser",
@@ -40,18 +40,18 @@ export const metadata: Metadata = {
   authors: [{ name: "ArqosLabs" }],
   creator: "ArqosLabs",
   publisher: "ArqosLabs",
-  metadataBase: new URL("https://fildos.cloud"),
+  metadataBase: new URL("https://fildos.ahmedfahim.dev"),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://fildos.cloud",
+    url: "https://fildos.ahmedfahim.dev",
     siteName: "FilDOS",
     title: "FilDOS - The AI-Native File Browser",
     description:
-      "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
+      "FilDOS is an AI-native file browser for your PC. Search documents, photos, audio and video by meaning — and open them at the page or moment that matched. Private, fast, and fully on-device.",
     images: [
       {
         url: "/opengraph-image.png",
@@ -65,7 +65,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "FilDOS - The AI-Native File Browser",
     description:
-      "FilDOS is an AI-native file browser for your PC. Search your files by meaning instead of filenames — private, fast, and fully on-device.",
+      "FilDOS is an AI-native file browser for your PC. Search documents, photos, audio and video by meaning — and open them at the page or moment that matched. Private, fast, and fully on-device.",
     images: ["/opengraph-image.png"],
   },
   robots: {

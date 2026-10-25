@@ -1,7 +1,7 @@
 import { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://fildos.cloud";
+  const baseUrl = "https://fildos.ahmedfahim.dev";
 
   return [
     {
