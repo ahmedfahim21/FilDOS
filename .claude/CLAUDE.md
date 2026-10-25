@@ -337,7 +337,18 @@ one), runs **one chat at a time**, and streams tokens back as unsolicited
 mentions (`listDir`) and `/`commands — `/find` runs `searchIndex()` (exported
 from `index/handlers.ts`) first and hands the hits to the model + UI;
 `handlers.ts` owns `llm:*`/`chat:*`/`chats:*` channels and streams
-`Events.chatStream` / `Events.llmModelProgress`. **Every exchange is persisted**
+`Events.chatStream` / `Events.llmModelProgress`. **Context fitting**
+(`llm/fitTurn.ts`): `buildChat` returns the attached `material` apart from the
+`question`; the worker measures system + tool definitions + question with the
+model's own chat template (`chatWrapper.generateContextState`), then fits the
+window llama.cpp actually allocated (`context.contextSize` — `{ max }` can give
+less): answer reserve + the 10% context-shift reserve llama.cpp keeps free +
+room for tool results (≤ half of what's left) are fixed, material is trimmed by
+tokens, earlier turns fill the rest newest-first, and each tool result is
+shrunk to its share (`capToolResult`). Overflowing the window otherwise makes
+llama.cpp fail ("context shift strategy did not return a history that fits")
+or silently cut the prompt; a turn whose bare question can't fit fails with
+`ECONTEXT` naming Settings → Assistant. **Every exchange is persisted**
 to `db/chats.ts` (`chat_sessions` + `chat_messages`; session minted lazily on
 first send — `chatSend` returns the sessionId; mentions and /find sources are
 stored as JSON snapshots) so conversations can be reopened and continued from

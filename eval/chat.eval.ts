@@ -171,7 +171,8 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     requestId: payload.requestId,
     system: assembleSystem(built, { cwd }),
     history: [],
-    prompt: built.prompt,
+    prompt: built.question,
+    material: built.material,
     config: { temperature: 0 },
     tools: true,
   })) as string;
