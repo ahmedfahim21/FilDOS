@@ -21,6 +21,7 @@ import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
 import { FilePreview } from './FilePreview';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/button';
 
 type Scope = 'folder' | 'all';
@@ -472,6 +473,9 @@ export function SearchOverlay({
 
   /** Results get the split view: the list beside a preview of the active row. */
   const split = flat.length > 0;
+  // Too narrow for both (≤ 820 px, matching the list's max-[820px] classes): the
+  // preview isn't mounted at all, so nothing is fetched or rendered unseen.
+  const roomForPreview = useMediaQuery('(min-width: 821px)');
   const activeRow = split ? flat[activeIx] : undefined;
 
   // The preview follows the active row once the cursor rests on it; the first
@@ -883,7 +887,7 @@ export function SearchOverlay({
                 </button>
               )}
             </div>
-            {split && shown && (
+            {split && shown && roomForPreview && (
               <PreviewPane
                 row={shown}
                 words={shownWords}
@@ -957,7 +961,7 @@ function PreviewPane({
     .filter(Boolean)
     .join(' · ');
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 max-[820px]:hidden">
+    <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-foreground truncate text-sm" title={entry.path}>
