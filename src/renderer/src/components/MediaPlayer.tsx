@@ -33,6 +33,11 @@ export function MediaPlayer({
         console.info('[fildos] media preview did not autoplay:', String(err));
       });
     };
+    // Already loaded (another moment of the same recording): seek now.
+    if (el.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      start();
+      return;
+    }
     el.addEventListener('loadedmetadata', start, { once: true });
     return () => el.removeEventListener('loadedmetadata', start);
   }, [src, seconds, autoPlay]);
