@@ -59,11 +59,11 @@ function visionDevice(): EmbedDevice {
 const DEFAULT_VISION_BUDGET = 280;
 
 /**
- * Most padded tokens (inputs × longest input) in one model call. The model
- * returns per-token hidden states alongside the pooled vector; in Electron's
- * utility process, outputs much past ~5 MB crash the process (exit code 5) —
- * 8 inputs of ~600 tokens did, 4 did not — so batches are split to stay at
- * ≤ 2048 × 512 floats (4 MB).
+ * Most padded tokens (inputs × longest input) in one model call. Bounds the
+ * largest single allocation a call makes: inside Electron an oversized one
+ * kills the worker (SIGTRAP, exit code 5) — with the arena off, 32 inputs of
+ * ~700 tokens still did. 2048 keeps a call well inside that, at no cost in
+ * speed (the model is compute-bound, not call-bound).
  */
 export const MAX_CALL_TOKENS = 2048;
 
@@ -220,7 +220,11 @@ async function loadMultimodal(def: AiModelDef, encoders: Set<Encoder>, device: E
     config: config as never,
     dtype: { model: def.dtype, vision_encoder: def.dtype, audio_encoder: def.dtype },
     device: { model: 'cpu', vision_encoder: device, audio_encoder: 'cpu' },
-    session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1 },
+    // No CPU memory arena: it grows in doubling chunks, and inside Electron
+    // (whose allocator refuses oversized single allocations) that crashed the
+    // worker with SIGTRAP on long batches; without it memory peaks ~4× lower
+    // (≈0.6 vs 2.6 GB for 16 × 700 tokens) at the same speed.
+    session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1, enableCpuMemArena: false },
     progress_callback: onProgress,
   })) as unknown as Callable & Disposable;
   const processor = (await t.AutoProcessor.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Processor;
