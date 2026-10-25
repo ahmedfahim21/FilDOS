@@ -41,14 +41,27 @@ it.
 
 A result points at **where** it matched, not just which file:
 
-- **PDFs** show a **p. 12** pill. It opens that page in an in-app preview with
-  your words highlighted.
-- **Audio and video** show a **0:25** pill. It plays the recording from that
-  moment in an in-app player.
-- **Snippets** highlight the words that matched in the passage the hit points
-  at.
+- **PDFs** show a **p. 12** pill, and the preview opens at that page with your
+  words highlighted.
+- **Audio and video** show a **0:25** pill, and the preview's player starts at
+  that moment.
+- **Text and documents** open scrolled to the first matching word, with every
+  match highlighted.
+- **Snippets** in the list highlight the words that matched in the passage the
+  hit points at.
 
-The same pills appear on the sources of an Ask AI `/find` answer.
+The same pills appear on the sources of an Ask AI `/find` answer. Clicking one
+opens the file right there.
+
+## The preview beside your results
+
+While results are showing, the search panel splits in two: results on the
+left, a live preview of the selected one on the right. The best match is
+selected first; hover a result or move with ↑ ↓ and the preview follows.
+**↵** opens the file and **⌘ ↵** shows it in its folder. The panel keeps one
+size whether it's waiting, searching, or previewing, so nothing jumps as
+results arrive. In a narrow window the preview steps aside and the list takes
+the full width.
 
 ## The indexing pipeline
 

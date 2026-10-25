@@ -109,8 +109,12 @@ rather than hand-rolling.
   the rank, semantic score is discounted against it, both-lane hits get a bump —
   never separate "semantic vs name" sections; semantic hits past the search's
   `strong` count fold under "N weaker matches", snippets highlight «marked»
-  words, and PDF hits carry a "p. N" pill that opens `PagePreview` (pdfjs in
-  the renderer, words highlighted on the page). Helpers: `assertValidPath`,
+  words, and PDF hits carry a "p. N" pill. With results the overlay is a
+  **split view** at one fixed size (no recents, nothing resizes as results
+  arrive): the list beside `FilePreview` of the active row (best match first,
+  following hover/arrows after a 120 ms rest), opened at the hit's page or
+  moment with the query's words lit in Mint; below 820 px the preview steps
+  aside. Row sublines show the folder via `lib/path#compactDir`. Helpers: `assertValidPath`,
   `assertValidName`, `uniqueDestination` (" copy" suffixing).
 - `fs/handlers.ts` — registers every `ipcMain.handle`; `wrap()` + `toAppError()`.
 - `fs/watch.ts` — single non-recursive `fs.watch` on the focused dir, debounced,
@@ -242,7 +246,7 @@ frames at 70 vision tokens. The indexer stores a keyword-only name chunk plus
 `frame`/`audio` chunks with `loc`/`loc_end` in seconds (audio is its own
 modality on the score scale); the audio encoder downloads with the first
 recording (`lazy` component). Media queue last (`costClass` 3); hits get a
-"0:25" pill that plays in `MediaPreview` (through `fildos-media://`).
+"0:25" pill; the search split view and chat's `PlacePreview` play from there.
 **HEIC/HEIF** (HEVC — neither the runtime's image reader nor Chromium decodes
 it; `needsOsDecode`) goes through the OS instead: `osImage.ts` reads the
 primary picture's size from the container (`heif.ts`, since the thumbnailer
@@ -454,9 +458,12 @@ State via React context (no Redux):
   URL, text/code inline (first 128 KB, binary sniffed by NUL/invalid UTF-8),
   DOCX via the extraction worker, HEIC/TIFF decoded by the OS
   (`osThumbnail`), folders as an item count. One fixed stage for every kind;
-  ↑↓ step the selection (`stepQuickLook` in `App.tsx`), Space/Esc close. It
-  reuses `PdfViewer` + `Pager` (`PagePreview.tsx`) and `MediaPlayer`
-  (`MediaPreview.tsx`). The renderer's pdfjs is the **legacy build**: pdfjs 6's
+  ↑↓ step the selection (`stepQuickLook` in `App.tsx`), Space/Esc close.
+  The stage is `components/FilePreview.tsx`, shared with the search split view
+  and chat's `PlacePreview`: it fetches `fs:preview`, fits pictures/video,
+  renders PDF pages fitted to the stage (`PdfViewer` + `Pager`), plays media
+  (`MediaPlayer`, optional autoplay), and marks `words` in text
+  (`lib/marks#markWords`), scrolling to the first. The renderer's pdfjs is the **legacy build**: pdfjs 6's
   modern build needs `Uint8Array.prototype.toHex`, missing from Electron 37's
   Chromium. Its key handler stops propagation and the App keymap ignores
   `defaultPrevented` keys — a state change mid-keydown re-registers the App
