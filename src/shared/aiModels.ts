@@ -8,7 +8,6 @@
  *                   one 768-d space, so any query compares with any file. Its
  *                   vision/audio encoders are separate components, loaded only
  *                   when a batch needs them.
- *  - 'reranker'   — a cross-encoder scoring (query, passage) pairs.
  *  - 'ner'        — token classification for the Canvas entity nodes.
  */
 export type AiModality = 'text' | 'code' | 'image';
@@ -49,7 +48,7 @@ export interface AiModelDef {
   /** Embedding dimensionality as stored (after any Matryoshka truncation); 0 for non-embedders. */
   dim: number;
   /** How the runtime loads/runs it. */
-  kind: 'multimodal' | 'reranker' | 'ner';
+  kind: 'multimodal' | 'ner';
   /** Approximate download size in MB (for the UI). */
   sizeMb: number;
   /** One-line description for Settings. */
@@ -63,11 +62,16 @@ export interface AiModelDef {
    * `ceil`→1. Omitted → cosine used as-is.
    */
   relevance?: { floor: number; ceil: number };
+  /**
+   * Cosine a chunk needs before it can count as a meaning match at all, on
+   * top of standing out on the query's own scale. Without it, the top of any
+   * query's distribution would always "match" something.
+   */
+  minMatch?: number;
 }
 
 /** The embedding model: indexes every file and embeds every query. */
 export const EMBED_MODEL_ID = 'onnx-community/embeddinggemma-2-ONNX';
-export const RERANKER_MODEL_ID = 'Xenova/ms-marco-MiniLM-L-6-v2';
 export const NER_MODEL_ID = 'Xenova/bert-base-NER';
 
 /**
@@ -93,24 +97,13 @@ export const AI_MODELS: AiModelDef[] = [
     description: 'Text and pictures in one space, in 100+ languages — search any file by describing it.',
     // Provisional, from the eval testbed: unrelated pairs sit near 0.5, clear matches 0.7–0.8.
     relevance: { floor: 0.5, ceil: 0.8 },
-  },
-  {
-    // Cross-encoder that scores (query, passage) pairs instead of embedding them.
-    // Reranks the top candidates for higher precision. Not downloaded
-    // automatically — only activates when the user downloads it.
-    id: RERANKER_MODEL_ID,
-    label: 'MS-MARCO Reranker',
-    modality: 'text',
-    dim: 0, // no embedding output
-    kind: 'reranker',
-    sizeMb: 85,
-    dtype: 'q8',
-    description: 'Cross-encoder for search result reranking. Download to improve precision.',
+    // Eval testbed: every expected answer ≥ 0.608; unanswerable queries top out at 0.56–0.59.
+    minMatch: 0.6,
   },
   {
     // Token-classification (BIO tags) — feeds the knowledge graph's entity
-    // nodes. Like the reranker, never downloaded automatically: the Canvas
-    // view works without it and entities light up once the user opts in.
+    // nodes. Never downloaded automatically: the Canvas view works without it
+    // and entities light up once the user opts in.
     id: NER_MODEL_ID,
     label: 'Entity Extractor',
     modality: 'text',

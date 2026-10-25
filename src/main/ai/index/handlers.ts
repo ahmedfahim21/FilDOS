@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
-import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { EMBED_MODEL_ID, indexFingerprint, RERANKER_MODEL_ID } from '@shared/aiModels';
+import type { AppError, IndexConfig, IndexProgress, Result, SearchResult, SemanticHit } from '@shared/types';
+import { EMBED_MODEL_ID, indexFingerprint } from '@shared/aiModels';
 import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
@@ -106,12 +106,12 @@ const watcher = new IndexWatcher({
 /**
  * Semantic search against the live index singletons. Shared by the
  * `index:search` channel below and the Assistant's /find command
- * (`../llm/handlers.ts`), so both rank with the same stores and reranker.
+ * (`../llm/handlers.ts`), so both rank with the same stores.
  */
 export async function searchIndex(
   query: string,
   opts?: { rootPath?: string; k?: number; role?: 'query' | 'question' },
-): Promise<SemanticHit[]> {
+): Promise<SearchResult> {
   const provider = await activeAiProvider();
   if (!provider) {
     throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
@@ -121,7 +121,6 @@ export async function searchIndex(
     rootPath,
     k: opts?.k,
     keywordStore,
-    rerankerModelId: RERANKER_MODEL_ID,
     role: opts?.role,
   });
 }
@@ -238,7 +237,7 @@ export function registerIndexHandlers(): void {
   ipcMain.handle(
     Channels.indexSearch,
     (_e, query: string, opts?: { rootPath?: string; k?: number }) =>
-      wrap<SemanticHit[]>(() => searchIndex(query, opts)),
+      wrap<SearchResult>(() => searchIndex(query, opts)),
   );
 
   ipcMain.handle(

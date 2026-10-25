@@ -1,144 +1,111 @@
 import { basename, relative } from 'node:path';
-import type { SemanticHit } from '@shared/types';
-import { relevanceOf, type EmbedRole } from '@shared/aiModels';
+import type { ChunkKind, SearchResult, SemanticHit } from '@shared/types';
+import { getModelDef, relevanceOf, type EmbedRole } from '@shared/aiModels';
+import * as aiIndex from '../../db/aiIndex';
 import type { AiProvider } from '../providers/types';
-import type { VectorStore } from './vectorStore';
+import type { ScoredChunk, VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
 import { extractText, isImage } from './extract';
-import { visionBudget } from './ignore';
+import { isUnder, visionBudget } from './ignore';
 import { chunk } from './chunk';
+import { fileKinds, isLookup, kindHints, queryTerms } from './query';
 import * as service from '../../fs/service';
 
 /**
- * Semantic search over the index. Text and pictures share one embedding space
- * (EmbeddingGemma 2), so a single vector lane ranks every kind of file. It is
- * fused with BM25 keyword ranking via Reciprocal Rank Fusion (RRF) when a
- * keyword store is provided — exact/identifier matches that embeddings handle
- * poorly (error codes, filenames, API names) get boosted without calibrating
- * scores across two scales — and the top candidates can be reranked by a
- * cross-encoder.
+ * Hybrid search: meaning (EmbeddingGemma 2 vectors — text and pictures in one
+ * space) + words (BM25 over chunk text and file names), with an honest
+ * "nothing found".
+ *
+ * Meaning: every chunk is scored anyway (brute force over the vector cache),
+ * so the query's whole score distribution is free. Each cosine is centred on
+ * its modality's mean (picture and text vectors sit at slightly different
+ * levels for the same query) and divided by the pooled deviation: a z-score
+ * on this query's own scale. Only chunks that stand out (z ≥ Z_GATE) count as
+ * meaning matches — and only when their cosine also clears the model's
+ * `minMatch` floor (the top of any distribution would otherwise always
+ * "match") — so a query about nothing in the index finds nothing.
+ * Chunks the later pass added over long files are scored but don't set the
+ * scale (a book's hundreds of pages would otherwise drag every query's text
+ * mean down).
+ *
+ * Words: a file qualifies when it contains at least half the query's content
+ * terms; its bonus grows with that coverage. Codes, IDs and names that no
+ * vector holds exactly are found this way. A term that's in no file as typed
+ * also matches as a word start ("grok" finds "grokipedia").
+ *
+ * Score = meaning z + WORD_WEIGHT·coverage^1.5 (+1 when the query names the
+ * file's kind: "a screenshot of…"). A lookup query (only codes/numbers)
+ * qualifies files by words alone — an embedding can't hold "INV-20431", and
+ * a nearest neighbour to it is noise — and weighs words double. Hits scoring under STRONG_RATIO of
+ * the top one are "weaker matches" (`strong` counts the rest).
  *
  * Pure orchestration with injected deps (testable, no Electron).
  */
 
 const DEFAULT_K = 20;
-/** Chunks per file vary, so over-fetch candidates before collapsing to files. */
-const OVERFETCH = 5;
-/**
- * Standard RRF constant. Lower → earlier ranks dominate more sharply.
- * 60 is the empirically validated default from the original RRF paper.
- */
-const RRF_K = 60;
+/** z-score a chunk needs to count as a meaning match. */
+export const Z_GATE = 2.0;
+/** Share of the query's terms a file needs to qualify on words alone. */
+export const COVERAGE_GATE = 0.5;
+/** Weight of full word coverage against one standard deviation of meaning. */
+export const WORD_WEIGHT = 2;
+/** Hits below this share of the top score are folded as weaker matches. */
+export const STRONG_RATIO = 0.5;
+/** Characters of the matched segment handed to chat (the model reads this). */
+const PASSAGE_CHARS = 1500;
+/** Characters of the snippet shown in result lists. */
+const SNIPPET_CHARS = 240;
 
-interface Scored {
-  path: string;
-  text: string;
-  /** Calibrated relevance in [0, 1]. */
-  score: number;
-}
-
-/**
- * Collapse multiple chunks for the same file to the single best-scoring one,
- * then sort by score descending and take at most k.
- */
-function bestPerFile(hits: { path: string; text: string; score: number }[], k: number): Scored[] {
-  const best = new Map<string, Scored>();
-  for (const h of hits) {
-    const cur = best.get(h.path);
-    if (!cur || h.score > cur.score) best.set(h.path, h);
+/** Per-chunk z-scores on this query's scale (see the module comment). */
+export function zScores(chunks: ScoredChunk[]): number[] {
+  const modality = (c: ScoredChunk) => (c.kind === 'image' ? 'image' : 'text');
+  const sum = new Map<string, number>();
+  const count = new Map<string, number>();
+  let all = 0;
+  let n = 0;
+  for (const c of chunks) {
+    if (c.pass !== 1) continue;
+    const m = modality(c);
+    sum.set(m, (sum.get(m) ?? 0) + c.score);
+    count.set(m, (count.get(m) ?? 0) + 1);
+    all += c.score;
+    n++;
   }
-  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, k);
+  if (n === 0) return chunks.map(() => 0);
+  // A modality with too few vectors to have a stable mean uses the overall one.
+  const mean = (m: string) => ((count.get(m) ?? 0) >= 20 ? sum.get(m)! / count.get(m)! : all / n);
+  let sq = 0;
+  for (const c of chunks) if (c.pass === 1) sq += (c.score - mean(modality(c))) ** 2;
+  const sd = Math.sqrt(sq / n) || 1;
+  return chunks.map((c) => (c.score - mean(modality(c))) / sd);
 }
 
-/**
- * Reciprocal Rank Fusion for the text lane.
- *
- * Fuses the vector-ranked list and the BM25-ranked list without needing a
- * shared score scale — ranks are scale-free. RRF score for a path:
- *   1/(RRF_K + vecRank) + 1/(RRF_K + bm25Rank)
- * Paths absent from a lane get a penalty rank (length + RRF_K) rather than
- * infinity, so a strong BM25 hit with no embedding can still surface.
- *
- * The final `score` is the calibrated cosine from the vector lane (or 0 when
- * a path only appears in BM25). This keeps the merged ranking with the image
- * lane on a comparable scale for the UI relevance bar.
- */
-function rrfFuse(
-  vecHits: Scored[],
-  bm25Hits: { path: string; text: string; score: number }[],
-  k: number,
-): Scored[] {
-  // Best-per-file from each lane, ordered for rank assignment.
-  const vecFile = bestPerFile(vecHits, vecHits.length);
-  const vecRank = new Map(vecFile.map((h, i) => [h.path, i + 1]));
-  const vecData = new Map(vecFile.map((h) => [h.path, h]));
-
-  const bm25File = bestPerFile(bm25Hits, bm25Hits.length);
-  const bm25Rank = new Map(bm25File.map((h, i) => [h.path, i + 1]));
-  const bm25Text = new Map(bm25File.map((h) => [h.path, h.text]));
-
-  const fallbackVecRank = vecFile.length + RRF_K;
-  const fallbackBm25Rank = bm25File.length + RRF_K;
-
-  const allPaths = new Set([...vecRank.keys(), ...bm25Rank.keys()]);
-  const fused = [...allPaths].map((path) => {
-    const vr = vecRank.get(path) ?? fallbackVecRank;
-    const br = bm25Rank.get(path) ?? fallbackBm25Rank;
-    const rrfScore = 1 / (RRF_K + vr) + 1 / (RRF_K + br);
-    const vec = vecData.get(path);
-    return {
-      path,
-      score: vec?.score ?? 0,
-      text: vec?.text ?? bm25Text.get(path) ?? '',
-      rrfScore,
-    };
-  });
-
-  return fused
-    .sort((a, b) => b.rrfScore - a.rrfScore)
-    .slice(0, k)
-    .map(({ path, score, text }) => ({ path, score, text }));
+/** Display relevance in [0, 1) from a fused score (monotone; 2 ≈ 0.55, 4 ≈ 0.8). */
+function relevance(score: number): number {
+  return 1 - Math.exp(-Math.max(0, score) / 2.5);
 }
 
-/**
- * How many text-lane candidates to pass through the cross-encoder, and how much
- * of each chunk it reads. The reranker runs on WASM: cost is roughly linear in
- * pairs × tokens, so 50 full 2 KB chunks meant seconds of latency per query.
- * 16 × 600 chars keeps the precision boost where it matters (the visible top)
- * at interactive speed.
- */
-const RERANK_N = 16;
-const RERANK_CHARS = 600;
+/** A snippet of `text` around the first query term, with matched words marked «like this». */
+export function markedSnippet(text: string, terms: string[], limit = SNIPPET_CHARS): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!terms.length) return flat.slice(0, limit);
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])(${escaped.join('|')})[\\p{L}\\p{N}]*`, 'giu');
+  const first = flat.search(re);
+  const start = first > 60 ? flat.lastIndexOf(' ', first - 40) + 1 : 0;
+  let slice = flat.slice(start, start + limit);
+  if (start > 0) slice = `…${slice}`;
+  if (start + limit < flat.length) slice = `${slice}…`;
+  return slice.replace(re, (m) => `«${m}»`);
+}
 
-/**
- * Resolve scored paths into SemanticHits: stat each file, prune index rows for
- * files that vanished from disk, attach relative path + snippet, cap at k.
- */
-async function resolveHits(
-  scored: Scored[],
-  vectorStore: VectorStore,
-  rootPath: string | undefined,
-  k: number,
-): Promise<SemanticHit[]> {
-  const infos = await Promise.all(scored.map((m) => service.getInfo(m.path).catch(() => null)));
-
-  const stale = scored.filter((_, i) => infos[i] === null).map((m) => m.path);
-  // Prune through the vector store so its in-memory cache drops them too.
-  if (stale.length) await vectorStore.remove(stale);
-
-  return scored
-    .map((m, i): SemanticHit | null => {
-      const info = infos[i];
-      if (!info) return null;
-      return {
-        ...info,
-        relativePath: rootPath ? relative(rootPath, m.path) : m.path,
-        score: m.score,
-        snippet: m.text.replace(/\s+/g, ' ').trim().slice(0, 240),
-      };
-    })
-    .filter((h): h is SemanticHit => h !== null)
-    .slice(0, k);
+interface Candidate {
+  path: string;
+  score: number;
+  /** The chunk the hit points at. */
+  chunkIx: number;
+  /** Whether that chunk came from the word lane (its snippet may be marked). */
+  byWords: boolean;
 }
 
 export async function semanticSearch(
@@ -150,47 +117,122 @@ export async function semanticSearch(
     rootPath?: string;
     k?: number;
     keywordStore?: KeywordStore;
-    rerankerModelId?: string;
     /** 'question' when the query is a question asked of the files (chat). */
     role?: Exclude<EmbedRole, 'passage'>;
   } = {},
-): Promise<SemanticHit[]> {
+): Promise<SearchResult> {
   const q = query.trim();
-  if (!q) return [];
-
+  if (!q) return { hits: [], strong: 0 };
   const k = opts.k ?? DEFAULT_K;
-  const fetchK = Math.max(k * OVERFETCH, 50);
 
+  // Meaning: z-score every chunk, keep each file's best.
   const [vec] = await provider.embed(modelId, [q], opts.role ?? 'query');
-  const matches = await vectorStore.search(vec, { underPath: opts.rootPath, k: fetchK, modelId });
-  const vecHits = matches.map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
-  const bm25Hits = opts.keywordStore?.search(q, { underPath: opts.rootPath, k: fetchK });
-  let hits = bm25Hits ? rrfFuse(vecHits, bm25Hits, fetchK) : bestPerFile(vecHits, fetchK);
+  // The scale comes from the whole index, so a search scoped to a small folder
+  // still knows what "standing out" means; only the candidates are scoped.
+  const scanned = await vectorStore.scan(vec, { modelId });
+  const z = zScores(scanned);
+  const minMatch = getModelDef(modelId)?.minMatch ?? -Infinity;
+  const meaning = new Map<string, { z: number; chunkIx: number; matches: boolean }>();
+  scanned.forEach((c, i) => {
+    if (opts.rootPath && !isUnder(c.path, opts.rootPath)) return;
+    const prev = meaning.get(c.path);
+    if (!prev || z[i] > prev.z) {
+      meaning.set(c.path, { z: z[i], chunkIx: c.chunkIx, matches: z[i] >= Z_GATE && c.score >= minMatch });
+    }
+  });
 
-  // Cross-encoder reranking of the top-N. Only when the model is already
-  // downloaded (the query path never triggers a download).
-  if (opts.rerankerModelId && provider.rerank && hits.length > 0) {
-    const st = await provider.status(opts.rerankerModelId);
-    if (st.state === 'ready') {
-      const toRerank = hits.slice(0, RERANK_N);
-      const scores = await provider.rerank(
-        opts.rerankerModelId,
-        q,
-        toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
-      );
-      const reranked = toRerank
-        .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
-        .sort(([, a], [, b]) => b - a)
-        .map(([h]) => h);
-      hits = [...reranked, ...hits.slice(RERANK_N)];
+  // Words: per-file coverage of the query's terms, and each file's best keyword chunk.
+  const terms = queryTerms(q);
+  const coverage = new Map<string, number>();
+  const wordChunk = new Map<string, number>();
+  if (opts.keywordStore && terms.length) {
+    const ks = opts.keywordStore;
+    // A term in no file as typed matches as a word start; a two-letter one never
+    // does (it starts too many words to stand for one).
+    const prefixed = new Set(
+      terms.filter((t) => [...t].length >= 3 && ks.filesWith(t, { prefix: false, underPath: opts.rootPath }).size === 0),
+    );
+    for (const t of terms) {
+      for (const p of ks.filesWith(t, { prefix: prefixed.has(t), underPath: opts.rootPath })) {
+        coverage.set(p, (coverage.get(p) ?? 0) + 1 / terms.length);
+      }
+    }
+    for (const m of ks.searchTerms(terms, { prefixed, underPath: opts.rootPath })) {
+      if (!wordChunk.has(m.path)) wordChunk.set(m.path, m.chunkIx);
     }
   }
 
-  return resolveHits(hits, vectorStore, opts.rootPath, k);
+  const lookup = isLookup(q);
+  const [meaningWeight, wordWeight] = lookup ? [0.5, WORD_WEIGHT * 2] : [1, WORD_WEIGHT];
+  const hinted = kindHints(q);
+  const candidates = new Set<string>();
+  if (!lookup) for (const [p, m] of meaning) if (m.matches) candidates.add(p);
+  for (const [p, c] of coverage) if (c >= COVERAGE_GATE) candidates.add(p);
+
+  const scored: Candidate[] = [...candidates].map((path) => {
+    const m = meaning.get(path);
+    const cov = coverage.get(path) ?? 0;
+    let score = meaningWeight * Math.max(m?.z ?? 0, 0) + wordWeight * cov ** 1.5;
+    if ([...fileKinds(path)].some((kind) => hinted.has(kind))) score += 1;
+    // Point at the best meaning chunk when it stands out; else where the words matched.
+    const useMeaning = m !== undefined && (m.matches || !wordChunk.has(path));
+    return {
+      path,
+      score,
+      chunkIx: useMeaning ? m.chunkIx : wordChunk.get(path)!,
+      byWords: !useMeaning || wordChunk.get(path) === m?.chunkIx,
+    };
+  });
+  scored.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+
+  const hits = await resolveHits(scored.slice(0, k), terms, vectorStore, opts.rootPath);
+  const top = hits[0]?.score ?? 0;
+  return { hits, strong: hits.filter((h) => h.score >= top * STRONG_RATIO).length };
+}
+
+/**
+ * Resolve candidates into SemanticHits: stat each file (pruning index rows for
+ * files that vanished from disk), attach the pointed-at chunk's place, a
+ * passage for chat, and a snippet — with the query's words marked only when
+ * they come from that chunk.
+ */
+async function resolveHits(
+  scored: Candidate[],
+  terms: string[],
+  vectorStore: VectorStore,
+  rootPath: string | undefined,
+): Promise<SemanticHit[]> {
+  const infos = await Promise.all(scored.map((m) => service.getInfo(m.path).catch(() => null)));
+  const stale = scored.filter((_, i) => infos[i] === null).map((m) => m.path);
+  // Prune through the vector store so its in-memory cache drops them too.
+  if (stale.length) await vectorStore.remove(stale);
+
+  const details = await aiIndex.chunkDetails(scored.map((c) => ({ path: c.path, chunkIx: c.chunkIx })));
+  const hits: SemanticHit[] = [];
+  scored.forEach((c, i) => {
+    const info = infos[i];
+    if (!info) return;
+    const d = details.get(`${c.path}\x00${c.chunkIx}`);
+    const text = d?.text ?? '';
+    const segment: ChunkKind = d?.kind ?? 'text';
+    hits.push({
+      ...info,
+      relativePath: rootPath ? relative(rootPath, c.path) : c.path,
+      score: relevance(c.score),
+      snippet: segment === 'image' || segment === 'name' ? '' : markedSnippet(text, c.byWords ? terms : []),
+      passage: segment === 'image' || segment === 'name' ? '' : text.replace(/\s+/g, ' ').trim().slice(0, PASSAGE_CHARS),
+      segment,
+      loc: d?.loc ?? null,
+      locEnd: d?.locEnd ?? null,
+    });
+  });
+  return hits;
 }
 
 /** How many leading chunks of the probe file to average into the query vector. */
 const SIMILAR_PROBE_CHUNKS = 4;
+/** Chunks per file vary, so over-fetch candidates before collapsing to files. */
+const OVERFETCH = 5;
 
 /**
  * "Find similar" search: rank indexed files by similarity to a given file
@@ -233,9 +275,20 @@ export async function similarByFile(
   if (!vec) return [];
 
   const matches = await vectorStore.search(vec, { underPath: opts.rootPath, k: fetchK, modelId });
-  const scored = matches
-    .filter((m) => m.path !== filePath)
-    .map((m) => ({ path: m.path, text: m.text, score: relevanceOf(modelId, m.score) }));
-
-  return resolveHits(bestPerFile(scored, k), vectorStore, opts.rootPath, k);
+  const best = new Map<string, { score: number; chunkIx: number }>();
+  for (const m of matches) {
+    if (m.path === filePath) continue;
+    const s = relevanceOf(modelId, m.score);
+    if (!best.has(m.path) || s > best.get(m.path)!.score) best.set(m.path, { score: s, chunkIx: m.chunkIx });
+  }
+  const ranked = [...best.entries()].sort((a, b) => b[1].score - a[1].score).slice(0, k);
+  const hits = await resolveHits(
+    ranked.map(([path, b]) => ({ path, score: 0, chunkIx: b.chunkIx, byWords: false })),
+    [],
+    vectorStore,
+    opts.rootPath,
+  );
+  // Similarity keeps its calibrated cosine as the relevance shown.
+  const scoreOf = new Map(ranked.map(([path, b]) => [path, b.score]));
+  return hits.map((h) => ({ ...h, score: scoreOf.get(h.path) ?? 0 }));
 }

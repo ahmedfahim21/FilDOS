@@ -38,7 +38,7 @@ describe('AI model catalog', () => {
 
   it('declares a valid kind for every model, and positive dim for embedding models', () => {
     for (const m of AI_MODELS) {
-      expect(['multimodal', 'reranker', 'ner']).toContain(m.kind);
+      expect(['multimodal', 'ner']).toContain(m.kind);
       if (m.kind === 'multimodal') expect(m.dim).toBeGreaterThan(0);
       else expect(m.dim).toBe(0);
     }
