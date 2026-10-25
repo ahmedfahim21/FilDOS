@@ -6,6 +6,59 @@ import { formatMoment } from '@/lib/place';
 import { useToast } from '@/state/toast';
 
 /**
+ * A recording played in-app from `seconds`. Used by search-hit previews (from
+ * the moment that matched) and Quick Look (from the start).
+ */
+export function MediaPlayer({
+  src,
+  seconds,
+  video,
+  className,
+}: {
+  src: string;
+  seconds: number;
+  video: boolean;
+  /** Replaces the element's default size classes. */
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const start = () => {
+      el.currentTime = seconds;
+      el.play().catch((err: unknown) => {
+        // Autoplay can be refused; the controls are there to press play.
+        console.info('[fildos] media preview did not autoplay:', String(err));
+      });
+    };
+    el.addEventListener('loadedmetadata', start, { once: true });
+    return () => el.removeEventListener('loadedmetadata', start);
+  }, [src, seconds]);
+
+  const common = {
+    ref,
+    src,
+    controls: true,
+    preload: 'metadata' as const,
+    onError: () => {
+      const message = ref.current?.error?.message || 'this file can’t be played here';
+      console.error('[fildos] media preview failed:', src, message);
+      setFailed(message);
+    },
+  };
+
+  if (failed) return <div className="text-muted-foreground w-[480px] p-4 text-xs">Couldn’t play this here — {failed}</div>;
+  return video ? (
+    <video {...common} className={className ?? 'max-h-[65vh] w-[640px] rounded-md bg-black'} />
+  ) : (
+    <audio {...common} className={className ?? 'w-[480px]'} />
+  );
+}
+
+/**
  * A recording a search hit pointed at, playing from the moment that matched.
  * Default apps mostly can't be told where to start, so this is where "the
  * minute where they talk about sleep" is actually heard.
@@ -24,39 +77,10 @@ export function MediaPreview({
   onClose: () => void;
 }) {
   const { notifyError } = useToast();
-  const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null);
-  const [failed, setFailed] = useState<string | null>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const start = () => {
-      el.currentTime = seconds;
-      el.play().catch((err: unknown) => {
-        // Autoplay can be refused; the controls are there to press play.
-        console.info('[fildos] media preview did not autoplay:', String(err));
-      });
-    };
-    el.addEventListener('loadedmetadata', start, { once: true });
-    return () => el.removeEventListener('loadedmetadata', start);
-  }, [seconds]);
-
   const openExternally = () =>
     window.fsapi.open(path).then((r) => {
       if (!r.ok) notifyError(r.error);
     });
-
-  const common = {
-    ref,
-    src: mediaUrl(path),
-    controls: true,
-    preload: 'metadata' as const,
-    onError: () => {
-      const message = ref.current?.error?.message || 'this file can’t be played here';
-      console.error('[fildos] media preview failed:', path, message);
-      setFailed(message);
-    },
-  };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -65,13 +89,7 @@ export function MediaPreview({
           <DialogTitle className="text-foreground truncate text-sm font-normal">{name}</DialogTitle>
           <span className="text-muted-foreground shrink-0 font-mono text-3xs">from {formatMoment(seconds)}</span>
         </div>
-        {failed ? (
-          <div className="text-muted-foreground w-[480px] p-4 text-xs">Couldn’t play this here — {failed}</div>
-        ) : video ? (
-          <video {...common} className="max-h-[65vh] w-[640px] rounded-md bg-black" />
-        ) : (
-          <audio {...common} className="w-[480px]" />
-        )}
+        <MediaPlayer src={mediaUrl(path)} seconds={seconds} video={video} />
         <div className="flex justify-end">
           <Button size="sm" onClick={openExternally}>
             Open in default app
