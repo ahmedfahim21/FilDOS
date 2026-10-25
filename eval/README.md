@@ -28,8 +28,8 @@ To reuse the app's downloads on a Mac:
 FILDOS_MODELS_DIR="$HOME/Library/Application Support/fildos-app/models" FILDOS_LLM_DIR="$HOME/Library/Application Support/fildos-app/models/llm" FILDOS_EVAL_LLM=qwen3-4b FILDOS_EVAL_LABEL=baseline npm run eval
 ```
 
-Results land in `eval/results/<date>-<label>-<provider>-<suite>.json`. Commit the before and after files with a PR that changes
-search, indexing, the graph or chat, and quote the deltas in the PR description.
+Results land in `eval/results/<date>-<label>-<provider>-<suite>.json` (gitignored: they depend on the machine and the day). A PR
+that changes search, indexing, the graph or chat quotes the before/after deltas in its description.
 
 ## The testbed
 
