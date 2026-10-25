@@ -4,7 +4,7 @@ import { closeDb, initDb } from '../db';
 import { upsertState } from '../db/aiIndex';
 
 vi.mock('electron', () => ({ net: {}, protocol: {}, session: {}, WebContentsView: class {} }));
-const { mayServe, pathOfMediaUrl, MEDIA_SCHEME } = await import('./protocol');
+const { grantedPath, grantPreview, mayServe, pathOfMediaUrl, MAX_GRANTS, MEDIA_SCHEME } = await import('./protocol');
 
 const state = (path: string, status: IndexState['status'] = 'indexed'): IndexState => ({
   path,
@@ -42,3 +42,27 @@ describe('fildos-media protocol', () => {
     expect(await mayServe('/music/other.mp3')).toBe(false);
   });
 });
+
+describe('fildos-media Quick Look grants', () => {
+  it('serves a granted file through its one-time URL, and nothing else', () => {
+    const url = grantPreview('/Users/me/Desktop/plan (v2).pdf');
+    expect(url).toMatch(new RegExp(`^${MEDIA_SCHEME}://preview/[0-9a-f-]{36}$`));
+    expect(grantedPath(url)).toBe('/Users/me/Desktop/plan (v2).pdf');
+    expect(grantedPath(`${MEDIA_SCHEME}://preview/not-a-token`)).toBeNull();
+    // The path form never reads a grant, and a grant URL is no path.
+    expect(grantedPath(`${MEDIA_SCHEME}://file/${encodeURIComponent('/Users/me/Desktop/plan (v2).pdf')}`)).toBeNull();
+    expect(pathOfMediaUrl(url)).toBeNull();
+  });
+
+  it('gives each grant its own token, and drops the oldest past the cap', () => {
+    const first = grantPreview('/a.png');
+    const again = grantPreview('/a.png');
+    expect(again).not.toBe(first);
+    const later = Array.from({ length: MAX_GRANTS }, (_, i) => grantPreview(`/f${i}.png`));
+    expect(grantedPath(first)).toBeNull();
+    expect(grantedPath(again)).toBeNull();
+    expect(grantedPath(later[0])).toBe('/f0.png');
+    expect(grantedPath(later.at(-1)!)).toBe(`/f${MAX_GRANTS - 1}.png`);
+  });
+});
+

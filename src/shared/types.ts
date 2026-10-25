@@ -407,6 +407,17 @@ export interface GraphApi {
 }
 
 /** The API surface exposed on `window.fsapi` by the preload bridge. */
+/** What Quick Look can show for a file (`fs:preview`). */
+export type FilePreview =
+  /** Read through `url` — a one-time `fildos-media://preview/` grant, or a data URL for OS-decoded pictures. */
+  | { kind: 'image' | 'pdf' | 'video' | 'audio'; url: string }
+  /** The first 128 KB of a text file; `language` is its extension. */
+  | { kind: 'text'; text: string; truncated: boolean; language: string }
+  /** A document's extracted text (DOCX). */
+  | { kind: 'document'; text: string; truncated: boolean }
+  | { kind: 'folder'; items: number }
+  | { kind: 'none' };
+
 export interface FsApi {
   listDir(path: string): Promise<Result<Entry[]>>;
   getInfo(path: string): Promise<Result<FileInfo>>;
@@ -429,6 +440,8 @@ export interface FsApi {
   appVersion(): Promise<Result<string>>;
   /** Recursive byte size of a folder (depth-guarded). */
   folderSize(path: string): Promise<Result<number>>;
+  /** What Quick Look can show for a local file or folder. */
+  preview(path: string): Promise<Result<FilePreview>>;
   /** Recursive name search under rootPath, capped result set. */
   search(rootPath: string, query: string): Promise<Result<SearchHit[]>>;
   /** Thumbnail data URL for an image file, or null if unavailable. */

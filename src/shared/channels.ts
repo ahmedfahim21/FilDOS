@@ -18,6 +18,7 @@ export const Channels = {
   getHome: 'fs:getHome',
   appVersion: 'fs:appVersion',
   folderSize: 'fs:folderSize',
+  preview: 'fs:preview',
   search: 'fs:search',
   thumbnail: 'fs:thumbnail',
   watchSet: 'watch:set',

@@ -43,6 +43,7 @@ const fsapi: FsApi = {
   folderSize: (path) => ipcRenderer.invoke(Channels.folderSize, path),
   search: (rootPath, query) => ipcRenderer.invoke(Channels.search, rootPath, query),
   thumbnail: (path, size) => ipcRenderer.invoke(Channels.thumbnail, path, size),
+  preview: (path) => ipcRenderer.invoke(Channels.preview, path),
   drives: () => ipcRenderer.invoke(Channels.drives),
   ejectDrive: (path) => ipcRenderer.invoke(Channels.ejectDrive, path),
   openPrivacySettings: (pane) => ipcRenderer.invoke(Channels.openPrivacySettings, pane),
