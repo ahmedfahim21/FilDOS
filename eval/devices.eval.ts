@@ -15,10 +15,12 @@ import { buildTestbed } from './testbed/build';
 import { MEDIA_FILES } from './testbed/manifest';
 import { join, resolve } from 'node:path';
 import { table, writeResults } from './lib/report';
+import { providerKind } from './lib/harness';
 
 const GPU: Partial<Record<NodeJS.Platform, EmbedDevice>> = { darwin: 'coreml', win32: 'dml', linux: 'cuda' };
 
-describe.skipIf(!process.env.FILDOS_EVAL_DEVICES)('devices eval', () => {
+// Real models only: the smoke run (bag-of-words) promises no downloads.
+describe.skipIf(!process.env.FILDOS_EVAL_DEVICES || providerKind() !== 'real')('devices eval', () => {
   it('times the vision encoder on CPU and GPU', async () => {
     process.env.FILDOS_MODELS_DIR ??= resolve(__dirname, '.models');
     const root = await buildTestbed();
