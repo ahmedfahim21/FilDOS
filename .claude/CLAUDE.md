@@ -21,7 +21,16 @@ npm run lint         # eslint (flat config, eslint.config.mjs)
 npm test             # vitest run — unit + integration tests (CI runs this on all 3 OSes)
 npm run test:watch   # vitest in watch mode
 npm run test:e2e     # build, then Playwright smoke test against the packaged app
+npm run eval         # AI quality evals (search/index/graph/chat) on a generated testbed — see eval/README.md
+npm run eval:smoke   # the same suites on bag-of-words embeddings, no downloads (CI)
 ```
+
+**Evals.** `eval/` measures the AI layer on a deterministic testbed
+(`eval/testbed/manifest.ts`) with production code: the real model runtimes run
+in-process (`modelRuntime.ts` / `llm/llmRuntime.ts`; the `*Worker.ts` files only
+bind them to `parentPort`). Any change to search, indexing, the graph or chat
+reports before/after numbers from `npm run eval` and commits the result JSON
+under `eval/results/`.
 
 **Unit + integration (Vitest).** Tests live beside the code as `*.test.ts`,
 split per feature, reusing the vite aliases via `vitest.config.ts`: renderer
@@ -128,7 +137,7 @@ record its dim); no other code changes for feature-extraction models.
 
 Embeddings run **on-device** via `@huggingface/transformers` on the **WASM**
 backend — zero native deps, matching the `node:sqlite` philosophy.
-`modelWorker.ts` runs in an Electron `utilityProcess` (so load/inference never
+`modelRuntime.ts` (bound by `modelWorker.ts`) runs in an Electron `utilityProcess` (so load/inference never
 block the main process), memoizes one loaded model per id, and is a **second
 main entry** in `electron.vite.config.ts`; `transformers` is ESM-only so the
 worker `import()`s it dynamically. onnxruntime-web's `.wasm` files are copied
@@ -227,7 +236,7 @@ Settings → Searching → "Canvas": NER download + Rebuild.
 files via a fully on-device LLM. The engine is **node-llama-cpp** (llama.cpp
 with prebuilt platform binaries — Metal on Apple Silicon; the one deliberate
 exception to the zero-native-deps rule, because WASM generation is unusably
-slow). `llmWorker.ts` is a third main entry in `electron.vite.config.ts`,
+slow). `llmWorker.ts` (binding `llmRuntime.ts`) is a third main entry in `electron.vite.config.ts`,
 running in its own `utilityProcess`: it downloads GGUF weights from the catalog
 in `src/shared/llmModels.ts` into `userData/models/llm/<id>/` (via
 `FILDOS_LLM_DIR`), keeps **one model resident** (switching disposes the old
