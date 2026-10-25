@@ -13,7 +13,7 @@ import { isUnder } from './ignore';
 
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
-import { INDEX_VERSION, isStale } from './indexer';
+import { FIRST_PASS_CHUNKS, FIRST_PASS_PAGES, INDEX_VERSION, isStale, PASS_PAGES } from './indexer';
 import { MiniSearchKeywordStore } from './keywordStore';
 
 // ---------------------------------------------------------------------------
@@ -450,5 +450,53 @@ describe('Indexer — excluded extensions', () => {
     const { indexer: second } = makeIndexer(provider, [], 'm1', undefined, ['txt']);
     await second.start();
     expect(await aiIndex.getState(join(tmp(), 'a.txt'))).toBeNull();
+  });
+});
+
+describe('Indexer — places and the later pass', () => {
+  it('locates PDF chunks by page and reads a long PDF’s rest in the later pass', async () => {
+    const { makePdf } = await import('../../../../eval/testbed/writers');
+    const pages = Array.from({ length: FIRST_PASS_PAGES + PASS_PAGES + 5 }, (_, i) => `Page ${i + 1} about topic ${i + 1}.`);
+    await fs.writeFile(join(tmp(), 'book.pdf'), makePdf(pages));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.map((r) => r.loc)).toEqual(pages.map((_, i) => i + 1));
+    expect(rows.every((r) => r.kind === 'page')).toBe(true);
+    expect(rows.map((r) => r.chunkIx)).toEqual(pages.map((_, i) => i));
+    // First pass: the first FIRST_PASS_PAGES; the later pass appended the rest.
+    expect(rows.filter((r) => r.pass === 1).map((r) => r.loc)).toEqual(pages.slice(0, FIRST_PASS_PAGES).map((_, i) => i + 1));
+    expect(rows.filter((r) => r.pass === 2)).toHaveLength(pages.length - FIRST_PASS_PAGES);
+    expect(rows.find((r) => r.loc === pages.length)?.text).toBe(`Page ${pages.length} about topic ${pages.length}.`);
+    expect(await aiIndex.getState(join(tmp(), 'book.pdf'))).toMatchObject({ status: 'indexed', info: null });
+  });
+
+  it('reads a long document’s first passages first and appends the rest', async () => {
+    const paragraph = (i: number) => `Paragraph ${i}. ${'word '.repeat(380)}`;
+    await write('long.txt', Array.from({ length: FIRST_PASS_CHUNKS + 10 }, (_, i) => paragraph(i)).join('\n'));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.length).toBeGreaterThan(FIRST_PASS_CHUNKS);
+    expect(rows.map((r) => r.chunkIx)).toEqual(rows.map((_, i) => i));
+    expect(rows.filter((r) => r.pass === 1)).toHaveLength(FIRST_PASS_CHUNKS);
+    expect(rows.every((r) => r.kind === 'text' && r.loc === null)).toBe(true);
+    expect(await aiIndex.getState(join(tmp(), 'long.txt'))).toMatchObject({ status: 'indexed', info: null });
+  });
+
+  it('indexes an unreadable PDF by name, as skipped', async () => {
+    await write('Broken_Report.pdf', 'not a pdf');
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+    await indexer.start();
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.kind, r.text])).toEqual([['name', 'Broken Report pdf']]);
+    expect((await aiIndex.getState(join(tmp(), 'Broken_Report.pdf')))?.status).toBe('skipped');
   });
 });

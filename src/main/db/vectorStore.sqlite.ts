@@ -1,9 +1,10 @@
 import { sep } from 'node:path';
-import type { ChunkVector, SearchMatch } from '@shared/types';
+import type { ChunkKind, ChunkVector, SearchMatch } from '@shared/types';
 import {
   cosine,
   decodeVector,
   encodeVector,
+  type ScoredChunk,
   type SearchOpts,
   type VectorStore,
 } from '../ai/index/vectorStore';
@@ -28,7 +29,25 @@ interface CachedChunk {
   chunkIx: number;
   modelId: string;
   vec: Float32Array;
+  kind: ChunkKind;
+  pass: number;
 }
+
+const toRow = (c: ChunkVector): aiIndex.ChunkRow => ({
+  chunkIx: c.chunkIx,
+  text: c.text,
+  embedding: c.embedding ? encodeVector(c.embedding) : null,
+  modelId: c.modelId,
+  kind: c.kind,
+  loc: c.loc ?? null,
+  locEnd: c.locEnd ?? null,
+  pass: c.pass ?? 1,
+});
+
+const toCached = (chunks: ChunkVector[]): CachedChunk[] =>
+  chunks.flatMap((c) =>
+    c.embedding ? [{ chunkIx: c.chunkIx, modelId: c.modelId, vec: c.embedding, kind: c.kind, pass: c.pass ?? 1 }] : [],
+  );
 
 export class SqliteVectorStore implements VectorStore {
   /** path → its chunk vectors; null until the first search warms it. */
@@ -39,7 +58,7 @@ export class SqliteVectorStore implements VectorStore {
     const cache = new Map<string, CachedChunk[]>();
     for (const row of await aiIndex.allEmbeddings()) {
       const arr = cache.get(row.path) ?? [];
-      arr.push({ chunkIx: row.chunkIx, modelId: row.modelId, vec: decodeVector(row.embedding) });
+      arr.push({ chunkIx: row.chunkIx, modelId: row.modelId, vec: decodeVector(row.embedding), kind: row.kind, pass: row.pass });
       cache.set(row.path, arr);
     }
     this.cache = cache;
@@ -47,20 +66,33 @@ export class SqliteVectorStore implements VectorStore {
   }
 
   async upsert(path: string, chunks: ChunkVector[]): Promise<void> {
-    await aiIndex.replaceChunks(
-      path,
-      chunks.map((c) => ({
-        chunkIx: c.chunkIx,
-        text: c.text,
-        embedding: c.embedding ? encodeVector(c.embedding) : null,
-        modelId: c.modelId,
-      })),
-    );
+    await aiIndex.replaceChunks(path, chunks.map(toRow));
     if (this.cache) {
-      const vectors = chunks.flatMap((c) => (c.embedding ? [{ chunkIx: c.chunkIx, modelId: c.modelId, vec: c.embedding }] : []));
+      const vectors = toCached(chunks);
       if (vectors.length === 0) this.cache.delete(path);
       else this.cache.set(path, vectors);
     }
+  }
+
+  async append(path: string, chunks: ChunkVector[]): Promise<void> {
+    await aiIndex.appendChunks(path, chunks.map(toRow));
+    if (this.cache) {
+      const vectors = toCached(chunks);
+      if (vectors.length) this.cache.set(path, [...(this.cache.get(path) ?? []), ...vectors]);
+    }
+  }
+
+  async scan(query: Float32Array, opts: { underPath?: string; modelId?: string } = {}): Promise<ScoredChunk[]> {
+    const cache = await this.ensureCache();
+    const out: ScoredChunk[] = [];
+    for (const [path, chunks] of cache) {
+      if (opts.underPath && !isUnder(path, opts.underPath)) continue;
+      for (const c of chunks) {
+        if (opts.modelId && c.modelId !== opts.modelId) continue;
+        out.push({ path, chunkIx: c.chunkIx, score: cosine(query, c.vec), kind: c.kind, pass: c.pass });
+      }
+    }
+    return out;
   }
 
   async search(query: Float32Array, opts: SearchOpts = {}): Promise<SearchMatch[]> {

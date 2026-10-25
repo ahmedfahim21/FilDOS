@@ -22,16 +22,14 @@ export const DOC_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
  * guards against pathological files — not memory.
  */
 export const PDF_MAX_BYTES = 512 * 1024 * 1024; // 512 MB
-/** Hard stop on pages parsed from one PDF (with PDF_MAX_TEXT_CHARS, "index the
- * relevant front" of a huge book rather than skipping it). */
-export const PDF_MAX_PAGES = 2000;
+/** Hard stop on pages read from one PDF. Indexing reads long PDFs in steps
+ * (the indexer's later pass), so this only bounds pathological files. */
+export const PDF_MAX_PAGES = 5000;
 /** Upper bound on extracted text, so one huge doc can't dominate the index. */
 export const MAX_TEXT_CHARS = 1_000_000;
 /**
- * Tighter cap for PDFs: embedding is the expensive step (~each 2 KB chunk is
- * an inference), and a book's search identity lives in its front — title, TOC,
- * intro, first chapters. 300 K chars ≈ 100+ pages ≈ ~170 chunks, a fraction of
- * the full-book cost.
+ * Cap on a PDF's text when read whole (chat context, "find similar"). The
+ * index doesn't use it: it reads every page, a step at a time.
  */
 export const PDF_MAX_TEXT_CHARS = 300_000;
 
@@ -116,16 +114,34 @@ async function extractPlain(path: string): Promise<string | null> {
   return cap(buf.toString('utf-8'));
 }
 
-async function extractPdf(path: string): Promise<string | null> {
-  const stat = await fs.stat(path);
+/** One PDF page's text (1-based page number). */
+export interface PdfPage {
+  n: number;
+  text: string;
+}
+
+/** Pages `from`…`to` (1-based, inclusive, clamped) of a PDF, and how many it has. */
+export interface PdfPages {
+  total: number;
+  pages: PdfPage[];
+}
+
+/**
+ * Read a range of a PDF's pages. Pages keep their numbers, so a hit can point
+ * at one. pdfjs reads through a byte-range transport (no whole-file
+ * buffering), so a book-size PDF costs only the pages asked for; a parse that
+ * stalls past PDF_PARSE_TIMEOUT_MS rejects.
+ */
+export async function extractPdfPages(path: string, from = 1, to = PDF_MAX_PAGES): Promise<PdfPages | null> {
+  const safe = assertValidPath(path);
+  const stat = await fs.stat(safe);
   if (!stat.isFile() || stat.size > PDF_MAX_BYTES) return null;
   // Load the legacy build (Node-friendly, no DOM worker) lazily.
   const pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as typeof PdfjsTypes;
 
   // Feed pdfjs byte ranges on demand instead of buffering the whole file:
-  // the xref sits at the tail, and pages fetch only the ranges they need, so
-  // a 300 MB book parses with bounded memory instead of being skipped.
-  const fh = await fs.open(path, 'r');
+  // the xref sits at the tail, and pages fetch only the ranges they need.
+  const fh = await fs.open(safe, 'r');
   const readRange = async (begin: number, end: number): Promise<Uint8Array> => {
     const buf = Buffer.alloc(Math.max(0, Math.min(end, stat.size) - begin));
     await fh.read(buf, 0, buf.length, begin);
@@ -155,16 +171,16 @@ async function extractPdf(path: string): Promise<string | null> {
       useSystemFonts: true,
       verbosity: 0,
     });
-    const parse = async (): Promise<string> => {
+    const parse = async (): Promise<PdfPages> => {
       const doc = await task.promise;
-      let text = '';
-      const pages = Math.min(doc.numPages, PDF_MAX_PAGES);
-      for (let i = 1; i <= pages && text.length < PDF_MAX_TEXT_CHARS; i++) {
-        const page = await doc.getPage(i);
+      const total = Math.min(doc.numPages, PDF_MAX_PAGES);
+      const pages: PdfPage[] = [];
+      for (let n = Math.max(1, from); n <= Math.min(total, to); n++) {
+        const page = await doc.getPage(n);
         const content = await page.getTextContent();
-        text += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n';
+        pages.push({ n, text: content.items.map((it) => ('str' in it ? it.str : '')).join(' ').trim() });
       }
-      return text.length > PDF_MAX_TEXT_CHARS ? text.slice(0, PDF_MAX_TEXT_CHARS) : text;
+      return { total, pages };
     };
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
@@ -179,6 +195,18 @@ async function extractPdf(path: string): Promise<string | null> {
   } finally {
     await fh.close();
   }
+}
+
+/** A PDF's text, front first, up to PDF_MAX_TEXT_CHARS (for chat context and "find similar"). */
+async function extractPdf(path: string): Promise<string | null> {
+  const doc = await extractPdfPages(path);
+  if (!doc) return null;
+  let text = '';
+  for (const p of doc.pages) {
+    if (text.length >= PDF_MAX_TEXT_CHARS) break;
+    text += p.text + '\n';
+  }
+  return text.length > PDF_MAX_TEXT_CHARS ? text.slice(0, PDF_MAX_TEXT_CHARS) : text;
 }
 
 interface MammothLike {

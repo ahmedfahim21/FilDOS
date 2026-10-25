@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
-import type { IndexProgress, IndexState } from '@shared/types';
+import type { ChunkKind, IndexInfo, IndexProgress, IndexState } from '@shared/types';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractText, isDataFile, isExtractable, isImage, isMostlyNumeric } from './extract';
-import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
+import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMostlyNumeric } from './extract';
+import { chunk, chunkPages, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import {
   hasCodebaseMarker,
   isCacheDirTag,
@@ -54,8 +54,30 @@ const EMBED_BATCH = 16;
  * v3: EmbeddingGemma 2 (one space for text and pictures, titled passages);
  * pictures get a keyword entry; mostly-numeric text is keyword-only. The
  * index fingerprint wipes older indexes, so no migration path is kept.
+ * v4: chunks know their place (PDF pages, kinds) and long files get a later
+ * pass instead of being cut off.
  */
-export const INDEX_VERSION = 3;
+export const INDEX_VERSION = 4;
+
+/**
+ * Long files are read in two passes so a fresh index is useful fast: the
+ * first pass reads a PDF's first FIRST_PASS_PAGES pages (a short PDF whole)
+ * and a document's first FIRST_PASS_CHUNKS passages; once nothing else is
+ * queued, the later pass reads the rest a step at a time (PASS_PAGES pages or
+ * FIRST_PASS_CHUNKS passages per step). A book's last pages matter less than
+ * every other file's first ones.
+ */
+export const FIRST_PASS_PAGES = 50;
+export const PASS_PAGES = 30;
+export const FIRST_PASS_CHUNKS = 40;
+
+/** A chunk ready to embed, with what it is and where it sits. */
+interface Piece {
+  chunkIx: number;
+  text: string;
+  kind: ChunkKind;
+  loc?: number;
+}
 
 /** How many bytes to sample from the start and end of a large file for the hash. */
 const HASH_SAMPLE = 65_536; // 64 KB
@@ -118,7 +140,7 @@ type Prep =
   | { kind: 'remove' } // drop from the index: deleted, excluded, or no longer indexable
   | { kind: 'done' } // nothing to embed: fresh, or a metadata-only touch already recorded
   | { kind: 'image'; stat: { mtimeMs: number; size: number } }
-  | { kind: 'text'; chunks: { chunkIx: number; text: string }[]; keywordOnly: boolean; state: IndexState }
+  | { kind: 'text'; chunks: Piece[]; keywordOnly: boolean; state: IndexState }
   | { kind: 'error'; error: unknown };
 
 export interface IndexerDeps {
@@ -237,7 +259,7 @@ export class Indexer {
     }
     this.total = await jobs.countPending();
 
-    if (this.total === 0) {
+    if (this.total === 0 && !(await this.hasPartialFiles())) {
       // Nothing to do. Settle to idle, but only announce it if we'd already
       // shown activity — a silent reconcile leaves the UI untouched.
       if (this.state !== 'idle') {
@@ -256,7 +278,7 @@ export class Indexer {
    */
   async resume(): Promise<void> {
     await jobs.resume(); // re-arm transient errors from last session
-    if ((await jobs.countPending()) === 0) return;
+    if ((await jobs.countPending()) === 0 && !(await this.hasPartialFiles())) return;
     const provider = await this.deps.provider();
     if (!provider) return;
 
@@ -269,6 +291,10 @@ export class Indexer {
     this.ensured.clear();
     this.total = await jobs.countPending();
     await this.drain(provider);
+  }
+
+  private async hasPartialFiles(): Promise<boolean> {
+    return (await aiIndex.partialStates()).length > 0;
   }
 
   /** Make sure a model is downloaded before we embed with it (idempotent). */
@@ -389,7 +415,8 @@ export class Indexer {
    * Process the queue until empty or paused. Two-stage pipeline: `prepare`
    * (I/O — stat, hash, extract, chunk) runs one file ahead of `commit`
    * (embedding in the worker process + DB writes), so disk and inference
-   * overlap instead of serialising.
+   * overlap instead of serialising. Once the queue is empty, the later pass
+   * reads the rest of long files; new jobs interrupt it and go first.
    */
   private async drain(provider: AiProvider): Promise<void> {
     if (this.draining) return;
@@ -397,37 +424,10 @@ export class Indexer {
     this.state = 'indexing';
     this.emit(true);
     try {
-      while (!this.paused) {
-        const batch = await jobs.nextPending(PIPELINE_DEPTH);
-        if (batch.length === 0) break;
-        // prepare() never rejects — failures surface as { kind: 'error' } — so
-        // the lookahead promise can sit unawaited without tripping Node's
-        // unhandled-rejection handling.
-        let next = this.prepare(batch[0]);
-        for (let i = 0; i < batch.length && !this.paused; i++) {
-          const job = batch[i];
-          this.currentFile = job.path;
-          const prep = await next;
-          if (i + 1 < batch.length) next = this.prepare(batch[i + 1]);
-          try {
-            await this.commit(job, prep, provider);
-            await jobs.done(job.path);
-          } catch (err) {
-            // Surface the reason — the UI only shows a count, and "why did
-            // this file fail" is the first debugging question.
-            console.warn(
-              '[fildos] indexing failed:',
-              job.path,
-              err instanceof Error ? err.message : err,
-            );
-            await jobs.markError(job.path);
-            this.errors++;
-          }
-          this.indexed++;
-          this.emit();
-          // Yield so IPC and the UI stay responsive between files.
-          await new Promise((r) => setImmediate(r));
-        }
+      for (;;) {
+        await this.drainJobs(provider);
+        if (this.paused) break;
+        if ((await this.finishLongFiles(provider)) === 'done') break;
       }
     } finally {
       this.draining = false;
@@ -435,6 +435,42 @@ export class Indexer {
     this.currentFile = null;
     this.state = this.paused ? 'paused' : 'idle';
     this.emit(true);
+  }
+
+  /** The first stage of `drain`: process queued jobs until none are left or paused. */
+  private async drainJobs(provider: AiProvider): Promise<void> {
+    while (!this.paused) {
+      const batch = await jobs.nextPending(PIPELINE_DEPTH);
+      if (batch.length === 0) break;
+      // prepare() never rejects — failures surface as { kind: 'error' } — so
+      // the lookahead promise can sit unawaited without tripping Node's
+      // unhandled-rejection handling.
+      let next = this.prepare(batch[0]);
+      for (let i = 0; i < batch.length && !this.paused; i++) {
+        const job = batch[i];
+        this.currentFile = job.path;
+        const prep = await next;
+        if (i + 1 < batch.length) next = this.prepare(batch[i + 1]);
+        try {
+          await this.commit(job, prep, provider);
+          await jobs.done(job.path);
+        } catch (err) {
+          // Surface the reason — the UI only shows a count, and "why did
+          // this file fail" is the first debugging question.
+          console.warn(
+            '[fildos] indexing failed:',
+            job.path,
+            err instanceof Error ? err.message : err,
+          );
+          await jobs.markError(job.path);
+          this.errors++;
+        }
+        this.indexed++;
+        this.emit();
+        // Yield so IPC and the UI stay responsive between files.
+        await new Promise((r) => setImmediate(r));
+      }
+    }
   }
 
   /**
@@ -485,42 +521,176 @@ export class Indexer {
         return { kind: 'done' };
       }
 
-      const text = await extractText(path);
+      if (extname(path).toLowerCase() === '.pdf') return await this.preparePdf(path, stat, contentHash);
 
-      // Calibrate the chunk window for this file's actual token density. A 1000-char
-      // sample is enough to determine chars/token; dense code or CJK runs ~2 chars/token
-      // vs ~4 for English prose, so the default 2048-char window can silently double the
-      // model's 512-token limit without this adjustment.
-      let windowChars = WINDOW;
-      let overlapChars = OVERLAP;
-      if (text && this.deps.countTokens) {
-        const sample = text.slice(0, Math.min(text.length, 1000));
-        const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
-        if (sampleTokens > 0) {
-          const charsPerToken = sample.length / sampleTokens;
-          windowChars = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256));
-          overlapChars = Math.floor(windowChars / 8);
-        }
-      }
-      let chunks: { chunkIx: number; text: string }[] =
-        text === null ? [] : chunk(text, windowChars, overlapChars);
-      if (chunks.length === 0) {
-        // Content can't be read (oversized, parse failure, scanned PDF with no
-        // text layer) or is empty — index the humanized filename instead, so
-        // the file is still findable by name through both search lanes.
-        chunks = [{ chunkIx: 0, text: nameChunkText(path) }];
-      }
+      const text = await extractText(path);
+      const { window, overlap } = await this.windowFor(text);
+      const all = text === null ? [] : chunk(text, window, overlap);
+      // Long documents: the first passages now, the rest in the later pass.
+      const first = all.slice(0, FIRST_PASS_CHUNKS);
+      const info: IndexInfo | null =
+        all.length > FIRST_PASS_CHUNKS ? { chunks: all.length, chunksRead: FIRST_PASS_CHUNKS, nextChunkIx: FIRST_PASS_CHUNKS } : null;
+      // Content can't be read (oversized, parse failure) or is empty — index
+      // the humanized filename instead, so the file is still findable by name.
+      const pieces: Piece[] = first.length
+        ? first.map((c) => ({ chunkIx: c.chunkIx, text: c.text, kind: 'text' }))
+        : [{ chunkIx: 0, text: nameChunkText(path), kind: 'name' }];
+      const status: IndexState['status'] = text === null ? 'skipped' : info ? 'partial' : 'indexed';
       return {
         kind: 'text',
-        chunks,
+        chunks: pieces,
         // Data files and text that's mostly numbers (an export, a table of
         // readings) mean nothing to an embedding but can be looked up exactly.
         keywordOnly: text !== null && (isDataFile(path) || isMostlyNumeric(text)),
-        state: this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed', contentHash),
+        state: { ...this.stateFor(path, stat, modelId, status, contentHash), info },
       };
     } catch (error) {
       return { kind: 'error', error };
     }
+  }
+
+  /**
+   * Calibrate the chunk window for a text's token density. A 1000-char sample
+   * is enough to determine chars/token; dense code or CJK runs ~2 chars/token
+   * vs ~4 for English prose, so the default 2048-char window could otherwise
+   * double the model's 512-token target.
+   */
+  private async windowFor(text: string | null): Promise<{ window: number; overlap: number }> {
+    if (!text || !this.deps.countTokens) return { window: WINDOW, overlap: OVERLAP };
+    const sample = text.slice(0, Math.min(text.length, 1000));
+    const [sampleTokens] = await this.deps.countTokens(this.deps.model, [sample]);
+    if (!(sampleTokens > 0)) return { window: WINDOW, overlap: OVERLAP };
+    const window = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * (sample.length / sampleTokens) * 0.85), 256));
+    return { window, overlap: Math.floor(window / 8) };
+  }
+
+  /** PDFs: page-located chunks of the first pages; a long one stays 'partial' for the later pass. */
+  private async preparePdf(path: string, stat: { mtimeMs: number; size: number }, contentHash: string): Promise<Prep> {
+    const modelId = this.deps.model;
+    const doc = await extractPdfPages(path, 1, FIRST_PASS_PAGES).catch((err: unknown) => {
+      // Corrupt or encrypted: still findable by name (below).
+      console.warn('[fildos] PDF unreadable, indexing its name:', path, err instanceof Error ? err.message : err);
+      return null;
+    });
+    const text = doc?.pages.map((p) => p.text).join('\n') ?? '';
+    const { window, overlap } = await this.windowFor(text || null);
+    const chunks = doc ? chunkPages(doc.pages, window, overlap) : [];
+    const read = doc ? Math.min(doc.total, FIRST_PASS_PAGES) : 0;
+    const info: IndexInfo | null =
+      doc && doc.total > read ? { pages: doc.total, pagesRead: read, nextChunkIx: chunks.length } : null;
+    const pieces: Piece[] = chunks.length
+      ? chunks.map((c) => ({ chunkIx: c.chunkIx, text: c.text, kind: 'page', loc: c.page }))
+      : [{ chunkIx: 0, text: nameChunkText(path), kind: 'name' }];
+    const status: IndexState['status'] = !doc ? 'skipped' : info ? 'partial' : chunks.length ? 'indexed' : 'skipped';
+    return {
+      kind: 'text',
+      chunks: pieces,
+      keywordOnly: false,
+      state: { ...this.stateFor(path, stat, modelId, status, contentHash), info },
+    };
+  }
+
+  /** Embed pieces (or not, when keyword-only) as titled passages, in batches, pacing between them. */
+  private async embedPieces(provider: AiProvider, path: string, pieces: Piece[], keywordOnly: boolean, pass: number) {
+    const modelId = this.deps.model;
+    const vectors: (Float32Array | null)[] = [];
+    const title = basename(path);
+    for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
+      const batch = pieces.slice(i, i + EMBED_BATCH);
+      if (keywordOnly) {
+        vectors.push(...batch.map(() => null));
+        continue;
+      }
+      const t0 = Date.now();
+      vectors.push(...(await provider.embed(modelId, batch.map((c) => c.text), 'passage', batch.map(() => title))));
+      await this.deps.pace?.(Date.now() - t0);
+    }
+    return pieces.map((c, i) => ({
+      chunkIx: c.chunkIx,
+      text: c.text,
+      embedding: vectors[i],
+      modelId,
+      kind: c.kind,
+      loc: c.loc ?? null,
+      locEnd: c.loc ?? null,
+      pass,
+    }));
+  }
+
+  /**
+   * The later pass: read the rest of partial files, one step at a time, oldest
+   * first. Each step appends its chunks and records how far it got, so
+   * stopping between steps loses nothing. Returns 'interrupted' when it
+   * yielded to pausing or to newly queued files (which go first).
+   */
+  private async finishLongFiles(provider: AiProvider): Promise<'done' | 'interrupted'> {
+    for (const start of await aiIndex.partialStates()) {
+      for (;;) {
+        if (this.paused || (await jobs.countPending()) > 0) return 'interrupted';
+        const st = await aiIndex.getState(start.path);
+        if (st?.status !== 'partial' || !st.info) break;
+        const stat = await fs.stat(st.path).catch(() => null);
+        if (!stat || stat.mtimeMs !== st.mtime || stat.size !== st.size) {
+          // Changed or gone since the first pass: index it afresh.
+          await jobs.enqueueMany([st.path], stat ? 'upsert' : 'remove');
+          break;
+        }
+        this.currentFile = st.path;
+        this.emit();
+        await this.ensureModel(provider, this.deps.model);
+        if (await this.passStep(provider, st)) break;
+        await new Promise((r) => setImmediate(r));
+      }
+    }
+    this.currentFile = null;
+    return 'done';
+  }
+
+  /** One later-pass step over a partial file. Returns true when the file is finished. */
+  private async passStep(provider: AiProvider, st: IndexState): Promise<boolean> {
+    const info = st.info!;
+    const path = st.path;
+    let pieces: Piece[];
+    let next: IndexInfo;
+    if (info.pages) {
+      const from = (info.pagesRead ?? 0) + 1;
+      const to = Math.min(info.pages, from + PASS_PAGES - 1);
+      const doc = await extractPdfPages(path, from, to).catch((err: unknown) => {
+        console.warn('[fildos] PDF unreadable past page', from - 1, path, err instanceof Error ? err.message : err);
+        return null;
+      });
+      if (!doc) return this.finishPartial(st); // keeps the pages read so far
+      const text = doc.pages.map((p) => p.text).join('\n');
+      const { window, overlap } = await this.windowFor(text || null);
+      pieces = chunkPages(doc.pages, window, overlap, info.nextChunkIx ?? 0).map((c) => ({
+        chunkIx: c.chunkIx,
+        text: c.text,
+        kind: 'page' as const,
+        loc: c.page,
+      }));
+      next = { ...info, pagesRead: to, nextChunkIx: (info.nextChunkIx ?? 0) + pieces.length };
+    } else {
+      const text = await extractText(path);
+      if (text === null) return this.finishPartial(st);
+      const { window, overlap } = await this.windowFor(text);
+      const read = info.chunksRead ?? 0;
+      const all = chunk(text, window, overlap);
+      pieces = all.slice(read, read + FIRST_PASS_CHUNKS).map((c) => ({ chunkIx: c.chunkIx, text: c.text, kind: 'text' as const }));
+      next = { ...info, chunks: all.length, chunksRead: read + pieces.length, nextChunkIx: read + pieces.length };
+    }
+    const rows = await this.embedPieces(provider, path, pieces, false, 2);
+    await this.deps.vectorStore.append(path, rows);
+    this.deps.keywordStore?.append(path, rows.map((r) => ({ chunkIx: r.chunkIx, text: r.text })));
+    const finished = next.pages ? (next.pagesRead ?? 0) >= next.pages : (next.chunksRead ?? 0) >= (next.chunks ?? 0);
+    if (finished || pieces.length === 0) return this.finishPartial(st);
+    await aiIndex.upsertState({ ...st, info: next });
+    return false;
+  }
+
+  /** Mark a partial file done (what was read stays searchable). */
+  private async finishPartial(st: IndexState): Promise<true> {
+    await aiIndex.upsertState({ ...st, status: 'indexed', info: null });
+    return true;
   }
 
   /** Stage 2: embed and persist a prepared file. Throws on failure so drain() can retry. */
@@ -545,36 +715,17 @@ export class Indexer {
       await this.deps.pace?.(Date.now() - t0);
       await aiIndex.upsertState(this.stateFor(path, prep.stat, modelId, 'indexed'));
       const text = nameChunkText(path);
-      await this.deps.vectorStore.upsert(path, [{ chunkIx: 0, text, embedding, modelId }]);
+      await this.deps.vectorStore.upsert(path, [{ chunkIx: 0, text, embedding, modelId, kind: 'image' }]);
       this.deps.keywordStore?.upsert(path, [{ chunkIx: 0, text }]);
       return;
     }
 
     await aiIndex.upsertState(prep.state);
-    if (prep.chunks.length === 0) {
-      await this.deps.vectorStore.upsert(path, []); // clear any stale chunks
-      this.deps.keywordStore?.remove([path]);
-      return;
-    }
-    const vectors: (Float32Array | null)[] = [];
-    const title = basename(path);
-    for (let i = 0; i < prep.chunks.length; i += EMBED_BATCH) {
-      const batch = prep.chunks.slice(i, i + EMBED_BATCH);
-      if (prep.keywordOnly) {
-        vectors.push(...batch.map(() => null));
-        continue;
-      }
-      const t0 = Date.now();
-      vectors.push(...(await provider.embed(modelId, batch.map((c) => c.text), 'passage', batch.map(() => title))));
-      await this.deps.pace?.(Date.now() - t0);
-    }
-    await this.deps.vectorStore.upsert(
-      path,
-      prep.chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
-    );
+    const rows = await this.embedPieces(provider, path, prep.chunks, prep.keywordOnly, 1);
+    await this.deps.vectorStore.upsert(path, rows);
     this.deps.keywordStore?.upsert(
       path,
-      prep.chunks.map((c) => ({ chunkIx: c.chunkIx, text: c.text })),
+      rows.map((r) => ({ chunkIx: r.chunkIx, text: r.text })),
     );
   }
 

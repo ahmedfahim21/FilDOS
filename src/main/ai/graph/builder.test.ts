@@ -33,7 +33,7 @@ async function seedFile(path: string, angle: number, indexedAt = 1000, text = LO
     status: 'indexed',
   });
   await aiIndex.replaceChunks(path, [
-    { chunkIx: 0, text, embedding: encodeVector(unit(angle)), modelId: 'm1' },
+    { chunkIx: 0, text, embedding: encodeVector(unit(angle)), modelId: 'm1', kind: 'text' },
   ]);
 }
 
