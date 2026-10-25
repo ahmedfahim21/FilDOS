@@ -256,7 +256,15 @@ function get(modelId: string, opts: { vision?: boolean } = {}): Promise<Loaded> 
     // Upgrade a text-only instance to one with the vision encoder.
     const upgraded = existing.then(async (m) => {
       if (m.kind !== 'multimodal' || m.vision) return m;
-      const next = await loadMultimodal(def, true, visionDevice());
+      let next: Loaded;
+      try {
+        next = await loadMultimodal(def, true, visionDevice());
+      } catch (err) {
+        // The failed upgrade drops this loader; retire the text-only instance
+        // too, or it stays loaded (~300 MB) with nothing referencing it.
+        await retire(m);
+        throw err;
+      }
       await retire(m);
       return next;
     });
