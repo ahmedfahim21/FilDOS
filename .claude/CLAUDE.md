@@ -107,7 +107,10 @@ rather than hand-rolling.
   the renderer). The overlay sweeps the folder in view first when scope is
   "Everywhere" and renders **one fused result list** — filename evidence anchors
   the rank, semantic score is discounted against it, both-lane hits get a bump —
-  never separate "semantic vs name" sections. Helpers: `assertValidPath`,
+  never separate "semantic vs name" sections; semantic hits past the search's
+  `strong` count fold under "N weaker matches", snippets highlight «marked»
+  words, and PDF hits carry a "p. N" pill that opens `PagePreview` (pdfjs in
+  the renderer, words highlighted on the page). Helpers: `assertValidPath`,
   `assertValidName`, `uniqueDestination` (" copy" suffixing).
 - `fs/handlers.ts` — registers every `ipcMain.handle`; `wrap()` + `toAppError()`.
 - `fs/watch.ts` — single non-recursive `fs.watch` on the focused dir, debounced,
@@ -133,8 +136,7 @@ One embedding model indexes everything: **EmbeddingGemma 2**
 (`onnx-community/embeddinggemma-2-ONNX`, `kind: 'multimodal'`, 768-d) puts
 text and pictures in **one space**, so a single vector lane ranks every file
 and the graph links pictures to documents. Its text model and vision encoder
-are separate components (`components`), and the reranker/NER entries ride
-along. Rules from the model card are enforced in code:
+are separate components (`components`), and the NER entry rides along. Rules from the model card are enforced in code:
 - task prefixes live only in `@shared/embeddingPrompts.ts` (search query /
   question / `title: <file name> | text:` passages; none on pictures) — changing
   them bumps `PROMPTS_VERSION`;
@@ -174,17 +176,30 @@ an **in-memory vector cache** — vectors only, no texts — warmed on first sea
 and kept coherent by upsert/remove/remap/clear, so queries never re-read every
 BLOB; all chunk-row deletions must route through `vectorStore.remove`, not
 `aiIndex.remove` directly. No ANN/vector DB: dot products over a personal-scale
-index are tens of ms; the cache was the fix). `search.ts` fuses vector + BM25
-(RRF) and reranks only the top 16 candidates at 600 chars each (the
-cross-encoder runs on CPU — more would take seconds); chat retrieval embeds
-with the question prefix (`role: 'question'`). Data/config files (csv, json,
+index are tens of ms; the cache was the fix). **Ranking** (`search.ts`, query
+analysis in `query.ts`): every chunk is scored (`vectorStore.scan`) and
+z-normalized per modality on the query's own scale (later-pass chunks don't
+set it; the scale is index-wide even for a folder-scoped search). A file
+qualifies on meaning at z ≥ 2 **and** cosine ≥ the model's `minMatch`, or on
+words when it holds ≥ half the query's terms (BM25 via MiniSearch, prefixes
+only for terms no file holds as typed); score = z + 2·coverage^1.5 (+1 for a
+named file kind). Lookups (codes/IDs) qualify by words only. So an
+unanswerable query returns **nothing**, and `SearchResult.strong` counts the
+clear matches. No reranker (the eval showed nothing left for it to fix; its
+model is retired). Hits point at their segment: `segment`, PDF `loc` (page),
+a marked `snippet` and a `passage` (what /find and `search_index` hand the
+model). Chat retrieval embeds with the question prefix (`role: 'question'`). Data/config files (csv, json,
 yaml, log, sql…) and mostly-numeric text are **keyword-only** (chunks with a
 null embedding: exact lookup, no vector); pictures' keyword entry is their
 humanized name.
-PDFs parse through a **byte-range file transport** (no whole-file buffering —
-book-size PDFs up to 512 MB extract with bounded memory, capped at 300 K chars:
-a book's search identity is its front matter, and every 2 KB chunk is an
-inference). The queue is **cost-classed** (`index_jobs.priority`: removals +
+PDFs parse page by page through a **byte-range file transport** (no
+whole-file buffering — book-size PDFs up to 512 MB extract with bounded
+memory); chunks never span pages and carry their page (`file_chunks.kind/loc/
+loc_end/pass`). Long files get **two passes**: the first 50 pages of a PDF
+(a short one whole) or 40 passages of a document, then — once the queue is
+empty — the **later pass** reads the rest in steps (30 pages / 40 passages),
+appending pass-2 chunks and recording progress in `index_state.info`
+(status 'partial' until done); new jobs interrupt it and go first. The queue is **cost-classed** (`index_jobs.priority`: removals +
 text first, images next, pdf/docx last) so a fresh index is useful in minutes,
 and the pipeline is **duty-cycled** via an injected `pace()` (powerMonitor:
 ~full speed when the user is away, ~half while active, gentler on battery).
@@ -241,7 +256,7 @@ them like `file_chunks`. `builder.ts` (`GraphBuilder`, deps injected like
 `Indexer`) is **lazy + incremental**: nothing runs until `graph:get`, a prefs
 watermark (`prefs.graph`) marks staleness, rebuilds touch only changed files,
 and the whole thing runs under the indexer's duty-cycle `pace`. The NER model
-(`Xenova/bert-base-NER`) is **opt-in like the reranker** — never
+(`Xenova/bert-base-NER`) is **opt-in** — never
 auto-downloaded; the graph works without it. `snapshot.ts` fuses everything
 into a render-ready `GraphSnapshot` (`@shared/graphTypes`): Louvain communities
 (graphology, seeded rng) → `clusterId`, node cap 4000 by degree.
@@ -318,6 +333,12 @@ Trash, creations/copies never overwrite. Calls stream to the renderer as
 
 ### The database layer (`src/main/db/`)
 
+**Media protocol** (`src/main/media/protocol.ts`): `fildos-media://file/<path>`
+lets the renderer read the bytes of **indexed** PDFs (for page previews) —
+nothing else: non-indexed paths are 403, relative ones 400. It's the one
+narrow widening of the "renderer never touches the disk" rule; CSP allows it in
+`connect-src`/`media-src`.
+
 Everything that isn't the filesystem itself lives in SQLite at
 `userData/fildos.db`. The engine is Node's **built-in `node:sqlite`** (zero
 native deps — nothing to rebuild for Electron's ABI, and vitest can hit the
@@ -387,8 +408,8 @@ setup: theme applies live, the AI opt-in kicks the embedding-model downloads
 behind the remaining steps, a dedicated assistant step makes the chat-model
 pick mandatory (the `llm.specs()` + `recommendLlmModel` fit preselects itself;
 the full `LLM_MODELS` catalog is searchable with family logos; persisted to
-`prefs.ai.llmModelId`), an optional-models step queues the reranker and the
-Canvas NER model, and finishing writes
+`prefs.ai.llmModelId`), an optional-models step queues the Canvas NER model,
+and finishing writes
 `prefs.ai` + starts indexing. All downloads run in the main-process workers,
 so step changes and the onboarding→app handoff never cancel one; extras chain
 behind the core text model so indexing unblocks first. A macOS-only step
