@@ -44,6 +44,9 @@ export interface ChatToolDeps {
 export const READ_CAP = 4_000;
 /** Most entries returned by list_folder. */
 export const LIST_CAP = 50;
+/** Characters of each search_index hit's matched passage handed to the model. */
+export const SEARCH_PASSAGE_CHARS = 600;
+
 
 interface ToolOutcome {
   /** What the renderer shows and the DB stores. */
@@ -77,6 +80,19 @@ function friendly(err: unknown): string {
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const strArray = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+
+/**
+ * A file or folder name the model asked for, cleaned of what it copies from
+ * the sentence around it: surrounding quotes/backticks and trailing dots or
+ * spaces ("Rename it to packing.md." → "packing.md"). Windows rejects trailing
+ * dots anyway, and elsewhere they're never what the user meant.
+ */
+export function newName(value: unknown): string {
+  return (str(value) ?? '')
+    .trim()
+    .replace(/^["'`“‘]+|["'`”’]+$/g, '')
+    .replace(/[.\s]+$/, '');
+}
 
 /** "3 items" / the base name when there's exactly one. */
 function describe(paths: string[]): string {
@@ -156,7 +172,7 @@ async function run(
 
   switch (name) {
     case 'create_file': {
-      const fileName = str(params.name);
+      const fileName = newName(params.name);
       if (!fileName) throw new ChatToolError('No file name given.');
       const dir = folderOf('folder');
       const dest = await uniqueDestination(dir, basename(fileName));
@@ -170,7 +186,7 @@ async function run(
     }
 
     case 'create_folder': {
-      const folderName = str(params.name);
+      const folderName = newName(params.name);
       if (!folderName) throw new ChatToolError('No folder name given.');
       // basename() strips any path separators so a "../.." name can't escape
       // the parent folder (mirrors create_file's handling of `name`).
@@ -216,11 +232,11 @@ async function run(
 
     case 'rename_file': {
       const from = resolveToolPath(params.path, cwd, deps.home());
-      const newName = str(params.new_name);
-      if (!newName) throw new ChatToolError('No new name given.');
+      const target = newName(params.new_name);
+      if (!target) throw new ChatToolError('No new name given.');
       // Enforce the schema's "no path separators" promise so a rename can't
       // move the file elsewhere via `..` (mirrors create_file/create_folder).
-      const entry = await rename(from, basename(newName));
+      const entry = await rename(from, basename(target));
       deps.remap(from, entry.path);
       return {
         call: {
@@ -298,7 +314,9 @@ async function run(
           results: hits.map((h) => ({
             name: h.name,
             path: h.path,
-            snippet: h.snippet.replace(/\s+/g, ' ').slice(0, 200),
+            ...(h.segment === 'page' && h.loc ? { page: h.loc } : {}),
+            // The matched passage: what the model can quote and answer from.
+            passage: (h.passage || h.snippet).replace(/[«»]/g, '').replace(/\s+/g, ' ').trim().slice(0, SEARCH_PASSAGE_CHARS),
           })),
         },
       };

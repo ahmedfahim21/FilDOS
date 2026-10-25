@@ -196,6 +196,28 @@ describe('buildChat', () => {
     expect(built.prompt).toContain('last year tax form');
   });
 
+  it('/find hands the model each hit’s matched passage, with its page', async () => {
+    const recipe = 'Mix the flour and water. ' + 'Fold every half hour. '.repeat(20) + 'Bake at 250°C for 20 minutes.';
+    const hits: SemanticHit[] = [
+      { ...hit('sourdough.md', 'Mix the «flour»…'), passage: recipe },
+      { ...hit('lease.pdf', 'pets clause'), passage: 'Pets need the landlord’s written consent.', segment: 'page', loc: 7 },
+    ];
+    const built = await buildChat(payload({ command: 'find', prompt: 'oven temperature' }), deps({ search: async () => hits }));
+    // The fact at the end of the passage reaches the model (not just the snippet).
+    expect(built.prompt).toContain('Bake at 250°C for 20 minutes.');
+    expect(built.prompt).toContain('lease.pdf (/docs/lease.pdf, page 7)');
+    expect(built.prompt).toContain('Pets need the landlord’s written consent.');
+    expect(built.prompt).not.toContain('«');
+  });
+
+  it('/find falls back to the snippet for hits saved before passages existed', async () => {
+    const built = await buildChat(
+      payload({ command: 'find', prompt: 'tax' }),
+      deps({ search: async () => [hit('taxes.pdf', 'total   tax due')] }),
+    );
+    expect(built.prompt).toContain('"total tax due"');
+  });
+
   it('/find without a search backend fails with EUNSUPPORTED', async () => {
     await expect(
       buildChat(payload({ command: 'find' }), deps({ search: undefined })),

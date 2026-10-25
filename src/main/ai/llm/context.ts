@@ -141,11 +141,21 @@ async function folderBlock(
   return `Folder: ${name} (${path}) — ${visible.length} entries\n${lines.join('\n')}`;
 }
 
-function hitsBlock(hits: SemanticHit[]): string {
+/** Shortest passage per hit, however many hits share the budget. */
+const MIN_PASSAGE_CHARS = 300;
+
+/**
+ * The /find hits as context: each hit's matched passage (where in the file the
+ * answer is, page included), sharing the content budget.
+ */
+function hitsBlock(hits: SemanticHit[], budget: number): string {
   if (!hits.length) return 'Search results: none — nothing in the index matched.';
-  const lines = hits.map(
-    (h, i) => `${i + 1}. ${h.name} (${h.path})\n   "${h.snippet.replace(/\s+/g, ' ').slice(0, 200)}"`,
-  );
+  const per = Math.max(MIN_PASSAGE_CHARS, Math.floor(budget / hits.length));
+  const lines = hits.map((h, i) => {
+    const where = h.segment === 'page' && h.loc ? `, page ${h.loc}` : '';
+    const text = (h.passage || h.snippet).replace(/[«»]/g, '').replace(/\s+/g, ' ').slice(0, per);
+    return `${i + 1}. ${h.name} (${h.path}${where})\n   "${text}"`;
+  });
   return `Search results (best first):\n${lines.join('\n')}`;
 }
 
@@ -172,7 +182,7 @@ export async function buildChat(
       );
     }
     hits = await deps.search(prompt, budgets.findHits);
-    blocks.push(hitsBlock(hits));
+    blocks.push(hitsBlock(hits, budgets.content));
   }
 
   // Mentioned folders first (cheap listings), then files sharing the budget.

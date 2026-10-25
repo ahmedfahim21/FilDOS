@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { namesIn, useTempDir } from '../../fs/fixtures';
-import { executeChatTool, READ_CAP, type ChatToolDeps } from './tools';
+import type { SemanticHit } from '@shared/types';
+import { executeChatTool, newName, READ_CAP, SEARCH_PASSAGE_CHARS, type ChatToolDeps } from './tools';
 
 /**
  * Integration tests for the Assistant's file tools: real files in a temp
@@ -15,6 +16,25 @@ interface FakeDeps extends ChatToolDeps {
   remapped: [string, string][];
   dropped: string[];
   searched: [string, number][];
+}
+
+/** A search hit for `path`, as the index returns it. */
+function hit(path: string): SemanticHit {
+  const name = path.split(/[\\/]/).pop()!;
+  return {
+    name,
+    path,
+    relativePath: name,
+    isDirectory: false,
+    isSymlink: false,
+    isHidden: false,
+    size: 12,
+    ext: name.split('.').pop()!,
+    modified: 0,
+    created: 0,
+    score: 0.9,
+    snippet: 'quarterly   revenue\tsummary',
+  };
 }
 
 function fakeDeps(home: string): FakeDeps {
@@ -34,22 +54,7 @@ function fakeDeps(home: string): FakeDeps {
     extract: (p) => fs.readFile(p, 'utf8').catch(() => null),
     search: async (query, k) => {
       deps.searched.push([query, k]);
-      return [
-        {
-          name: 'report.md',
-          path: join(home, 'report.md'),
-          relativePath: 'report.md',
-          isDirectory: false,
-          isSymlink: false,
-          isHidden: false,
-          size: 12,
-          ext: 'md',
-          modified: 0,
-          created: 0,
-          score: 0.9,
-          snippet: 'quarterly   revenue\tsummary',
-        },
-      ];
+      return [hit(join(home, 'report.md'))];
     },
     home: () => home,
   };
@@ -208,16 +213,48 @@ describe('executeChatTool', () => {
     expect(unknown.call.summary).toContain('explode');
   });
 
-  it('searches the index and normalizes snippet whitespace', async () => {
+  it('searches the index and hands the model each hit’s matched passage', async () => {
     const deps = fakeDeps(tmp());
     const { call, result } = await executeChatTool('search_index', { query: 'revenue', k: 4 }, tmp(), deps);
     expect(call.ok).toBe(true);
     expect(call.summary).toContain('1 result');
     expect(deps.searched).toEqual([['revenue', 4]]);
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       ok: true,
-      results: [{ name: 'report.md', snippet: 'quarterly revenue summary' }],
+      results: [{ name: 'report.md', path: join(tmp(), 'report.md'), passage: 'quarterly revenue summary' }],
     });
+  });
+
+  it('names the page for PDF hits and caps the passage', async () => {
+    const deps = fakeDeps(tmp());
+    deps.search = async () => [
+      {
+        ...hit(join(tmp(), 'book.pdf')),
+        segment: 'page' as const,
+        loc: 120,
+        passage: 'k'.repeat(SEARCH_PASSAGE_CHARS + 50),
+      },
+    ];
+    const { result } = await executeChatTool('search_index', { query: 'kingfisher' }, tmp(), deps);
+    const [r] = (result as { results: { page?: number; passage: string }[] }).results;
+    expect(r.page).toBe(120);
+    expect(r.passage).toHaveLength(SEARCH_PASSAGE_CHARS);
+  });
+
+  it.each([
+    ['packing.md.', 'packing.md'],
+    ['"notes.txt"', 'notes.txt'],
+    ['`draft.md` ', 'draft.md'],
+    ['report.final.pdf', 'report.final.pdf'],
+  ])('cleans the model-supplied name %s to %s', (input, out) => {
+    expect(newName(input)).toBe(out);
+  });
+
+  it('renames to the cleaned name when the model copies the sentence’s full stop', async () => {
+    await fs.writeFile(join(tmp(), 'packing-list.md'), 'x');
+    const { call } = await executeChatTool('rename_file', { path: 'packing-list.md', new_name: 'packing.md.' }, tmp(), fakeDeps(tmp()));
+    expect(call.ok).toBe(true);
+    expect(await namesIn(tmp())).toEqual(['packing.md']);
   });
 
   it('defaults and caps the search result count', async () => {
