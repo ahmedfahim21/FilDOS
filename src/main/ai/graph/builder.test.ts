@@ -52,6 +52,9 @@ function fakeProvider(opts: { nerReady?: boolean } = {}) {
     async embedMedia() {
       return [];
     },
+    async embedDecoded() {
+      return [];
+    },
     async extractEntities(_m, texts): Promise<EntitySpan[][]> {
       nerCalls += texts.length;
       return texts.map((t) =>

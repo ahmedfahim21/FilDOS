@@ -75,6 +75,11 @@ export interface SearchHit extends Entry {
   relativePath: string;
 }
 
+/** Decoded media handed to the embedder: an RGBA video frame, or a mono 16 kHz audio window. */
+export type DecodedInput =
+  | { kind: 'frame'; width: number; height: number; rgba: Uint8Array }
+  | { kind: 'audio'; samples: Float32Array };
+
 /** Where EmbeddingGemma 2's vision encoder runs (its text model always runs on the CPU). */
 export type EmbedDevice = 'cpu' | 'coreml' | 'dml' | 'cuda';
 
@@ -273,7 +278,7 @@ export interface IndexState {
  * page's text, a picture, or the humanized file name (the fallback for files
  * whose content can't be read).
  */
-export type ChunkKind = 'text' | 'page' | 'image' | 'name';
+export type ChunkKind = 'text' | 'page' | 'image' | 'name' | 'frame' | 'audio';
 
 /** A chunk paired with its embedding, ready to persist in the vector store.
  * A null embedding is a keyword-only chunk (e.g. mostly-numeric text). */
@@ -283,7 +288,7 @@ export interface ChunkVector {
   embedding: Float32Array | null;
   modelId: string;
   kind: ChunkKind;
-  /** Page number (1-based) for 'page' chunks. */
+  /** Page number (1-based) for 'page' chunks; seconds into the file for 'frame'/'audio'. */
   loc?: number | null;
   locEnd?: number | null;
   /** 2 for chunks the later pass added (they don't set the score scale). */

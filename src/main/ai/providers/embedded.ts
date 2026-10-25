@@ -1,7 +1,7 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { setPriority } from 'node:os';
 import { join } from 'node:path';
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, DecodedInput } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
 import type { EntitySpan } from '@shared/graphTypes';
 import type { AiProvider } from './types';
@@ -139,6 +139,10 @@ export class EmbeddedAiProvider implements AiProvider {
 
   async embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]> {
     return vectors(await this.request<unknown>('embedMedia', { modelId, kind, paths, budget: opts?.budget }));
+  }
+
+  async embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embedDecoded', { modelId, inputs }));
   }
 
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {

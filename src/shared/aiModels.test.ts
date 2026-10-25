@@ -21,8 +21,10 @@ describe('AI model catalog', () => {
     const def = getModelDef(EMBED_MODEL_ID)!;
     expect(def.kind).toBe('multimodal');
     expect(EMBED_DIMS).toContain(def.dim);
-    expect(def.components?.map((c) => c.session)).toEqual(['model', 'vision_encoder']);
-    expect(def.sizeMb).toBe(def.components!.reduce((s, c) => s + c.sizeMb, 0));
+    expect(def.components?.map((c) => c.session)).toEqual(['model', 'vision_encoder', 'audio_encoder']);
+    // The audio encoder downloads on first use, so the up-front size excludes it.
+    expect(def.components!.filter((c) => c.lazy).map((c) => c.session)).toEqual(['audio_encoder']);
+    expect(def.sizeMb).toBe(def.components!.filter((c) => !c.lazy).reduce((s, c) => s + c.sizeMb, 0));
   });
 
   it('never loads float16 weights (EmbeddingGemma 2 overflows fp16)', () => {

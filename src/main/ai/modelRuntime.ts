@@ -29,12 +29,13 @@ import { existsSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { basename, join } from 'node:path';
 import type { ProgressInfo } from '@huggingface/transformers';
-import type { AiModelStatus, EmbedDevice, DeviceCheckResult } from '@shared/types';
+import type { AiModelStatus, DecodedInput, EmbedDevice, DeviceCheckResult } from '@shared/types';
 import type { EntitySpan } from '@shared/graphTypes';
 import { getModelDef, type AiModelDef, type EmbedRole, type ModelDtype } from '@shared/aiModels';
 import { promptedText } from '@shared/embeddingPrompts';
 import { mergeBioSpans, type BioToken } from './graph/ner';
 import { rowsOf } from './vectors';
+import { FRAME_BUDGET } from '../media/signals';
 import { PHOTO_BUDGET } from './index/ignore';
 
 /** Read on use, so an in-process host can set the env before the first call. */
@@ -70,6 +71,7 @@ export type RuntimeRequest =
   | { type: 'download'; modelId: string }
   | { type: 'embed'; modelId: string; texts: string[]; role?: EmbedRole; titles?: string[] }
   | { type: 'embedMedia'; modelId: string; kind: 'image'; paths: string[]; budget?: number }
+  | { type: 'embedDecoded'; modelId: string; inputs: DecodedInput[] }
   | { type: 'countTokens'; modelId: string; texts: string[] }
   | { type: 'extractEntities'; modelId: string; texts: string[] }
   | { type: 'deviceCheck'; modelId: string; devices: EmbedDevice[]; images: string[] };
@@ -80,7 +82,7 @@ interface Tensor {
   dims: number[];
 }
 type Callable = (inputs: unknown) => Promise<Record<string, Tensor>>;
-type Processor = ((text: unknown, images?: unknown) => Promise<unknown>) & {
+type Processor = ((text: unknown, images?: unknown, audio?: unknown) => Promise<unknown>) & {
   image_processor: { max_soft_tokens: number };
 };
 type TokenizerFn = (texts: string[], opts: { padding: boolean; truncation: boolean; max_length?: number }) => {
@@ -93,9 +95,12 @@ interface Disposable {
 /** Token-classification pipeline (NER): BIO subword tokens per text. */
 type NerFn = (text: string) => Promise<BioToken[]>;
 
+/** EmbeddingGemma 2's optional encoders (the text model is always loaded). */
+type Encoder = 'vision' | 'audio';
+
 interface Multimodal {
   kind: 'multimodal';
-  vision: boolean;
+  encoders: Set<Encoder>;
   model: Callable & Disposable;
   processor: Processor;
   tokenizer: TokenizerFn;
@@ -148,10 +153,10 @@ function onnxFile(session: string, dtype: ModelDtype): string {
   return `${session}${dtype === 'q8' ? '_quantized' : ''}.onnx`;
 }
 
-/** True once every file a model needs is in the cache dir. */
+/** True once every file a model needs up front (lazy components aside) is in the cache dir. */
 function modelCached(def: AiModelDef): boolean {
   const dir = join(cacheDir(), ...def.id.split('/'), 'onnx');
-  const sessions = def.components?.map((c) => c.session) ?? ['model'];
+  const sessions = def.components?.filter((c) => !c.lazy).map((c) => c.session) ?? ['model'];
   return sessions.every((s) => {
     const file = join(dir, onnxFile(s, def.dtype));
     // Multimodal exports keep their weights beside the graph.
@@ -173,22 +178,22 @@ function progressReporter(def: AiModelDef) {
   };
 }
 
-async function loadMultimodal(def: AiModelDef, vision: boolean, device: EmbedDevice): Promise<Multimodal> {
+async function loadMultimodal(def: AiModelDef, encoders: Set<Encoder>, device: EmbedDevice): Promise<Multimodal> {
   const t = await lib();
   const onProgress = progressReporter(def);
   const config = (await t.AutoConfig.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Record<string, unknown>;
-  config.audio_config = null;
-  if (!vision) config.vision_config = null;
+  if (!encoders.has('audio')) config.audio_config = null;
+  if (!encoders.has('vision')) config.vision_config = null;
   const model = (await t.AutoModel.from_pretrained(def.id, {
     config: config as never,
-    dtype: { model: def.dtype, vision_encoder: def.dtype },
-    device: { model: 'cpu', vision_encoder: device },
+    dtype: { model: def.dtype, vision_encoder: def.dtype, audio_encoder: def.dtype },
+    device: { model: 'cpu', vision_encoder: device, audio_encoder: 'cpu' },
     session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1 },
     progress_callback: onProgress,
   })) as unknown as Callable & Disposable;
   const processor = (await t.AutoProcessor.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Processor;
   const tokenizer = (await t.AutoTokenizer.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as TokenizerFn;
-  return { kind: 'multimodal', vision, model, processor, tokenizer, inFlight: 0, retired: false };
+  return { kind: 'multimodal', encoders, model, processor, tokenizer, inFlight: 0, retired: false };
 }
 
 /** Run `fn` on an instance, disposing it afterwards if it was retired meanwhile. */
@@ -209,18 +214,19 @@ async function retire(m: Multimodal): Promise<void> {
 }
 
 /**
- * Load (once) a catalog model. For the multimodal model, `vision` asks for the
- * vision encoder too: a loaded text-only instance is then disposed and replaced,
- * and a vision instance already loaded serves text requests as well.
+ * Load (once) a catalog model. For the multimodal model, `encoders` asks for
+ * optional encoders too: an instance missing one is replaced by one with the
+ * union (the old one is disposed once its calls finish), and a fuller
+ * instance serves narrower requests as well.
  */
-function get(modelId: string, opts: { vision?: boolean } = {}): Promise<Loaded> {
+function get(modelId: string, opts: { encoders?: Encoder[] } = {}): Promise<Loaded> {
   const def = defOf(modelId);
+  const wanted = opts.encoders ?? [];
   const existing = loaders.get(modelId);
-  if (existing && def.kind === 'multimodal' && opts.vision) {
-    // Upgrade a text-only instance to one with the vision encoder.
+  if (existing && def.kind === 'multimodal' && wanted.length) {
     const upgraded = existing.then(async (m) => {
-      if (m.kind !== 'multimodal' || m.vision) return m;
-      const next = await loadMultimodal(def, true, visionDevice());
+      if (m.kind !== 'multimodal' || wanted.every((e) => m.encoders.has(e))) return m;
+      const next = await loadMultimodal(def, new Set([...m.encoders, ...wanted]), visionDevice());
       await retire(m);
       return next;
     });
@@ -231,7 +237,7 @@ function get(modelId: string, opts: { vision?: boolean } = {}): Promise<Loaded> 
   const promise = (async (): Promise<Loaded> => {
     const t = await lib();
     const opts2 = { dtype: def.dtype, progress_callback: progressReporter(def) };
-    if (def.kind === 'multimodal') return loadMultimodal(def, opts.vision ?? false, visionDevice());
+    if (def.kind === 'multimodal') return loadMultimodal(def, new Set(wanted), visionDevice());
     return { kind: 'ner', ner: (await t.pipeline('token-classification', def.id, opts2)) as unknown as NerFn };
   })();
   return track(modelId, promise);
@@ -259,8 +265,8 @@ function track(modelId: string, promise: Promise<Loaded>): Promise<Loaded> {
   return tracked;
 }
 
-async function multimodal(modelId: string, vision = false): Promise<Multimodal> {
-  const m = await get(modelId, { vision });
+async function multimodal(modelId: string, encoders: Encoder[] = []): Promise<Multimodal> {
+  const m = await get(modelId, { encoders });
   if (m.kind !== 'multimodal') fail('EUNSUPPORTED', `${modelId} is not an embedding model.`);
   return m;
 }
@@ -291,7 +297,7 @@ async function embedText(modelId: string, texts: string[], role: EmbedRole = 'pa
 async function embedImages(modelId: string, paths: string[], budget?: number): Promise<Float32Array[]> {
   if (!paths.length) return [];
   const def = defOf(modelId);
-  const m = await multimodal(modelId, true);
+  const m = await multimodal(modelId, ['vision']);
   const t = await lib();
   const images = await Promise.all(paths.map((p) => t.RawImage.read(p)));
   return using(m, async () => {
@@ -300,6 +306,34 @@ async function embedImages(modelId: string, paths: string[], budget?: number): P
     const inputs = await m.processor(null, images.map((img) => [img]));
     return sentenceEmbeddings(m, inputs, paths.length, def.dim);
   });
+}
+
+/**
+ * Embed already-decoded media: video frames (RGBA, at the frame vision budget)
+ * and mono 16 kHz audio windows, one vector each, in input order. The audio
+ * encoder loads (and downloads, the first time) only when a window arrives.
+ */
+async function embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
+  if (!inputs.length) return [];
+  const kinds = new Set(inputs.map((i) => i.kind));
+  if (kinds.size > 1) fail('EINVAL', 'One embedDecoded call takes one kind of input.');
+  const def = defOf(modelId);
+  const t = await lib();
+  if (kinds.has('frame')) {
+    const frames = inputs as Extract<DecodedInput, { kind: 'frame' }>[];
+    const m = await multimodal(modelId, ['vision']);
+    const images = frames.map((f) => new t.RawImage(new Uint8ClampedArray(f.rgba), f.width, f.height, 4).rgb());
+    return using(m, async () => {
+      m.processor.image_processor.max_soft_tokens = FRAME_BUDGET;
+      return sentenceEmbeddings(m, await m.processor(null, images.map((img) => [img])), frames.length, def.dim);
+    });
+  }
+  const windows = inputs as Extract<DecodedInput, { kind: 'audio' }>[];
+  const m = await multimodal(modelId, ['audio']);
+  // A flat list of clips is one sample per clip.
+  return using(m, async () =>
+    sentenceEmbeddings(m, await m.processor(null, null, windows.map((w) => w.samples)), windows.length, def.dim),
+  );
 }
 
 /** Token counts from the model's own tokenizer — no inference. */
@@ -332,7 +366,7 @@ async function deviceCheck(modelId: string, devices: EmbedDevice[], images: stri
   // One picture per call, as indexing embeds them (and some GPU providers
   // can't take a large batch).
   const run = async (device: EmbedDevice) => {
-    const m = await loadMultimodal(def, true, device);
+    const m = await loadMultimodal(def, new Set(['vision']), device);
     try {
       m.processor.image_processor.max_soft_tokens = PHOTO_BUDGET;
       const inputs = await Promise.all(raw.map((img) => m.processor(null, [[img]])));
@@ -366,13 +400,16 @@ export async function handle(req: RuntimeRequest): Promise<unknown> {
     case 'status':
       return statusFor(req.modelId);
     case 'download':
-      // Multimodal: fetch every component (text + vision) so indexing never waits.
-      await get(req.modelId, { vision: defOf(req.modelId).kind === 'multimodal' });
+      // Multimodal: fetch the up-front components (text + vision) so indexing
+      // never waits; the audio encoder comes with the first recording.
+      await get(req.modelId, { encoders: defOf(req.modelId).kind === 'multimodal' ? ['vision'] : [] });
       return undefined;
     case 'embed':
       return embedText(req.modelId, req.texts, req.role, req.titles);
     case 'embedMedia':
       return embedImages(req.modelId, req.paths, req.budget);
+    case 'embedDecoded':
+      return embedDecoded(req.modelId, req.inputs);
     case 'countTokens':
       return countTokens(req.modelId, req.texts);
     case 'extractEntities':

@@ -36,6 +36,8 @@ export interface ModelComponent {
   /** What it unlocks, for the UI. */
   label: string;
   sizeMb: number;
+  /** Downloaded the first time a file needs it, not with the model (sizeMb excludes it). */
+  lazy?: boolean;
 }
 
 export interface AiModelDef {
@@ -92,9 +94,10 @@ export const AI_MODELS: AiModelDef[] = [
     dtype: 'q8',
     components: [
       { session: 'model', label: 'Text & documents', sizeMb: 314 },
-      { session: 'vision_encoder', label: 'Pictures', sizeMb: 195 },
+      { session: 'vision_encoder', label: 'Pictures & video', sizeMb: 195 },
+      { session: 'audio_encoder', label: 'Sound', sizeMb: 340, lazy: true },
     ],
-    description: 'Text and pictures in one space, in 100+ languages — search any file by describing it.',
+    description: 'Text, pictures, video and sound in one space, in 100+ languages — search any file by describing it.',
     // Provisional, from the eval testbed: unrelated pairs sit near 0.5, clear matches 0.7–0.8.
     relevance: { floor: 0.5, ceil: 0.8 },
     // Eval testbed: every expected answer ≥ 0.608; unanswerable queries top out at 0.56–0.59.

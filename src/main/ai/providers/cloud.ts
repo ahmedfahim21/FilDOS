@@ -34,6 +34,10 @@ export class CloudAiProvider implements AiProvider {
     throw notSupported();
   }
 
+  async embedDecoded(): Promise<Float32Array[]> {
+    throw notSupported();
+  }
+
   async generate(): Promise<string> {
     throw notSupported();
   }

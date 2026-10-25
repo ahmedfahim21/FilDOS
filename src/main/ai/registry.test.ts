@@ -18,6 +18,7 @@ function fakeProvider(id: string): AiProvider {
     download: async () => {},
     embed: async () => [],
     embedMedia: async () => [],
+    embedDecoded: async () => [],
   };
 }
 
