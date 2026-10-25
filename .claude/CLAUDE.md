@@ -399,7 +399,11 @@ lets the renderer read the bytes of **indexed** PDFs and audio/video (page
 previews, playing from a moment) — nothing else: non-indexed paths are 403, relative ones 400.
 Quick Look adds `fildos-media://preview/<token>`: `fs:preview` (`fs/preview.ts`)
 grants a one-time token for the one file the user opened in it (latest 32
-kept; unknown tokens 403). It's the one
+kept; unknown tokens 403). Both protocols (and `fildos-decode://`) answer
+through `media/fileResponse.ts`, which honours byte ranges (206 +
+Content-Range, Accept-Ranges, 416): Electron's `net.fetch` of a file:// URL
+returns a plain 200 without them, and Chromium won't seek such a source — a
+recording would only ever play from 0:00. It's the one
 narrow widening of the "renderer never touches the disk" rule; CSP allows it in
 `connect-src`/`media-src`.
 
