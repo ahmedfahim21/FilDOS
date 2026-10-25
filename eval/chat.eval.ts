@@ -13,6 +13,10 @@
  *  - tool: a file action in a scratch copy of the testbed — the expected tool
  *    ran and the disk ends in the expected state (read-only cases must change
  *    nothing)
+ *
+ * Generation is greedy (temperature 0) so a before/after comparison measures
+ * the change, not sampling noise; everything else is the model's resolved
+ * production config.
  */
 import { promises as fs } from 'node:fs';
 import { readFileSync } from 'node:fs';
@@ -49,6 +53,8 @@ interface CaseResult {
   tool: boolean | null;
   disk: boolean | null;
   tools: string[];
+  /** Each tool call's outcome as the UI would show it. */
+  calls: { name: string; ok: boolean; summary: string; params: unknown }[];
   seconds: number;
   answer: string;
 }
@@ -120,10 +126,10 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     list: listDir,
     search: (q, k) => search(ix, q, k),
   });
-  const calls: ChatToolCall[] = [];
+  const calls: (ChatToolCall & { params: unknown })[] = [];
   onToolCall = (callId, name, params) => {
     void executeChatTool(name, (params ?? {}) as Record<string, unknown>, cwd, toDeps).then(({ call, result }) => {
-      calls.push(call);
+      calls.push({ ...call, params });
       resolveTool(callId, result);
     });
   };
@@ -137,6 +143,7 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     system: assembleSystem(built, { cwd }),
     history: [],
     prompt: built.prompt,
+    config: { temperature: 0 },
     tools: true,
   })) as string;
   const seconds = (performance.now() - started) / 1000;
@@ -165,6 +172,7 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     tool: c.expectTool ? toolNames.includes(c.expectTool) : null,
     disk,
     tools: toolNames,
+    calls: calls.map(({ name, ok, summary, params }) => ({ name, ok, summary, params })),
     seconds,
     answer: answer.slice(0, 400),
   };
@@ -202,7 +210,10 @@ describe.skipIf(!MODEL)('chat eval', () => {
         .join('  ')}`,
     );
     for (const r of results.filter((x) => x.answered === false || x.tool === false || x.disk === false)) {
-      console.log(`\n[${r.kind}] ${r.prompt}\n  tools: ${r.tools.join(', ') || '(none)'}\n  answer: ${r.answer.replace(/\s+/g, ' ')}`);
+      const calls = r.calls
+        .map((c) => `${c.name}(${JSON.stringify(c.params)}) ${c.ok ? 'ok' : 'FAILED'}: ${c.summary}`)
+        .join('; ');
+      console.log(`\n[${r.kind}] ${r.prompt}\n  tools: ${calls || '(none)'}\n  answer: ${r.answer.replace(/\s+/g, ' ')}`);
     }
     const file = await writeResults('chat', ix.kind, { model: MODEL, summary, cases: results });
     console.log(`\nWrote ${file}`);

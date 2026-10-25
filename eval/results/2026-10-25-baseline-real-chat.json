@@ -1,0 +1,217 @@
+{
+  "suite": "chat",
+  "provider": "real",
+  "label": "baseline",
+  "date": "2026-10-25",
+  "model": "qwen3-4b",
+  "summary": {
+    "retrieved": 1,
+    "cited": 1,
+    "answered": 0.625,
+    "tool": 1,
+    "disk": 0.6666666666666666,
+    "meanSeconds": 18.765585370700002
+  },
+  "cases": [
+    {
+      "prompt": "what temperature should I bake the sourdough at",
+      "kind": "find",
+      "retrieved": true,
+      "cited": true,
+      "answered": false,
+      "tool": null,
+      "disk": null,
+      "tools": [],
+      "calls": [],
+      "seconds": 14.311729916,
+      "answer": "\n\nThe provided search results do not include information about baking temperatures for sourdough. The relevant file (\"sourdough.md\") details fermentation steps but not oven temperature. You’ll need to consult a baking guide or recipe resource for this information."
+    },
+    {
+      "prompt": "am I allowed to keep a dog in my flat",
+      "kind": "find",
+      "retrieved": true,
+      "cited": true,
+      "answered": false,
+      "tool": null,
+      "disk": null,
+      "tools": [],
+      "calls": [],
+      "seconds": 13.632691458,
+      "answer": "\n\nThe most relevant file is **lease-harbour-lane.pdf** (residential lease agreement). This document outlines terms of the lease, which may include provisions about keeping pets. The other files (e.g., corgi-care.md) discuss pet care but don’t address lease-specific restrictions. The lease agreement is the only source that directly pertains to your flat’s rules regarding pets."
+    },
+    {
+      "prompt": "when is my tax return due",
+      "kind": "find",
+      "retrieved": true,
+      "cited": true,
+      "answered": true,
+      "tool": null,
+      "disk": null,
+      "tools": [],
+      "calls": [],
+      "seconds": 13.062943542000001,
+      "answer": "\n\nThe most relevant file is **tax-notes.md**. It explicitly states: \"Self-assessment deadline is 31 January.\" This directly answers your question about the tax return deadline. \n\nOther files in the results do not mention tax deadlines."
+    },
+    {
+      "prompt": "how much do I owe Northwind Design",
+      "kind": "find",
+      "retrieved": true,
+      "cited": true,
+      "answered": true,
+      "tool": null,
+      "disk": null,
+      "tools": [],
+      "calls": [],
+      "seconds": 23.965538332999998,
+      "answer": "\n\nThe most relevant file is **orders-export.csv**. It lists an entry for Northwind Design with an amount of **980.00 EUR** (order ID: ORD-48151625). This indicates the user owes Northwind Design **980.00 EUR** based on this transaction. \n\nAdditionally, **invoice-march.txt** mentions a total of **2,340.00 EUR** for Harbour Studio, but this is unrelated to the user's debt to Northwind Design."
+    },
+    {
+      "prompt": "what causes the ERR_K7Q2LM checkout failure",
+      "kind": "find",
+      "retrieved": true,
+      "cited": true,
+      "answered": true,
+      "tool": null,
+      "disk": null,
+      "tools": [],
+      "calls": [],
+      "seconds": 14.693587417000002,
+      "answer": "\n\nThe most relevant file is **bug-report-ERR.txt**. It explicitly states: \"Bug: checkout fails with ERR_K7Q2LM after the payment provider times out. Steps: add an item, pay by card, wait 30 s. The retry path never re-reads the session and the order is lost.\" This directly links ERR_K7Q2LM to a payment timeout causing session data loss during retry. Other files do not mention this error code."
+    },
+    {
+      "prompt": "Which of my files says when the corgi gets his vaccinations, and when is it?",
+      "kind": "ask",
+      "retrieved": true,
+      "cited": true,
+      "answered": false,
+      "tool": true,
+      "disk": null,
+      "tools": [
+        "search_index"
+      ],
+      "calls": [
+        {
+          "name": "search_index",
+          "ok": true,
+          "summary": "Searched \"corgi vaccinations\" — 8 results",
+          "params": {
+            "query": "corgi vaccinations",
+            "k": 8
+          }
+        }
+      ],
+      "seconds": 22.454382624999997,
+      "answer": "\n\n\n\nNone of the identified files mention vaccination schedules for the corgi. The only relevant file (\"corgi-care.md\") focuses on diet and exercise rather than medical appointments. You may need to check other files not returned in this search or confirm with a pet care log."
+    },
+    {
+      "prompt": "Create a folder called archive here and copy lisbon-itinerary.md into it.",
+      "kind": "tool",
+      "retrieved": null,
+      "cited": null,
+      "answered": null,
+      "tool": true,
+      "disk": true,
+      "tools": [
+        "create_folder",
+        "copy_files"
+      ],
+      "calls": [
+        {
+          "name": "create_folder",
+          "ok": true,
+          "summary": "Created folder \"archive\"",
+          "params": {
+            "folder": null,
+            "name": "archive"
+          }
+        },
+        {
+          "name": "copy_files",
+          "ok": true,
+          "summary": "Copied \"lisbon-itinerary.md\" to \"archive\"",
+          "params": {
+            "paths": [
+              "lisbon-itinerary.md"
+            ],
+            "destination": "archive"
+          }
+        }
+      ],
+      "seconds": 25.754305083,
+      "answer": "\n\n\n\nCreated folder \"archive\" in the current directory and copied \"lisbon-itinerary.md\" into it. The file is now located at:  \n`/var/folders/cp/k0p3p8dd2fx6c55035p8mfq40000gn/T/fildos-chat-eval-CHOCJV/Home/Travel/archive/lisbon-itinerary.md`"
+    },
+    {
+      "prompt": "Rename packing-list.md to packing.md.",
+      "kind": "tool",
+      "retrieved": null,
+      "cited": null,
+      "answered": null,
+      "tool": true,
+      "disk": false,
+      "tools": [
+        "rename_file"
+      ],
+      "calls": [
+        {
+          "name": "rename_file",
+          "ok": true,
+          "summary": "Renamed \"packing-list.md\" to \"packing.md.\"",
+          "params": {
+            "path": "packing-list.md",
+            "new_name": "packing.md."
+          }
+        }
+      ],
+      "seconds": 19.899437791000004,
+      "answer": "\n\n\n\nThe file has been renamed to **packing.md**."
+    },
+    {
+      "prompt": "List the files in this folder.",
+      "kind": "tool",
+      "retrieved": null,
+      "cited": null,
+      "answered": true,
+      "tool": true,
+      "disk": null,
+      "tools": [
+        "list_folder"
+      ],
+      "calls": [
+        {
+          "name": "list_folder",
+          "ok": true,
+          "summary": "Listed \"Finance\"",
+          "params": {
+            "path": null
+          }
+        }
+      ],
+      "seconds": 18.088414875000016,
+      "answer": "\n\n\n\nHere are the files in this folder:\n\n- **Budget 2026.docx** (1.58 KB)  \n- **invoice-march.txt** (244 B)  \n- **measurements.txt** (1.87 KB)  \n- **orders-export.csv** (214 B)  \n- **receipt.png** (656.87 KB)  \n- **tax-notes.md** (220 B)  \n\nLet me know if you need details about any specific file!"
+    },
+    {
+      "prompt": "What does weeknight-pasta.md say to add to the sauce?",
+      "kind": "tool",
+      "retrieved": null,
+      "cited": null,
+      "answered": true,
+      "tool": true,
+      "disk": true,
+      "tools": [
+        "read_file"
+      ],
+      "calls": [
+        {
+          "name": "read_file",
+          "ok": true,
+          "summary": "Read \"weeknight-pasta.md\"",
+          "params": {
+            "path": "/var/folders/cp/k0p3p8dd2fx6c55035p8mfq40000gn/T/fildos-chat-eval-SngCLz/Home/Recipes/weeknight-pasta.md"
+          }
+        }
+      ],
+      "seconds": 21.792822667,
+      "answer": "\n\n\n\nThe recipe suggests adding **a pinch of chilli** to the tomato sauce. Here's the process:\n\n1. Soften **garlic** in **olive oil**.\n2. Add **a tin of chopped tomatoes** and **a pinch of chilli**.\n3. Simmer for 15 minutes.\n4. Toss **drained pasta** with the sauce, **basil**, and **parmesan**.\n\nSo, the sauce is made with tomatoes, garlic, olive oil, and chili, then combined with pasta, basil, and "
+    }
+  ]
+}
