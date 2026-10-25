@@ -22,6 +22,11 @@ It calls a small, typed set of preload APIs — `window.fsapi`, `window.watcher`
 `window.chats`, `window.graph`, and so on — each defined in `src/preload/index.ts`
 and typed in `src/preload/index.d.ts`.
 
+The one narrow exception is the read-only `fildos-media://` protocol. It serves
+the bytes of indexed PDFs and recordings, for page previews and playing from a
+moment, and of the single file the user opened in Quick Look, through a
+one-time token. Anything else gets a 403.
+
 ## Security model
 
 <Warning>

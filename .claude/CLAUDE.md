@@ -381,7 +381,10 @@ Trash, creations/copies never overwrite. Calls stream to the renderer as
 
 **Media protocol** (`src/main/media/protocol.ts`): `fildos-media://file/<path>`
 lets the renderer read the bytes of **indexed** PDFs and audio/video (page
-previews, playing from a moment) — nothing else: non-indexed paths are 403, relative ones 400. It's the one
+previews, playing from a moment) — nothing else: non-indexed paths are 403, relative ones 400.
+Quick Look adds `fildos-media://preview/<token>`: `fs:preview` (`fs/preview.ts`)
+grants a one-time token for the one file the user opened in it (latest 32
+kept; unknown tokens 403). It's the one
 narrow widening of the "renderer never touches the disk" rule; CSP allows it in
 `connect-src`/`media-src`.
 
@@ -446,6 +449,18 @@ State via React context (no Redux):
   Back/Forward arrows traverse them alongside folders, and `nav.page` selects
   which renders. `App.tsx` owns selection, the global keymap (inert while a page
   is shown), context-menu/dialog state, and DnD glue (incl. drop-on-tag).
+- **Quick Look** (`components/QuickLook.tsx`): Space (or the context menu) on a
+  local file. `fs:preview` returns its kind: image/pdf/video/audio as a grant
+  URL, text/code inline (first 128 KB, binary sniffed by NUL/invalid UTF-8),
+  DOCX via the extraction worker, HEIC/TIFF decoded by the OS
+  (`osThumbnail`), folders as an item count. One fixed stage for every kind;
+  ↑↓ step the selection (`stepQuickLook` in `App.tsx`), Space/Esc close. It
+  reuses `PdfViewer` + `Pager` (`PagePreview.tsx`) and `MediaPlayer`
+  (`MediaPreview.tsx`). The renderer's pdfjs is the **legacy build**: pdfjs 6's
+  modern build needs `Uint8Array.prototype.toHex`, missing from Electron 37's
+  Chromium. Its key handler stops propagation and the App keymap ignores
+  `defaultPrevented` keys — a state change mid-keydown re-registers the App
+  listener, which would otherwise reopen it.
 
 First-run onboarding (`components/onboarding/`): main.tsx mounts `Onboarding`
 instead of `App` when `needsOnboarding(prefs)` (steps.ts — fresh profiles only;
