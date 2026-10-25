@@ -3,10 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 // which Electron 37's Chromium (138) doesn't have yet.
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { mediaUrl } from '@/lib/media';
-import { useToast } from '@/state/toast';
 import { cn } from '@/lib/utils';
 import { Icon } from './Icon';
 
@@ -33,6 +30,7 @@ export function PdfViewer({
   page,
   words,
   width = PAGE_WIDTH,
+  height,
   onTotal,
   className,
   pageClassName,
@@ -43,6 +41,8 @@ export function PdfViewer({
   /** Lowercased words to highlight. */
   words: string[];
   width?: number;
+  /** When set, the page also fits this height (the whole page shows, no scrolling). */
+  height?: number;
   /** Called once the document's page count is known. */
   onTotal?: (total: number) => void;
   /** Classes for the scroll box around the page. */
@@ -55,7 +55,8 @@ export function PdfViewer({
   const onTotalRef = useRef(onTotal);
   onTotalRef.current = onTotal;
   const [boxes, setBoxes] = useState<Box[]>([]);
-  const [height, setHeight] = useState<number | null>(null);
+  /** The rendered page's size; null until it has painted. */
+  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +68,8 @@ export function PdfViewer({
       onTotalRef.current?.(doc.numPages);
       const p = await doc.getPage(Math.min(Math.max(1, page), doc.numPages));
       const base = p.getViewport({ scale: 1 });
-      const viewport = p.getViewport({ scale: width / base.width });
+      const scale = height ? Math.min(width / base.width, height / base.height) : width / base.width;
+      const viewport = p.getViewport({ scale });
       const canvas = canvasRef.current;
       if (!canvas || cancelled) return;
       const ratio = window.devicePixelRatio || 1;
@@ -77,7 +79,7 @@ export function PdfViewer({
       canvas.style.height = `${viewport.height}px`;
       await p.render({ canvas, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise;
       if (cancelled) return;
-      setHeight(viewport.height);
+      setPageSize({ width: viewport.width, height: viewport.height });
       // Highlight text runs that contain a query word.
       const found: Box[] = [];
       if (words.length) {
@@ -102,20 +104,25 @@ export function PdfViewer({
       cancelled = true;
       void task.destroy();
     };
-  }, [src, page, words, width]);
+  }, [src, page, words, width, height]);
 
   return (
-    <div className={cn('overflow-x-hidden overflow-y-auto', className)}>
+    // A page fitted to a height never needs scrolling; one fitted to a width may.
+    <div className={cn(height ? 'overflow-hidden' : 'overflow-x-hidden overflow-y-auto', className)}>
       {failed ? (
         <div className="text-muted-foreground p-6 text-xs">Couldn’t show this page — {failed}</div>
       ) : (
-        <div className={cn('relative mx-auto bg-white', pageClassName)} style={{ width, minHeight: height ?? width * 1.294 }}>
-          {height === null && <div className="bg-muted/60 absolute inset-0 animate-pulse" />}
-          <canvas ref={canvasRef} className={cn('block transition-opacity duration-200', height === null && 'opacity-0')} />
+        <div
+          className={cn('relative mx-auto bg-white', pageClassName)}
+          // Before the first paint, hold a US-letter-shaped space so nothing jumps.
+          style={{ width: pageSize?.width ?? width, minHeight: pageSize?.height ?? height ?? width * 1.294 }}
+        >
+          {pageSize === null && <div className="bg-muted/60 absolute inset-0 animate-pulse" />}
+          <canvas ref={canvasRef} className={cn('block transition-opacity duration-200', pageSize === null && 'opacity-0')} />
           {boxes.map((b, i) => (
             <span
               key={i}
-              className="bg-mango/30 pointer-events-none absolute rounded-[2px]"
+              className="bg-mint/30 pointer-events-none absolute rounded-[2px]"
               style={{ left: b.left, top: b.top, width: b.width, height: b.height }}
             />
           ))}
@@ -146,57 +153,5 @@ export function Pager({ page, total, onPage }: { page: number; total: number | n
         <Icon name="chevron" size={14} />
       </Button>
     </div>
-  );
-}
-
-/**
- * A PDF page a search hit pointed at, rendered in-app with the query's words
- * highlighted where they sit on the page. Opening in the default app starts at
- * page one (most viewers can't be told a page), so this is where "the clause
- * on page 7" is actually shown.
- */
-export function PagePreview({
-  path,
-  name,
-  page,
-  words,
-  onClose,
-}: {
-  path: string;
-  name: string;
-  page: number;
-  /** Lowercased words to highlight. */
-  words: string[];
-  onClose: () => void;
-}) {
-  const { notifyError } = useToast();
-  const [current, setCurrent] = useState(page);
-  const [total, setTotal] = useState<number | null>(null);
-  const openExternally = () =>
-    window.fsapi.open(path).then((r) => {
-      if (!r.ok) notifyError(r.error);
-    });
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] w-auto max-w-none gap-3 overflow-hidden sm:max-w-none">
-        <div className="pr-8">
-          <DialogTitle className="text-foreground truncate text-sm font-normal">{name}</DialogTitle>
-        </div>
-        <PdfViewer
-          src={mediaUrl(path)}
-          page={current}
-          words={words}
-          onTotal={setTotal}
-          className="border-border rounded-md border"
-        />
-        <div className="flex items-center justify-between gap-2">
-          <Pager page={current} total={total} onPage={setCurrent} />
-          <Button size="sm" onClick={openExternally}>
-            Open in default app
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

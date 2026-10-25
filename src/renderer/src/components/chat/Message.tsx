@@ -50,8 +50,7 @@ export function SourcesCard({ hits, onOpen }: { hits: SemanticHit[]; onOpen: (hi
       })}
       {preview && placeOf(preview) && (
         <PlacePreview
-          path={preview.path}
-          name={preview.name}
+          entry={preview}
           place={placeOf(preview)!}
           words={markedWords(preview.snippet)}
           onClose={() => setPreview(null)}
