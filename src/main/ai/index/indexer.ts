@@ -183,6 +183,11 @@ export interface IndexerDeps {
    * indexed.
    */
   decodeMedia?: (path: string) => Promise<DecodedMedia>;
+  /**
+   * Milliseconds the indexer must wait before more work (0: go on) — "index
+   * only at set hours" in the app. Asked between files.
+   */
+  gate?: () => Promise<number>;
 }
 
 export class Indexer {
@@ -201,6 +206,8 @@ export class Indexer {
   private roots: string[] = [];
   /** Dataset-like folders the current crawl skipped (reported in progress). */
   private datasets: string[] = [];
+  /** When a gate holds the indexer back: the epoch ms it may run again. */
+  private waitingUntil: number | undefined;
   /** Per-run cache: does this directory contain a codebase marker? */
   private readonly codebaseDirs = new Map<string, boolean>();
   /** Models confirmed downloaded during the current run (avoids repeat calls). */
@@ -224,6 +231,7 @@ export class Indexer {
       currentFile: this.currentFile,
       message: this.message,
       datasets: this.datasets.length ? [...this.datasets] : undefined,
+      waitingUntil: this.waitingUntil,
     };
   }
 
@@ -447,9 +455,30 @@ export class Indexer {
     this.emit(true);
   }
 
+  /**
+   * Wait while the gate holds indexing back, re-asking at least every minute
+   * (so pausing, or a change to the hours, takes effect promptly).
+   */
+  private async holdForGate(): Promise<void> {
+    if (!this.deps.gate) return;
+    for (;;) {
+      const ms = await this.deps.gate();
+      if (ms <= 0 || this.paused) break;
+      this.waitingUntil = Date.now() + ms;
+      this.emit(true);
+      await new Promise((r) => setTimeout(r, Math.min(ms, 60_000)));
+    }
+    if (this.waitingUntil !== undefined) {
+      this.waitingUntil = undefined;
+      this.emit(true);
+    }
+  }
+
   /** The first stage of `drain`: process queued jobs until none are left or paused. */
   private async drainJobs(provider: AiProvider): Promise<void> {
     while (!this.paused) {
+      await this.holdForGate();
+      if (this.paused) break;
       const batch = await jobs.nextPending(PIPELINE_DEPTH);
       if (batch.length === 0) break;
       // prepare() never rejects — failures surface as { kind: 'error' } — so
@@ -647,6 +676,8 @@ export class Indexer {
           await jobs.enqueueMany([st.path], stat ? 'upsert' : 'remove');
           break;
         }
+        await this.holdForGate();
+        if (this.paused) return 'interrupted';
         this.currentFile = st.path;
         this.emit();
         await this.ensureModel(provider, this.deps.model);

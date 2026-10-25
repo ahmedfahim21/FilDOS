@@ -228,6 +228,15 @@ function ModelRow({
   );
 }
 
+/** Minutes after midnight ↔ "HH:MM" for <input type="time">. */
+function toClock(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+function fromClock(value: string): number {
+  const [h, m] = value.split(':').map(Number);
+  return h * 60 + m;
+}
+
 /** "Apple Silicon · Metal GPU · 12 GB memory · 8 cores" from the worker's probe. */
 function specsLine(specs: LlmSystemSpecs): string {
   const family =
@@ -845,6 +854,12 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
         indexSubtitle: ix.scanned > 0 ? `${ix.scanned.toLocaleString()} files found` : null,
       };
     }
+    if (ix.state === 'indexing' && ix.waitingUntil) {
+      return {
+        indexTitle: 'Waiting for indexing hours',
+        indexSubtitle: `Resumes at ${new Date(ix.waitingUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      };
+    }
     if (ix.state === 'indexing') {
       const ext = ix.currentFile?.split('.').pop()?.toLowerCase() ?? '';
       const verb =
@@ -1100,6 +1115,51 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Set hours */}
+                <div className="border-border flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-foreground text-sm">Index only at set hours</div>
+                      <div className="text-muted-foreground text-2xs">
+                        Read and embed files only between these times. Search works at any hour.
+                      </div>
+                    </div>
+                    <Toggle
+                      checked={indexing.hours !== null}
+                      onChange={(v) =>
+                        void indexing.setHours(v ? { start: 60, end: 420 } : null).then((r) => !r.ok && notifyError(r.error))
+                      }
+                      label="Index only at set hours"
+                    />
+                  </div>
+                  {indexing.hours && (
+                    <div className="text-muted-foreground flex items-center gap-2 text-2xs">
+                      From
+                      <input
+                        type="time"
+                        value={toClock(indexing.hours.start)}
+                        onChange={(e) =>
+                          void indexing
+                            .setHours({ ...indexing.hours!, start: fromClock(e.target.value) })
+                            .then((r) => !r.ok && notifyError(r.error))
+                        }
+                        className="border-border bg-card text-foreground rounded-md border px-1.5 py-0.5 font-mono text-xs"
+                      />
+                      to
+                      <input
+                        type="time"
+                        value={toClock(indexing.hours.end)}
+                        onChange={(e) =>
+                          void indexing
+                            .setHours({ ...indexing.hours!, end: fromClock(e.target.value) })
+                            .then((r) => !r.ok && notifyError(r.error))
+                        }
+                        className="border-border bg-card text-foreground rounded-md border px-1.5 py-0.5 font-mono text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Ambient mode */}

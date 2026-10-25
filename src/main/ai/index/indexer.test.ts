@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IndexProgress } from '@shared/types';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
@@ -582,5 +582,41 @@ describe('Indexer — audio and video', () => {
     const plain = makeIndexer(fakeProvider().provider);
     await plain.indexer.start();
     expect(plain.progress()?.errors ?? 0).toBe(0);
+  });
+});
+
+describe('Indexer — gate (set hours)', () => {
+  it('waits while the gate holds it back, reporting when it resumes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+    try {
+      await write('a.txt', 'hello');
+      const { provider } = fakeProvider();
+      const waits = [90_000, 0];
+      const seen: (number | undefined)[] = [];
+      const indexer = new Indexer({
+        provider: async () => provider,
+        model: 'm1',
+        config: async () => ({ roots: [tmp()], excludes: [] }),
+        vectorStore: new SqliteVectorStore(),
+        emit: (p) => seen.push(p.waitingUntil),
+        ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+        gate: async () => waits.shift() ?? 0,
+      });
+      let done = false;
+      const run = indexer.start().then(() => {
+        done = true;
+      });
+      // Real file I/O runs between fake-timer steps; advance a minute at a time until it finishes.
+      for (let i = 0; i < 10 && !done; i++) {
+        await new Promise((r) => setImmediate(r));
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      await run;
+      expect(seen.some((w) => w !== undefined)).toBe(true);
+      expect(seen.at(-1)).toBeUndefined();
+      expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

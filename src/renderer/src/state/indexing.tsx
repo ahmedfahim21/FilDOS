@@ -1,5 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { IndexProgress, Result } from '@shared/types';
+
+/** Indexing hours as stored in prefs. */
+type IndexHoursPref = { start: number; end: number } | null;
 import { playNotify } from '@/lib/sounds';
 
 interface IndexingContextValue {
@@ -11,6 +14,8 @@ interface IndexingContextValue {
   intervalMinutes: number;
   /** Keep indexing (tray-resident) after the last window closes. */
   ambient: boolean;
+  /** "Index only at set hours" (minutes after midnight), or null for any hour. */
+  hours: IndexHoursPref;
   /** File extensions (lowercase, no dot) the indexer never touches. */
   excludeExtensions: string[];
   start: () => Promise<Result<void>>;
@@ -22,6 +27,7 @@ interface IndexingContextValue {
   pickExcludes: () => Promise<void>;
   setIntervalMinutes: (minutes: number) => Promise<void>;
   setAmbient: (enabled: boolean) => Promise<void>;
+  setHours: (hours: IndexHoursPref) => Promise<Result<void>>;
   setExcludeExtensions: (exts: string[]) => Promise<void>;
 }
 
@@ -37,6 +43,7 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
   const [excludes, setExcludes] = useState<string[]>([]);
   const [intervalMinutes, setInterval] = useState(15);
   const [ambient, setAmbientState] = useState(true);
+  const [hours, setHoursState] = useState<IndexHoursPref>(null);
   const [excludeExtensions, setExcludeExtsState] = useState<string[]>([]);
 
   const refreshExcludes = useCallback(async () => {
@@ -51,6 +58,7 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
     window.prefs.get().then((p) => {
       if (p.index?.intervalMinutes) setInterval(p.index.intervalMinutes);
       setAmbientState(p.index?.ambient ?? true);
+      setHoursState(p.index?.hours ?? null);
       setExcludeExtsState(p.index?.excludeExtensions ?? []);
     });
     refreshExcludes();
@@ -101,6 +109,11 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
     setAmbientState(enabled); // optimistic
     await window.index.setAmbient(enabled);
   }, []);
+  const setHours = useCallback(async (next: IndexHoursPref) => {
+    const res = await window.index.setHours(next);
+    if (res.ok) setHoursState(next);
+    return res;
+  }, []);
   const setExcludeExtensions = useCallback(async (exts: string[]) => {
     setExcludeExtsState(exts); // optimistic; replaced by the normalized list
     const res = await window.index.setExcludeExtensions(exts);
@@ -114,6 +127,8 @@ export function IndexingProvider({ children }: { children: ReactNode }) {
         excludes,
         intervalMinutes,
         ambient,
+        hours,
+        setHours,
         excludeExtensions,
         start,
         pause,

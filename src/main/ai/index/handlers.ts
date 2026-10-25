@@ -14,6 +14,7 @@ import { pace } from '../pace';
 import { clearGraph } from '../graph/handlers';
 import { Indexer } from './indexer';
 import { mergeIndexPrefs } from './indexPrefs';
+import { msUntilAllowed, parseHours } from './hours';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
@@ -88,6 +89,7 @@ const indexer = new Indexer({
   emit: broadcast,
   pace,
   decodeMedia: (path) => mediaDecoder.decode(path),
+  gate: async () => msUntilAllowed(parseHours((await getPrefs()).index?.hours), new Date()),
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -218,6 +220,17 @@ export function registerIndexHandlers(): void {
 
   ipcMain.handle(Channels.indexSetAmbient, (_e, enabled: boolean) =>
     wrap<void>(async () => patchConfig({ ambient: !!enabled })),
+  );
+
+  ipcMain.handle(Channels.indexSetHours, (_e, hours: unknown) =>
+    wrap<void>(async () => {
+      const parsed = hours === null ? null : parseHours(hours);
+      if (hours !== null && !parsed) {
+        throw Object.assign(new Error('Indexing hours must be whole minutes within a day.'), { code: 'EINVAL' });
+      }
+      const prefs = await getPrefs();
+      await setPrefs({ index: { ...prefs.index, hours: parsed } });
+    }),
   );
 
   ipcMain.handle(Channels.indexSetExcludeExtensions, (_e, exts: string[]) =>

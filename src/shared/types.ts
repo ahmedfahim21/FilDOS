@@ -203,6 +203,8 @@ export interface Prefs {
     ambient?: boolean;
     /** What produced the stored vectors (`indexFingerprint`); a mismatch rebuilds the index. */
     fingerprint?: string;
+    /** "Index only at set hours": minutes after local midnight; null/absent = any hour. */
+    hours?: { start: number; end: number } | null;
   };
   /** Knowledge-graph build bookkeeping (see src/main/ai/graph/builder.ts). */
   graph?: {
@@ -324,6 +326,8 @@ export interface IndexProgress {
   message?: string;
   /** Folders the last crawl left out because they look like datasets. */
   datasets?: string[];
+  /** Set while "index only at set hours" holds indexing back: when it resumes (epoch ms). */
+  waitingUntil?: number;
 }
 
 /** Indexing configuration persisted in `prefs.index`. */
@@ -365,6 +369,8 @@ export interface IndexApi {
   setInterval(minutes: number): Promise<Result<void>>;
   /** Keep indexing in the background after the last window closes. */
   setAmbient(enabled: boolean): Promise<Result<void>>;
+  /** Index only between these local times (minutes after midnight); null = any hour. */
+  setHours(hours: { start: number; end: number } | null): Promise<Result<void>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
   search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SearchResult>>;
   /** "Find similar": rank indexed files by similarity to the given file. */
