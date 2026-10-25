@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import type { Entry, RecentItem, SearchHit, SemanticHit, Tag } from '@shared/types';
+import type { Entry, SearchHit, SemanticHit, Tag } from '@shared/types';
 import { nameMatchTier } from '@shared/searchMatch';
 import { useToast } from '@/state/toast';
 import { useAi } from '@/state/ai';
-import { baseName, parentOf } from '@/lib/path';
+import { baseName, compactDir, parentOf } from '@/lib/path';
 import { resolveDroppedPaths } from '@/lib/dragState';
 import { fileLogo } from '@/lib/fileLogo';
 import { Marked, markedWords } from '@/lib/marks';
 import { placeLabel, placeOf, type Place } from '@/lib/place';
+import { formatDate, formatSize } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -19,9 +20,13 @@ import {
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
-import { PlacePreview } from './PlacePreview';
+import { FilePreview } from './FilePreview';
+import { Button } from '@/components/ui/button';
 
 type Scope = 'folder' | 'all';
+
+/** How long the cursor rests on a row before the preview follows it (sweeping the list loads nothing). */
+const PREVIEW_DELAY_MS = 120;
 type Modified = 'any' | 'day' | 'week' | 'month';
 
 /** One unified result row, whatever lane it came from. */
@@ -134,7 +139,7 @@ function modifiedCutoff(m: Modified): number {
   return 0;
 }
 
-/** Minimal Entry for rows that arrive without one (recents). */
+/** Minimal Entry for a path that arrives without one (the dropped "find similar" file). */
 function pseudoEntry(path: string, name: string, modified: number): Entry {
   const dot = name.lastIndexOf('.');
   return {
@@ -194,10 +199,8 @@ export function SearchOverlay({
   /** How many of aiHits are clear matches; the rest fold as weaker ones. */
   const [aiStrong, setAiStrong] = useState(0);
   const [showWeak, setShowWeak] = useState(false);
-  const [preview, setPreview] = useState<{ path: string; name: string; place: Place; words: string[] } | null>(null);
   const [nameHits, setNameHits] = useState<SearchHit[]>([]);
   const [tagFiles, setTagFiles] = useState<Entry[]>([]);
-  const [recents, setRecents] = useState<RecentItem[]>([]);
   const [tagMap, setTagMap] = useState<Record<string, number[]>>({});
   const [loading, setLoading] = useState(false);
   const [activeIx, setActiveIx] = useState(0);
@@ -225,7 +228,6 @@ export function SearchOverlay({
     setAiHits([]);
     setAiStrong(0);
     setNameHits([]);
-    window.recents.list(12).then((r) => r.ok && setRecents(r.data));
     // Focus after the panel mounts.
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(t);
@@ -235,11 +237,10 @@ export function SearchOverlay({
   // own handler stops propagation before this fires).
   useEffect(() => {
     if (!open) return;
-    // With a page preview up, Escape closes only the preview (Radix handles it).
-    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && !preview && onClose();
+    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onEsc);
     return () => window.removeEventListener('keydown', onEsc);
-  }, [open, onClose, preview]);
+  }, [open, onClose]);
 
   const scopePath = scope === 'folder' && rootPath ? rootPath : undefined;
 
@@ -359,9 +360,10 @@ export function SearchOverlay({
 
   // ── Assemble sections through the client-side filters ───────────────────
   const sections = useMemo<Section[]>(() => {
-    // Abbreviate the home dir in path sublines — "~/Documents/…" reads, a full
-    // "/Users/name/Documents/…" is noise repeated on every row.
-    const pretty = (p: string) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
+    // The subline names the folder, compactly ("~/Books", "…/Trips/2024"): the
+    // name is already on the line above, and a full path repeated on every row
+    // drowns the names.
+    const pretty = (p: string) => compactDir(parentOf(p), home);
     const cutoff = modifiedCutoff(modified);
     const passes = (e: Entry) =>
       (typeKeys.size === 0 ||
@@ -390,17 +392,8 @@ export function SearchOverlay({
           },
         ];
       }
-      return [
-        {
-          title: 'Recent',
-          icon: 'clock' as const,
-          iconClass: 'text-mango',
-          rows: recents.map((r) => ({
-            entry: pseudoEntry(r.path, r.name, r.openedAt),
-            sub: pretty(r.path),
-          })),
-        },
-      ];
+      // Nothing typed: the panel waits for a query (no recents list).
+      return [];
     }
 
     // "Find similar" has no name lane — show the semantic list as-is.
@@ -456,7 +449,7 @@ export function SearchOverlay({
       out.push({ title: 'Weaker matches', icon: 'search' as const, iconClass: '', rows: weakRows });
     }
     return out;
-  }, [text, similarFile, aiHits, aiStrong, showWeak, nameHits, tagFiles, recents, typeKeys, tagId, tagMap, modified, tags, home]);
+  }, [text, similarFile, aiHits, aiStrong, showWeak, nameHits, tagFiles, typeKeys, tagId, tagMap, modified, tags, home]);
 
   /** Weaker matches folded under the results (a toggle instead of rows), until expanded. */
   const foldedWeak = useMemo(() => {
@@ -471,6 +464,39 @@ export function SearchOverlay({
   useEffect(() => {
     setActiveIx((ix) => Math.max(0, Math.min(ix, flat.length - 1)));
   }, [flat.length]);
+
+  // A new search starts on its best match.
+  useEffect(() => {
+    setActiveIx(0);
+  }, [text, similarFile, tagId]);
+
+  /** Results get the split view: the list beside a preview of the active row. */
+  const split = flat.length > 0;
+  const activeRow = split ? flat[activeIx] : undefined;
+
+  // The preview follows the active row once the cursor rests on it; the first
+  // row (the best match) shows at once.
+  const [shown, setShown] = useState<Row | null>(null);
+  // Read, not followed: whether something is showing only decides whether to wait.
+  const showingRef = useRef(false);
+  showingRef.current = shown !== null;
+  useEffect(() => {
+    if (!activeRow) {
+      setShown(null);
+      return;
+    }
+    if (!showingRef.current) {
+      setShown(activeRow);
+      return;
+    }
+    const t = setTimeout(() => setShown(activeRow), PREVIEW_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [activeRow]);
+  const shownWords = useMemo(() => {
+    if (!shown) return [];
+    const marked = markedWords(shown.sub);
+    return marked.length ? marked : queryWords(text);
+  }, [shown, text]);
 
   // Keep the active row visible while arrowing through the list.
   useEffect(() => {
@@ -546,7 +572,8 @@ export function SearchOverlay({
         aria-label="Search"
       >
         <div
-          className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[10vh] w-180 max-w-[94vw] duration-150"
+          // One size whatever it shows — waiting, results, preview — so nothing jumps as they arrive.
+          className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[8vh] w-[min(1040px,94vw)] duration-150"
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={onKeyDown}
           onDragOver={(e) => {
@@ -633,7 +660,7 @@ export function SearchOverlay({
                       className={cn(
                         'ease-snappy h-5 rounded-full px-2 transition duration-150',
                         scope === s
-                          ? 'bg-background text-foreground font-medium shadow-sm'
+                          ? 'bg-background text-foreground shadow-sm'
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
@@ -656,7 +683,7 @@ export function SearchOverlay({
                         return next;
                       })
                     }
-                    className={cn(CHIP_BASE, active ? cn(f.active, 'font-medium') : CHIP_IDLE)}
+                    className={cn(CHIP_BASE, active ? f.active : CHIP_IDLE)}
                   >
                     <span className={cn('size-1.5 rounded-full', f.dot)} />
                     {f.label}
@@ -668,7 +695,7 @@ export function SearchOverlay({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className={cn(CHIP_BASE, activeTag ? 'font-medium' : CHIP_IDLE)}
+                      className={cn(CHIP_BASE, !activeTag && CHIP_IDLE)}
                       style={
                         activeTag
                           ? {
@@ -713,7 +740,7 @@ export function SearchOverlay({
                     className={cn(
                       CHIP_BASE,
                       modified !== 'any'
-                        ? 'border-blueberry/40 bg-blueberry/10 text-blueberry font-medium'
+                        ? 'border-blueberry/40 bg-blueberry/10 text-blueberry'
                         : CHIP_IDLE,
                     )}
                   >
@@ -736,8 +763,18 @@ export function SearchOverlay({
               </DropdownMenu>
             </div>
 
-            {/* ── Results ── */}
-            <div ref={listRef} className="max-h-[54vh] flex-1 overflow-y-auto py-1.5">
+            {/* ── Results, with the active one previewed beside them ── */}
+            <div className="flex h-[min(620px,66vh)] min-h-0">
+            <div
+              ref={listRef}
+              className={cn(
+                'overflow-y-auto py-1.5',
+                split
+                  ? // Too narrow for both: the list takes the width and the preview steps aside.
+                    'border-border w-1/2 shrink-0 border-r max-[820px]:w-full max-[820px]:border-r-0'
+                  : 'flex flex-1 items-center justify-center',
+              )}
+            >
               {flat.length === 0 ? (
                 <div className="flex flex-col items-center gap-2.5 px-6 py-12 text-center">
                   <div className="bg-muted flex size-10 items-center justify-center rounded-full">
@@ -763,7 +800,7 @@ export function SearchOverlay({
               ) : (
                 sections.map((section) => (
                   <div key={section.title}>
-                    <div className="text-muted-foreground flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-3xs font-semibold tracking-wider uppercase">
+                    <div className="text-muted-foreground flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-3xs tracking-wider uppercase">
                       {section.tagColor ? (
                         <TagDot color={section.tagColor} size={8} />
                       ) : (
@@ -809,11 +846,11 @@ export function SearchOverlay({
                           {row.place && (
                             <button
                               className="border-border text-muted-foreground hover:text-foreground hover:bg-foreground/6 shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-3xs"
-                              title={row.place.kind === 'page' ? `Preview page ${row.place.page}` : `Play from ${placeLabel(row.place)}`}
+                              title={row.place.kind === 'page' ? `Matched on page ${row.place.page}` : `Matched at ${placeLabel(row.place)}`}
                               onClick={(e) => {
+                                // The preview beside the list opens there; the click only selects.
                                 e.stopPropagation();
-                                const words = markedWords(row.sub);
-                                setPreview({ path: row.entry.path, name: row.entry.name, place: row.place!, words: words.length ? words : queryWords(text) });
+                                setActiveIx(i);
                               }}
                             >
                               {placeLabel(row.place)}
@@ -821,7 +858,7 @@ export function SearchOverlay({
                           )}
                           {isBest && (
                             <span
-                              className="bg-mint/15 text-mint shrink-0 rounded-sm px-1.5 py-0.5 text-3xs font-medium"
+                              className="bg-mint/15 text-mint shrink-0 rounded-sm px-1.5 py-0.5 text-3xs"
                               title="Strongest match"
                             >
                               Best
@@ -845,6 +882,17 @@ export function SearchOverlay({
                   {foldedWeak} weaker {foldedWeak === 1 ? 'match' : 'matches'}
                 </button>
               )}
+            </div>
+            {split && shown && (
+              <PreviewPane
+                row={shown}
+                words={shownWords}
+                home={home}
+                onOpen={() => activate(shown)}
+                onShowInFolder={() => showInFolder(shown)}
+                modKey={modKey}
+              />
+            )}
             </div>
 
             {/* ── Footer hints ── */}
@@ -882,8 +930,70 @@ export function SearchOverlay({
           </div>
         </div>
       </div>
-      {/* A sibling, not a child: the preview's clicks must not reach the overlay's close-on-mousedown. */}
-      {preview && <PlacePreview {...preview} onClose={() => setPreview(null)} />}
     </>
   );
 }
+
+/** The active result, previewed: where it lives, a look inside (at its place), and what to do with it. */
+function PreviewPane({
+  row,
+  words,
+  home,
+  onOpen,
+  onShowInFolder,
+  modKey,
+}: {
+  row: Row;
+  words: string[];
+  home: string | null;
+  onOpen: () => void;
+  onShowInFolder: () => void;
+  modKey: string;
+}) {
+  const { entry } = row;
+  const folder = parentOf(entry.path);
+  const where = compactDir(folder, home);
+  const facts = [entry.isDirectory ? null : formatSize(entry.size), entry.modified ? formatDate(entry.modified) : null]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 max-[820px]:hidden">
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-foreground truncate text-sm" title={entry.path}>
+            {entry.name}
+          </div>
+          <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-3xs">
+            <span className="truncate" title={folder}>
+              {where}
+            </span>
+            {facts && <span className="shrink-0">· {facts}</span>}
+          </div>
+        </div>
+        {row.place && (
+          <span className="border-border text-muted-foreground shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-3xs">
+            {row.place.kind === 'page' ? `page ${row.place.page}` : `at ${placeLabel(row.place)}`}
+          </span>
+        )}
+      </div>
+      <FilePreview
+        key={entry.path}
+        entry={entry}
+        place={row.place}
+        words={words}
+        className="min-h-0 flex-1"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onShowInFolder}>
+          Show in folder
+          <Kbd className="ml-1">{modKey}↵</Kbd>
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onOpen}>
+          {entry.isDirectory ? 'Go to folder' : 'Open'}
+          <Kbd className="ml-1">↵</Kbd>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
