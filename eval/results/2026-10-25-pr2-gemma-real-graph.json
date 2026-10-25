@@ -1,0 +1,68 @@
+{
+  "suite": "graph",
+  "provider": "real",
+  "label": "pr2-gemma",
+  "date": "2026-10-25",
+  "files": 41,
+  "edges": 132,
+  "buildMs": 8.347708000000011,
+  "mean": {
+    "recall": 1,
+    "precision": 0.39035497835497834,
+    "cohesion": 0.74
+  },
+  "purity": 0.625,
+  "clustered": 24,
+  "perGroup": [
+    {
+      "group": "cooking",
+      "files": 5,
+      "recall": 1,
+      "precision": 0.56,
+      "cohesion": 0.8,
+      "crossModal": 1,
+      "images": 1,
+      "unplaced": []
+    },
+    {
+      "group": "finance",
+      "files": 5,
+      "recall": 1,
+      "precision": 0.5,
+      "cohesion": 1,
+      "crossModal": 2,
+      "images": 2,
+      "unplaced": []
+    },
+    {
+      "group": "travel",
+      "files": 4,
+      "recall": 1,
+      "precision": 0.2857142857142857,
+      "cohesion": 0.5,
+      "crossModal": 2,
+      "images": 2,
+      "unplaced": []
+    },
+    {
+      "group": "animals",
+      "files": 5,
+      "recall": 1,
+      "precision": 0.30303030303030304,
+      "cohesion": 0.8,
+      "crossModal": 1,
+      "images": 3,
+      "unplaced": []
+    },
+    {
+      "group": "engineering",
+      "files": 5,
+      "recall": 1,
+      "precision": 0.30303030303030304,
+      "cohesion": 0.6,
+      "crossModal": 0,
+      "images": 0,
+      "unplaced": []
+    }
+  ]
+}

@@ -1,0 +1,723 @@
+{
+  "suite": "search",
+  "provider": "real",
+  "label": "pr2-gemma-norerank",
+  "date": "2026-10-25",
+  "reranker": false,
+  "lanes": {
+    "keyword": {
+      "queries": 44,
+      "r1": 0.575,
+      "r5": 0.65,
+      "mrr": 0.6114583333333333,
+      "placeAccuracy": null,
+      "nothingFound": 0.5,
+      "p50ms": 0.1988749999999868,
+      "p95ms": 1.0152089999999703
+    },
+    "meaning": {
+      "queries": 44,
+      "r1": 0.825,
+      "r5": 0.85,
+      "mrr": 0.8375,
+      "placeAccuracy": 0,
+      "nothingFound": 0,
+      "p50ms": 50.381832999999915,
+      "p95ms": 55.871000000000095
+    },
+    "fused": {
+      "queries": 44,
+      "r1": 0.65,
+      "r5": 0.825,
+      "mrr": 0.7177083333333333,
+      "placeAccuracy": 0,
+      "nothingFound": 0,
+      "p50ms": 50.101416999999856,
+      "p95ms": 54.354833000000326
+    }
+  },
+  "byTag": {
+    "text": {
+      "queries": 13,
+      "r1": 0.9230769230769231,
+      "r5": 1,
+      "mrr": 0.9615384615384616,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 50.147207999999864,
+      "p95ms": 53.01466699999992
+    },
+    "multilingual": {
+      "queries": 3,
+      "r1": 0,
+      "r5": 0.6666666666666666,
+      "mrr": 0.2638888888888889,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 51.2430830000003,
+      "p95ms": 52.51999999999953
+    },
+    "pdf-page": {
+      "queries": 3,
+      "r1": 1,
+      "r5": 1,
+      "mrr": 1,
+      "placeAccuracy": 0,
+      "nothingFound": null,
+      "p50ms": 50.852499999999964,
+      "p95ms": 54.354833000000326
+    },
+    "long-pdf": {
+      "queries": 2,
+      "r1": 1,
+      "r5": 1,
+      "mrr": 1,
+      "placeAccuracy": 0,
+      "nothingFound": null,
+      "p50ms": 53.16904100000011,
+      "p95ms": 53.16904100000011
+    },
+    "image": {
+      "queries": 9,
+      "r1": 0.6666666666666666,
+      "r5": 0.8888888888888888,
+      "mrr": 0.7407407407407408,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 47.91045800000029,
+      "p95ms": 49.75470900000073
+    },
+    "screenshot": {
+      "queries": 1,
+      "r1": 0,
+      "r5": 1,
+      "mrr": 0.5,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 50.0586659999999,
+      "p95ms": 50.0586659999999
+    },
+    "lookup": {
+      "queries": 3,
+      "r1": 0.6666666666666666,
+      "r5": 1,
+      "mrr": 0.75,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 51.30466699999943,
+      "p95ms": 54.439416999999594
+    },
+    "filename": {
+      "queries": 1,
+      "r1": 1,
+      "r5": 1,
+      "mrr": 1,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 51.693333000000166,
+      "p95ms": 51.693333000000166
+    },
+    "audio": {
+      "queries": 3,
+      "r1": 0,
+      "r5": 0,
+      "mrr": 0,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 48.17216699999972,
+      "p95ms": 52.32616599999983
+    },
+    "video": {
+      "queries": 2,
+      "r1": 0,
+      "r5": 0,
+      "mrr": 0,
+      "placeAccuracy": null,
+      "nothingFound": null,
+      "p50ms": 51.28712499999983,
+      "p95ms": 51.28712499999983
+    },
+    "none": {
+      "queries": 4,
+      "r1": 0,
+      "r5": 0,
+      "mrr": 0,
+      "placeAccuracy": null,
+      "nothingFound": 0,
+      "p50ms": 50.32945800000016,
+      "p95ms": 55.86395900000025
+    }
+  },
+  "queries": [
+    {
+      "q": "how hot should the oven be for sourdough",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 53.01466699999992,
+      "top": [
+        "Home/Recipes/sourdough.md",
+        "Home/Books/field-guide-birds.pdf",
+        "Home/Finance/Budget 2026.docx"
+      ]
+    },
+    {
+      "q": "quick tomato spaghetti dinner",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.71529200000032,
+      "top": [
+        "Home/Recipes/weeknight-pasta.md",
+        "Home/Travel/lisbon-itinerary.md",
+        "Home/Recipes/gazpacho-receta.txt"
+      ]
+    },
+    {
+      "q": "what to pack for a trip",
+      "tag": "text",
+      "rank": 2,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 52.259250000000065,
+      "top": [
+        "Home/Travel/lisbon-itinerary.md",
+        "Home/Travel/packing-list.md",
+        "projects/webapp/docs/api-guide.md"
+      ]
+    },
+    {
+      "q": "five day plan for Lisbon",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.97187500000018,
+      "top": [
+        "Home/Travel/lisbon-itinerary.md",
+        "Home/Travel/packing-list.md",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "self assessment tax deadline",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.344540999999936,
+      "top": [
+        "Home/Finance/tax-notes.md",
+        "Work/notes/privacy-policy.txt",
+        "projects/webapp/docs/cron-jobs.md"
+      ]
+    },
+    {
+      "q": "how often should the corgi be brushed",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 52.878083999999944,
+      "top": [
+        "Home/Pets/corgi-care.md",
+        "Home/Pictures/corgi.jpg",
+        "Home/Pictures/corgi copy.jpg"
+      ]
+    },
+    {
+      "q": "Docker Kubernetes deployment rolling update",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.147207999999864,
+      "top": [
+        "projects/webapp/docs/deployment.md",
+        "projects/webapp/docs/CHANGELOG.md",
+        "projects/webapp/docs/onboarding.md"
+      ]
+    },
+    {
+      "q": "session cookie Safari SameSite bug fix",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.78620799999999,
+      "top": [
+        "Work/notes/bug-report-432.txt",
+        "projects/webapp/docs/CHANGELOG.md",
+        "Work/bug-report-ERR.txt"
+      ]
+    },
+    {
+      "q": "slow query performance index database latency",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 52.274958000000424,
+      "top": [
+        "Work/notes/performance-analysis.txt",
+        "projects/webapp/docs/search-design.md",
+        "projects/webapp/docs/CHANGELOG.md"
+      ]
+    },
+    {
+      "q": "SQL injection security vulnerability",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.46087499999976,
+      "top": [
+        "Work/notes/security-review.txt",
+        "projects/webapp/docs/CHANGELOG.md",
+        "projects/webapp/docs/search-design.md"
+      ]
+    },
+    {
+      "q": "hybrid vector keyword search design",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.94549999999981,
+      "top": [
+        "projects/webapp/docs/search-design.md",
+        "Work/notes/meeting-notes-2024-03.txt",
+        "projects/webapp/docs/CHANGELOG.md"
+      ]
+    },
+    {
+      "q": "Prometheus Grafana metrics monitoring",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.62462500000038,
+      "top": [
+        "projects/webapp/docs/observability.md",
+        "Work/notes/performance-analysis.txt",
+        "projects/webapp/docs/cron-jobs.md"
+      ]
+    },
+    {
+      "q": "household budget savings goals",
+      "tag": "text",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.650667000000794,
+      "top": [
+        "Home/Finance/Budget 2026.docx",
+        "Home/Finance/tax-notes.md",
+        "Home/Pictures/cats.jpg"
+      ]
+    },
+    {
+      "q": "red lentil soup recipe",
+      "tag": "multilingual",
+      "rank": 3,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 51.2430830000003,
+      "top": [
+        "Home/Books/field-guide-birds.pdf",
+        "projects/webapp/docs/architecture.md",
+        "Home/Recipes/ডাল.txt"
+      ]
+    },
+    {
+      "q": "cold Spanish tomato soup",
+      "tag": "multilingual",
+      "rank": 3,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.605125000000044,
+      "top": [
+        "Home/Recipes/weeknight-pasta.md",
+        "Home/Recipes/sourdough.md",
+        "Home/Recipes/gazpacho-receta.txt"
+      ]
+    },
+    {
+      "q": "vaccinations and litter box for cats",
+      "tag": "multilingual",
+      "rank": 8,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 52.51999999999953,
+      "top": [
+        "Home/Pets/corgi-care.md",
+        "Home/Pictures/cats.jpg",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "the clause about pets in the lease",
+      "tag": "pdf-page",
+      "rank": 1,
+      "placeOk": false,
+      "hits": 10,
+      "ms": 50.852499999999964,
+      "top": [
+        "Home/Documents/lease-harbour-lane.pdf",
+        "Work/notes/privacy-policy.txt",
+        "Home/Pets/corgi-care.md"
+      ]
+    },
+    {
+      "q": "how much is the security deposit",
+      "tag": "pdf-page",
+      "rank": 1,
+      "placeOk": false,
+      "hits": 10,
+      "ms": 54.354833000000326,
+      "top": [
+        "Home/Documents/lease-harbour-lane.pdf",
+        "Work/notes/security-review.txt",
+        "projects/webapp/docs/CHANGELOG.md"
+      ]
+    },
+    {
+      "q": "tawny owl identification",
+      "tag": "pdf-page",
+      "rank": 1,
+      "placeOk": false,
+      "hits": 1,
+      "ms": 50.53654199999983,
+      "top": [
+        "Home/Books/field-guide-birds.pdf"
+      ]
+    },
+    {
+      "q": "kingfisher diving into a stream",
+      "tag": "long-pdf",
+      "rank": 1,
+      "placeOk": false,
+      "hits": 10,
+      "ms": 53.16904100000011,
+      "top": [
+        "Home/Books/field-guide-birds.pdf",
+        "projects/webapp/docs/architecture.md",
+        "projects/webapp/docs/api-guide.md"
+      ]
+    },
+    {
+      "q": "where snowy owls go in winter",
+      "tag": "long-pdf",
+      "rank": 1,
+      "placeOk": false,
+      "hits": 10,
+      "ms": 51.27458299999944,
+      "top": [
+        "Home/Books/field-guide-birds.pdf",
+        "Home/Finance/invoice-march.txt",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "a corgi",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.47045800000069,
+      "top": [
+        "Home/Pictures/corgi copy.jpg",
+        "Home/Pets/corgi-care.md",
+        "Home/Pictures/corgi.jpg"
+      ]
+    },
+    {
+      "q": "cats sleeping on a couch",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.75470900000073,
+      "top": [
+        "Home/Pictures/cats.jpg",
+        "Home/Books/field-guide-birds.pdf",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "striped big cat",
+      "tag": "image",
+      "rank": 3,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.133584000000155,
+      "top": [
+        "Home/Pictures/cats.jpg",
+        "Work/notes/privacy-policy.txt",
+        "Home/Pictures/tiger.jpg"
+      ]
+    },
+    {
+      "q": "a butterfly on a flower",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.644083999999566,
+      "top": [
+        "Home/Pictures/butterfly.jpg",
+        "Work/bug-report-ERR.txt",
+        "Home/Books/field-guide-birds.pdf"
+      ]
+    },
+    {
+      "q": "giraffes on the savanna",
+      "tag": "image",
+      "rank": 3,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.36137500000041,
+      "top": [
+        "Home/Books/field-guide-birds.pdf",
+        "projects/webapp/docs/onboarding.md",
+        "Home/Pictures/IMG_2041.jpg"
+      ]
+    },
+    {
+      "q": "turquoise mountain lake",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 6,
+      "ms": 46.59641699999975,
+      "top": [
+        "Home/Travel/photos/lake.png",
+        "Home/Travel/photos/new-york.jpg",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "busy city street with skyscrapers",
+      "tag": "image",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.514916999999514,
+      "top": [
+        "Work/bug-report-ERR.txt",
+        "projects/webapp/docs/search-design.md",
+        "projects/webapp/docs/observability.md"
+      ]
+    },
+    {
+      "q": "loaf of bread",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.91045800000029,
+      "top": [
+        "Home/Recipes/bread.png",
+        "Home/Recipes/sourdough.md",
+        "Home/Finance/Budget 2026.docx"
+      ]
+    },
+    {
+      "q": "a shop receipt",
+      "tag": "image",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.69312499999978,
+      "top": [
+        "Home/Finance/receipt.png",
+        "Home/Finance/tax-notes.md",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "screenshot of an invoice table",
+      "tag": "screenshot",
+      "rank": 2,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.0586659999999,
+      "top": [
+        "Home/Finance/invoice-march.txt",
+        "Home/Desktop/Screenshot 2026-10-01 at 14.22.10.png",
+        "Work/notes/performance-analysis.txt"
+      ]
+    },
+    {
+      "q": "ORD-48151623",
+      "tag": "lookup",
+      "rank": 4,
+      "placeOk": null,
+      "hits": 9,
+      "ms": 54.439416999999594,
+      "top": [
+        "Work/bug-report-ERR.txt",
+        "Home/Books/field-guide-birds.pdf",
+        "Home/Travel/photos/airport.jpg"
+      ]
+    },
+    {
+      "q": "ERR_K7Q2LM",
+      "tag": "lookup",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.101416999999856,
+      "top": [
+        "Work/bug-report-ERR.txt",
+        "Work/notes/security-review.txt",
+        "projects/webapp/docs/api-guide.md"
+      ]
+    },
+    {
+      "q": "INV-20431",
+      "tag": "lookup",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 51.30466699999943,
+      "top": [
+        "Home/Finance/invoice-march.txt",
+        "Work/notes/meeting-notes-2024-03.txt",
+        "Home/Finance/tax-notes.md"
+      ]
+    },
+    {
+      "q": "budget 2026",
+      "tag": "filename",
+      "rank": 1,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 51.693333000000166,
+      "top": [
+        "Home/Finance/Budget 2026.docx",
+        "Work/notes/security-review.txt",
+        "Home/Desktop/Screenshot 2026-10-01 at 14.22.10.png"
+      ]
+    },
+    {
+      "q": "president speech about serving your country",
+      "tag": "audio",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 52.32616599999983,
+      "top": [
+        "Home/Recipes/sourdough.md",
+        "Work/notes/privacy-policy.txt",
+        "Home/Travel/photos/new-york.jpg"
+      ]
+    },
+    {
+      "q": "a dog barking",
+      "tag": "audio",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 48.17216699999972,
+      "top": [
+        "Home/Documents/lease-harbour-lane.pdf",
+        "Work/bug-report-ERR.txt",
+        "projects/webapp/docs/architecture.md"
+      ]
+    },
+    {
+      "q": "solo piano music",
+      "tag": "audio",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.01154199999928,
+      "top": [
+        "Home/Travel/photos/lake.png",
+        "Home/Recipes/weeknight-pasta.md",
+        "Home/Travel/photos/beach.png"
+      ]
+    },
+    {
+      "q": "sea turtle swimming in the ocean",
+      "tag": "video",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 51.28712499999983,
+      "top": [
+        "Home/Books/field-guide-birds.pdf",
+        "projects/webapp/docs/search-design.md",
+        "Home/Pictures/butterfly.jpg"
+      ]
+    },
+    {
+      "q": "judge in a courtroom",
+      "tag": "video",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 49.61308399999962,
+      "top": [
+        "Work/notes/meeting-notes-2024-03.txt",
+        "Work/notes/security-review.txt",
+        "Home/Travel/photos/airport.jpg"
+      ]
+    },
+    {
+      "q": "quantum chromodynamics lattice simulation",
+      "tag": "none",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 50.32945800000016,
+      "top": [
+        "Work/bug-report-ERR.txt",
+        "projects/webapp/docs/search-design.md",
+        "Work/notes/performance-analysis.txt"
+      ]
+    },
+    {
+      "q": "wedding seating chart",
+      "tag": "none",
+      "rank": null,
+      "placeOk": null,
+      "hits": 7,
+      "ms": 47.28679199999988,
+      "top": [
+        "projects/webapp/docs/search-design.md",
+        "Work/notes/meeting-notes-2024-03.txt",
+        "Home/Documents/lease-harbour-lane.pdf"
+      ]
+    },
+    {
+      "q": "mortgage refinancing rates",
+      "tag": "none",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 47.73512500000015,
+      "top": [
+        "Home/Finance/tax-notes.md",
+        "projects/webapp/docs/api-guide.md",
+        "Home/Travel/photos/lake.png"
+      ]
+    },
+    {
+      "q": "XQZ-99817734",
+      "tag": "none",
+      "rank": null,
+      "placeOk": null,
+      "hits": 10,
+      "ms": 55.86395900000025,
+      "top": [
+        "Work/bug-report-ERR.txt",
+        "Work/notes/security-review.txt",
+        "projects/webapp/docs/CHANGELOG.md"
+      ]
+    }
+  ]
+}

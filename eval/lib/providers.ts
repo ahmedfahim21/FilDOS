@@ -63,8 +63,13 @@ export class BowProvider implements AiProvider {
     return texts.map((t) => tfVec(t, this.vocab));
   }
 
-  async embedImages(_modelId: string, paths: string[]): Promise<Float32Array[]> {
-    return paths.map(() => new Float32Array(this.vocab.length));
+  /** Pictures have no words: a BoW space can't place them, so they get a fixed unit vector. */
+  async embedMedia(_modelId: string, _kind: 'image', paths: string[]): Promise<Float32Array[]> {
+    return paths.map(() => {
+      const v = new Float32Array(this.vocab.length);
+      v[0] = 1;
+      return v;
+    });
   }
 }
 
@@ -74,32 +79,30 @@ export class RuntimeProvider implements AiProvider {
   readonly capabilities = { embed: true, generate: false, images: true };
 
   status(modelId: string): Promise<AiModelStatus> {
-    return handle('status', modelId) as Promise<AiModelStatus>;
+    return handle({ type: 'status', modelId }) as Promise<AiModelStatus>;
   }
 
   async download(modelId: string): Promise<void> {
-    await handle('download', modelId);
+    await handle({ type: 'download', modelId });
   }
 
-  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage'): Promise<Float32Array[]> {
-    const rows = (await handle('embed', modelId, texts, undefined, role)) as number[][];
-    return rows.map((row) => Float32Array.from(row));
+  embed(modelId: string, texts: string[], role: EmbedRole = 'passage', titles?: string[]): Promise<Float32Array[]> {
+    return handle({ type: 'embed', modelId, texts, role, titles }) as Promise<Float32Array[]>;
   }
 
-  async embedImages(modelId: string, paths: string[]): Promise<Float32Array[]> {
-    const rows = (await handle('embedImages', modelId, undefined, paths)) as number[][];
-    return rows.map((row) => Float32Array.from(row));
+  embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return handle({ type: 'embedMedia', modelId, kind, paths, budget: opts?.budget }) as Promise<Float32Array[]>;
   }
 
   countTokens(modelId: string, texts: string[]): Promise<number[]> {
-    return handle('countTokens', modelId, texts) as Promise<number[]>;
+    return handle({ type: 'countTokens', modelId, texts }) as Promise<number[]>;
   }
 
   rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
-    return handle('rerank', modelId, undefined, undefined, undefined, query, passages) as Promise<number[]>;
+    return handle({ type: 'rerank', modelId, query, passages }) as Promise<number[]>;
   }
 
   extractEntities(modelId: string, texts: string[]): Promise<EntitySpan[][]> {
-    return handle('extractEntities', modelId, texts) as Promise<EntitySpan[][]>;
+    return handle({ type: 'extractEntities', modelId, texts }) as Promise<EntitySpan[][]>;
   }
 }

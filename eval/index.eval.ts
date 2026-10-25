@@ -40,10 +40,10 @@ function timed(p: AiProvider): AiProvider {
     }
   };
   return Object.assign(Object.create(Object.getPrototypeOf(p)) as AiProvider, p, {
-    embed: (modelId: string, texts: string[], role?: Parameters<AiProvider['embed']>[2]) =>
-      time('text', texts.length, () => p.embed(modelId, texts, role)),
-    embedImages: (modelId: string, paths: string[]) =>
-      time('image', paths.length, () => p.embedImages(modelId, paths)),
+    embed: (modelId: string, texts: string[], role?: Parameters<AiProvider['embed']>[2], titles?: string[]) =>
+      time('text', texts.length, () => p.embed(modelId, texts, role, titles)),
+    embedMedia: (modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }) =>
+      time('image', paths.length, () => p.embedMedia(modelId, kind, paths, opts)),
   });
 }
 

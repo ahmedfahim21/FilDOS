@@ -110,7 +110,7 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     remap: () => {},
     dropIndex: async () => {},
     extract: extractText,
-    search: (q, k) => search(ix, q, k),
+    search: (q, k) => search(ix, q, k, 'question'),
     home: () => ws,
   };
   const payload: ChatSendPayload = {
@@ -124,7 +124,7 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
   const built = await buildChat(payload, {
     extract: extractText,
     list: listDir,
-    search: (q, k) => search(ix, q, k),
+    search: (q, k) => search(ix, q, k, 'question'),
   });
   const calls: (ChatToolCall & { params: unknown })[] = [];
   onToolCall = (callId, name, params) => {

@@ -9,7 +9,7 @@ correctly. The numbers are for comparing before and after a change.
 ```bash
 npm run eval          # search + index + graph (+ chat when FILDOS_EVAL_LLM is set), real models
 npm run eval:smoke    # same suites on bag-of-words embeddings: no model downloads (CI runs this)
-npm run eval:search   # one suite: eval:search | eval:index | eval:graph | eval:chat
+npm run eval:search   # one suite: eval:search | eval:index | eval:graph | eval:chat | eval:devices
 ```
 
 Environment:
@@ -19,6 +19,7 @@ Environment:
 | `FILDOS_MODELS_DIR` | `eval/.models` | Embedding model cache. Point it at the app's `userData/models` to reuse its downloads. |
 | `FILDOS_LLM_DIR` | `eval/.models/llm` | Chat model weights (GGUF). The app keeps them in `userData/models/llm`. |
 | `FILDOS_EVAL_LLM` | unset | Chat model id from `LLM_MODELS` (e.g. `qwen3-4b`). The chat suite is skipped without it. |
+| `FILDOS_EVAL_DEVICES` | unset | `1` runs the devices suite (CPU vs. this platform's GPU for the vision encoder). |
 | `FILDOS_EVAL_LABEL` | `local` | Names the run in the result file (`baseline`, `pr2`…). |
 | `FILDOS_TESTBED` | `eval/testbed-data` | Where the testbed is built. |
 
@@ -63,6 +64,10 @@ The indexer's built-in rules check every path segment, so the testbed must not s
   - `/find` and research questions: was the right file retrieved, was it cited, does the answer hold the fact
   - file actions run on a scratch copy of the testbed: did the expected tool run, and is the disk in the expected state afterwards
     (read-only cases must change nothing)
+
+- **Devices** (`devices.eval.ts`, opt-in): EmbeddingGemma 2's vision encoder on the CPU and on the platform GPU device (CoreML,
+  DirectML, CUDA), one picture per call: ms per picture and the worst cosine agreement with the CPU. A GPU counts as usable only at
+  agreement ≥ 0.999. Production stays on the CPU until this shows a usable, faster GPU.
 
 Indexing with real models is cached per provider, models and testbed in `eval/.cache`. Search, graph and chat reuse that index;
 the index suite always rebuilds.

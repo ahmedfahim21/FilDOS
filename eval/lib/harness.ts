@@ -14,19 +14,15 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
-import {
-  IMAGE_MODEL_ID,
-  INDEX_MODEL_IDS,
-  RERANKER_MODEL_ID,
-  TEXT_MODEL_ID,
-} from '@shared/aiModels';
+import { EMBED_MODEL_ID, indexFingerprint, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
 import type { IndexProgress, SemanticHit } from '@shared/types';
 import { closeDb, initDb, rawDb } from '../../src/main/db';
 import * as aiIndex from '../../src/main/db/aiIndex';
 import { SqliteVectorStore } from '../../src/main/db/vectorStore.sqlite';
 import { Indexer } from '../../src/main/ai/index/indexer';
 import { MiniSearchKeywordStore } from '../../src/main/ai/index/keywordStore';
-import { semanticSearch, type SearchModels } from '../../src/main/ai/index/search';
+import { semanticSearch } from '../../src/main/ai/index/search';
 import type { AiProvider } from '../../src/main/ai/providers/types';
 import { buildTestbed, manifestHash } from '../testbed/build';
 import { DOCX_FILES, PDF_FILES, TEXT_FILES } from '../testbed/manifest';
@@ -47,7 +43,8 @@ export interface Indexed {
   root: string;
   kind: ProviderKind;
   provider: AiProvider;
-  models: SearchModels;
+  /** The embedding model id. */
+  model: string;
   vectorStore: SqliteVectorStore;
   keywordStore: MiniSearchKeywordStore;
   /** Wall-clock seconds the indexing run took; 0 when the index came from cache. */
@@ -65,7 +62,7 @@ export function addBowVocabulary(texts: string[]): void {
   bowExtraTexts = [...bowExtraTexts, ...texts];
 }
 
-function makeProvider(kind: ProviderKind): { provider: AiProvider; models: SearchModels } {
+function makeProvider(kind: ProviderKind): { provider: AiProvider; model: string } {
   if (kind === 'bow') {
     const texts = [
       ...TEXT_FILES.map((f) => f.content),
@@ -73,22 +70,21 @@ function makeProvider(kind: ProviderKind): { provider: AiProvider; models: Searc
       ...DOCX_FILES.flatMap((f) => f.paragraphs),
       ...bowExtraTexts,
     ];
-    return { provider: new BowProvider(buildVocab(texts)), models: { text: 'bow', image: 'bow-image' } };
+    return { provider: new BowProvider(buildVocab(texts)), model: 'bow' };
   }
   process.env.FILDOS_MODELS_DIR ??= join(EVAL_DIR, '.models');
-  return { provider: new RuntimeProvider(), models: { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID } };
+  return { provider: new RuntimeProvider(), model: EMBED_MODEL_ID };
 }
 
 function cacheFile(kind: ProviderKind): string {
-  const models = kind === 'bow' ? 'bow' : INDEX_MODEL_IDS.join('+').replace(/[^\w.+-]/g, '_');
+  const models = kind === 'bow' ? 'bow' : indexFingerprint(PROMPTS_VERSION).replace(/[^\w.+-]/g, '_');
   return join(CACHE_DIR, `${kind}-${models}-${manifestHash()}.db`);
 }
 
 /** Load every stored chunk into the keyword store, as startup does in production. */
-async function rebuildKeywords(store: MiniSearchKeywordStore, imageModel: string): Promise<void> {
+async function rebuildKeywords(store: MiniSearchKeywordStore): Promise<void> {
   const byPath = new Map<string, { chunkIx: number; text: string }[]>();
   for (const c of await aiIndex.allChunks()) {
-    if (c.modelId === imageModel) continue;
     const arr = byPath.get(c.path) ?? [];
     arr.push({ chunkIx: c.chunkIx, text: c.text });
     byPath.set(c.path, arr);
@@ -106,7 +102,7 @@ export async function indexTestbed(
   const kind = providerKind();
   const root = await buildTestbed();
   const made = makeProvider(kind);
-  const models = made.models;
+  const model = made.model;
   const provider = opts.wrap ? opts.wrap(made.provider) : made.provider;
   const vectorStore = new SqliteVectorStore();
   const keywordStore = new MiniSearchKeywordStore();
@@ -117,7 +113,7 @@ export async function indexTestbed(
     root,
     kind,
     provider,
-    models,
+    model,
     vectorStore,
     keywordStore,
     abs: (rel: string) => join(root, ...rel.split('/')),
@@ -128,7 +124,7 @@ export async function indexTestbed(
   if (hasCache) {
     await fs.copyFile(cached, dbFile);
     initDb(dbFile);
-    await rebuildKeywords(keywordStore, models.image);
+    await rebuildKeywords(keywordStore);
     return { ...base, indexSeconds: 0, fromCache: true, progress: null };
   }
 
@@ -136,8 +132,7 @@ export async function indexTestbed(
   let progress: IndexProgress | null = null;
   const indexer = new Indexer({
     provider: async () => provider,
-    textModel: models.text,
-    imageModel: models.image,
+    model,
     config: async () => ({ roots: [root], excludes: [] }),
     vectorStore,
     keywordStore,
@@ -169,8 +164,9 @@ export async function rerankerReady(ix: Indexed): Promise<boolean> {
 }
 
 /** Search exactly as `searchIndex` does in production. */
-export function search(ix: Indexed, query: string, k: number): Promise<SemanticHit[]> {
-  return semanticSearch(ix.provider, ix.models, ix.vectorStore, query, {
+export function search(ix: Indexed, query: string, k: number, role: 'query' | 'question' = 'query'): Promise<SemanticHit[]> {
+  return semanticSearch(ix.provider, ix.model, ix.vectorStore, query, {
+    role,
     k,
     keywordStore: ix.keywordStore,
     rerankerModelId: ix.kind === 'real' ? RERANKER_MODEL_ID : undefined,

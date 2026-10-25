@@ -77,7 +77,7 @@ async function run(lane: Lane, q: string): Promise<{ paths: string[]; hits: Sema
   }
   const hits =
     lane === 'meaning'
-      ? await semanticSearch(ix.provider, ix.models, ix.vectorStore, q, { k: K })
+      ? await semanticSearch(ix.provider, ix.model, ix.vectorStore, q, { k: K })
       : await search(ix, q, K);
   return { paths: hits.map((h) => ix.rel(h.path)), hits };
 }

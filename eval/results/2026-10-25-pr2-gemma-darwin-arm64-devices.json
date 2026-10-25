@@ -1,0 +1,33 @@
+{
+  "suite": "devices",
+  "provider": "darwin-arm64",
+  "label": "pr2-gemma",
+  "date": "2026-10-25",
+  "chosen": "cpu",
+  "results": [
+    {
+      "device": "cpu",
+      "msPerImage": 759.3095173333332,
+      "agreement": 1
+    },
+    {
+      "device": "coreml",
+      "msPerImage": 1016.4734374999999,
+      "agreement": 0.9999693340874946
+    }
+  ],
+  "images": [
+    "corgi.jpg",
+    "cats.jpg",
+    "tiger.jpg",
+    "butterfly.jpg",
+    "IMG_2041.jpg",
+    "beach.png",
+    "lake.png",
+    "new-york.jpg",
+    "airport.jpg",
+    "bread.png",
+    "receipt.png",
+    "Screenshot 2026-10-01 at 14.22.10.png"
+  ]
+}
