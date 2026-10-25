@@ -42,6 +42,27 @@ async function write(rel: string, data: Buffer | string): Promise<void> {
   await fs.writeFile(full, data);
 }
 
+/** Attempts and per-attempt timeout for a media download (CI networks hiccup). */
+const DOWNLOAD_ATTEMPTS = 3;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/** GET `url`, retrying transient failures with backoff; throws the last error. */
+async function download(url: string): Promise<Buffer> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      last = err;
+      console.warn(`[eval] media download failed (attempt ${attempt}/${DOWNLOAD_ATTEMPTS}): ${url}`, err);
+      if (attempt < DOWNLOAD_ATTEMPTS) await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+    }
+  }
+  throw new Error(`Testbed media download failed: ${url} → ${last instanceof Error ? last.message : String(last)}`);
+}
+
 /** The media file's bytes, from the cache or the pinned URL; throws on a hash mismatch. */
 async function media(source: string, expected: string): Promise<Buffer> {
   const cached = join(MEDIA_CACHE, source);
@@ -52,9 +73,7 @@ async function media(source: string, expected: string): Promise<Buffer> {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
   const url = `${MEDIA_BASE}/${source}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Testbed media download failed: ${url} → HTTP ${res.status}`);
-  const data = Buffer.from(await res.arrayBuffer());
+  const data = await download(url);
   const actual = sha256(data);
   if (actual !== expected) throw new Error(`Testbed media ${source}: SHA-256 ${actual}, expected ${expected}`);
   await fs.mkdir(MEDIA_CACHE, { recursive: true });
@@ -71,7 +90,19 @@ export async function buildTestbed(): Promise<string> {
   });
   if (stamp === hash) return TESTBED_DIR;
 
+  // Only ever wipe a directory that is missing, empty or already a testbed:
+  // FILDOS_TESTBED may point anywhere, and its contents aren't ours to delete.
+  const existing = await fs.readdir(TESTBED_DIR).catch((err: NodeJS.ErrnoException) => {
+    if (err.code === 'ENOENT') return [] as string[];
+    throw err;
+  });
+  if (existing.length && stamp === null) {
+    throw new Error(`${TESTBED_DIR} is not empty and isn't a testbed (no ${STAMP}); refusing to delete it.`);
+  }
   await fs.rm(TESTBED_DIR, { recursive: true, force: true });
+  // Mark it as a testbed before writing, so an interrupted build is still recognised and rebuilt.
+  await fs.mkdir(TESTBED_DIR, { recursive: true });
+  await fs.writeFile(join(TESTBED_DIR, STAMP), 'building');
   for (const f of TEXT_FILES) await write(f.path, f.content);
   for (const f of PDF_FILES) await write(f.path, makePdf(f.pages));
   for (const f of DOCX_FILES) await write(f.path, makeDocx(f.paragraphs));
