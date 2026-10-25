@@ -3,11 +3,13 @@ import { extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertValidPath } from '../fs/service';
 import * as aiIndex from '../db/aiIndex';
+import { AUDIO_EXTENSIONS, VIDEO_EXTENSIONS } from '../ai/index/extract';
+import { DECODE_SCHEME } from './decoder';
 
 /**
  * `fildos-media://` — read-only access for the renderer to the bytes of
  * indexed documents and media, so it can show a PDF at the page a search hit
- * points at (and, later, play a recording from its moment).
+ * points at and play a recording from its moment.
  *
  * The renderer otherwise has no way to read files, so this is a deliberate,
  * narrow widening: only absolute paths, only these previewable types, and only
@@ -18,13 +20,16 @@ import * as aiIndex from '../db/aiIndex';
  */
 export const MEDIA_SCHEME = 'fildos-media';
 
-/** Types the renderer may read through the protocol. */
-const PREVIEWABLE = new Set(['.pdf']);
+/** Types the renderer may read through the protocol: PDFs for page previews, media to play from a moment. */
+const PREVIEWABLE = new Set(['.pdf', ...[...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS].map((e) => `.${e}`)]);
 
 /** Register the scheme as privileged. Must run before `app.whenReady()`. */
 export function registerMediaScheme(): void {
+  // One call for every app scheme: Electron keeps only the last registration.
+  const privileges = { standard: true, secure: true, supportFetchAPI: true, stream: true };
   protocol.registerSchemesAsPrivileged([
-    { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+    { scheme: MEDIA_SCHEME, privileges },
+    { scheme: DECODE_SCHEME, privileges },
   ]);
 }
 

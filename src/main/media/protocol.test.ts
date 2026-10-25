@@ -3,7 +3,7 @@ import type { IndexState } from '@shared/types';
 import { closeDb, initDb } from '../db';
 import { upsertState } from '../db/aiIndex';
 
-vi.mock('electron', () => ({ net: {}, protocol: {} }));
+vi.mock('electron', () => ({ net: {}, protocol: {}, session: {}, WebContentsView: class {} }));
 const { mayServe, pathOfMediaUrl, MEDIA_SCHEME } = await import('./protocol');
 
 const state = (path: string, status: IndexState['status'] = 'indexed'): IndexState => ({
@@ -37,5 +37,8 @@ describe('fildos-media protocol', () => {
     expect(await mayServe('/docs/notes.md')).toBe(false); // not a previewable type
     expect(await mayServe('/docs/broken.pdf')).toBe(false); // errored: never read
     expect(await mayServe('/etc/secret.pdf')).toBe(false); // not in the index
+    await upsertState(state('/music/talk.mp3'));
+    expect(await mayServe('/music/talk.mp3')).toBe(true); // media plays from its moment
+    expect(await mayServe('/music/other.mp3')).toBe(false);
   });
 });
