@@ -32,6 +32,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Testbed media come from a pinned dataset revision (SHA-256 checked), so
+      # the cache can't go stale; it keeps the job off the network.
+      - uses: actions/cache@v4
+        with:
+          path: eval/.media-cache
+          key: eval-media-${{ hashFiles('eval/testbed/manifest.ts') }}
       - name: Eval (smoke)
         run: npm run eval:smoke
 
