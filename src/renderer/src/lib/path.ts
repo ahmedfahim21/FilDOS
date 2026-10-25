@@ -109,3 +109,18 @@ export function segments(p: string): { label: string; path: string }[] {
   });
   return out;
 }
+
+/**
+ * A folder path short enough to read at a glance: home becomes "~", and a deep
+ * path keeps only its last two folders ("…/Books/Birds"). For result lists,
+ * where the full path repeated on every row drowns the names.
+ */
+export function compactDir(dir: string, home: string | null): string {
+  const s = sep();
+  const underHome = home !== null && (dir === home || dir.startsWith(home + s));
+  const shown = underHome ? `~${dir.slice(home.length)}` : dir;
+  const parts = shown.split(s).filter(Boolean);
+  const lead = underHome ? 1 : 0; // "~" counts as a part
+  if (parts.length - lead <= 3) return shown;
+  return ['…', ...parts.slice(-2)].join(s);
+}

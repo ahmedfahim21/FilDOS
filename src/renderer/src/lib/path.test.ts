@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { baseName, parentOf, segments, sep } from './path';
+import { baseName, compactDir, parentOf, segments, sep } from './path';
 
 /** Pretend the preload bridge reported a given OS separator. */
 function withSep(separator: string): void {
@@ -169,5 +169,32 @@ describe('remote URIs', () => {
       { label: 'acc', path: 'gdrive://acc/' },
       { label: 'report.pdf', path: 'gdrive://acc/Documents|1BxiM/report.pdf|2CyiN' },
     ]);
+  });
+});
+
+describe('compactDir', () => {
+  it('shows home as ~ and keeps shallow paths whole', () => {
+    withSep('/');
+    expect(compactDir('/Users/me/Books', '/Users/me')).toBe('~/Books');
+    expect(compactDir('/Users/me', '/Users/me')).toBe('~');
+    expect(compactDir('/Users/me/a/b/c', '/Users/me')).toBe('~/a/b/c');
+    expect(compactDir('/opt/data', '/Users/me')).toBe('/opt/data');
+  });
+
+  it('keeps the last two folders of a deep path', () => {
+    withSep('/');
+    expect(compactDir('/Users/me/a/b/c/d', '/Users/me')).toBe('…/c/d');
+    expect(compactDir('/var/folders/cp/T/tmp.x/Samples', null)).toBe('…/tmp.x/Samples');
+  });
+
+  it('does not treat a sibling with the same prefix as home', () => {
+    withSep('/');
+    expect(compactDir('/Users/meg/x', '/Users/me')).toBe('/Users/meg/x');
+  });
+
+  it('uses the platform separator', () => {
+    withSep('\\');
+    expect(compactDir('C:\\Users\\me\\a\\b\\c\\d', 'C:\\Users\\me')).toBe('…\\c\\d');
+    expect(compactDir('C:\\Users\\me\\Docs', 'C:\\Users\\me')).toBe('~\\Docs');
   });
 });
