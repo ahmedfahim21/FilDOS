@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { namesIn, useTempDir } from '../../fs/fixtures';
 import type { SemanticHit } from '@shared/types';
-import { executeChatTool, newName, READ_CAP, SEARCH_PASSAGE_CHARS, type ChatToolDeps } from './tools';
+import { executeChatTool, newName, READ_CAP, resolveToolPath, SEARCH_PASSAGE_CHARS, type ChatToolDeps } from './tools';
 
 /**
  * Integration tests for the Assistant's file tools: real files in a temp
@@ -351,5 +351,23 @@ describe('executeChatTool — paths the model writes', () => {
     await fs.writeFile(join(tmp(), 'Home', 'Travel', 'Recipes', 'pasta.md'), 'local copy');
     const { call } = await executeChatTool('read_file', { path: 'Recipes/pasta.md' }, join(tmp(), 'Home', 'Travel'), fakeDeps(tmp()));
     expect(call.paths).toEqual([join(tmp(), 'Home', 'Travel', 'Recipes', 'pasta.md')]);
+  });
+});
+
+describe('resolveToolPath', () => {
+  const home = join(sep, 'home', 'me');
+  const cwd = join(home, 'Docs');
+
+  it('expands ~ to home and resolves relative paths against the open folder, normalized', () => {
+    expect(resolveToolPath('~', cwd, home)).toBe(home);
+    expect(resolveToolPath('~/notes.md', cwd, home)).toBe(join(home, 'notes.md'));
+    expect(resolveToolPath('  a.txt  ', cwd, home)).toBe(join(cwd, 'a.txt'));
+    expect(resolveToolPath('../../../etc/x', cwd, home)).toBe(join(sep, 'etc', 'x'));
+  });
+
+  it('rejects empty, NUL-carrying, and relative-without-a-folder paths', () => {
+    expect(() => resolveToolPath('   ', cwd, home)).toThrow('No valid path');
+    expect(() => resolveToolPath('a\0b', cwd, home)).toThrow('No valid path');
+    expect(() => resolveToolPath('a.txt', undefined, home)).toThrow('no folder is open');
   });
 });
