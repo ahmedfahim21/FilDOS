@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AiModelStatus, Theme } from '@shared/types';
+import type { AiModelStatus, IndexEstimate, Theme } from '@shared/types';
 import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID } from '@shared/aiModels';
 import {
   HF_GGUF_MODELS_URL,
@@ -18,6 +18,7 @@ import { applyTheme } from '@/lib/theme';
 import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { modelLogo } from '@/lib/modelLogo';
 import { cn } from '@/lib/utils';
+import { formatDuration } from '@/lib/duration';
 import { Icon } from './Icon';
 import { Mark, Wordmark } from './Logo';
 import { Button } from '@/components/ui/button';
@@ -223,6 +224,65 @@ function ModelRow({
         >
           {state === 'downloading' ? 'Downloading…' : state === 'error' ? 'Retry' : 'Download'}
         </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "How long will indexing take?": walks the indexed folders on request (no file
+ * is read — sizes and kinds only) and shows the time for what isn't indexed
+ * yet, by folder.
+ */
+function EstimateRow() {
+  const { notifyError } = useToast();
+  const [estimate, setEstimate] = useState<IndexEstimate | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [home, setHome] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.fsapi.getHome().then((r) => r.ok && setHome(r.data));
+  }, []);
+
+  const run = async () => {
+    setLoading(true);
+    const r = await window.index.estimate();
+    setLoading(false);
+    if (r.ok) setEstimate(r.data);
+    else notifyError(r.error);
+  };
+  const pretty = (p: string) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
+
+  return (
+    <div className="border-border flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-foreground text-sm">Time to index</div>
+          <div className="text-muted-foreground text-2xs">
+            {loading
+              ? 'Looking through your folders…'
+              : estimate
+                ? estimate.files
+                  ? `About ${formatDuration(estimate.seconds)} for ${estimate.files.toLocaleString()} files not indexed yet — longer while you use the computer`
+                  : 'Everything is indexed.'
+                : 'Estimate how long indexing what’s not indexed yet will take, measured on this computer'}
+          </div>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => void run()} disabled={loading}>
+          {estimate ? 'Re-estimate' : 'Estimate'}
+        </Button>
+      </div>
+      {estimate && estimate.folders.length > 0 && !loading && (
+        <div className="flex flex-col gap-0.5">
+          {estimate.folders.slice(0, 6).map((f) => (
+            <div key={f.path} className="text-muted-foreground flex justify-between gap-3 font-mono text-3xs">
+              <span className="truncate" title={f.path}>
+                {pretty(f.path)}
+              </span>
+              <span className="shrink-0">{formatDuration(f.seconds)}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -870,10 +930,13 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
         : ['go', 'rs', 'java', 'cpp', 'c', 'cs', 'swift', 'rb', 'kt'].includes(ext) ? 'Embedding source code'
         : ['json', 'yaml', 'yml', 'toml'].includes(ext) ? 'Indexing config'
         : ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'].includes(ext) ? 'Encoding image'
+        : ['mp4', 'm4v', 'mov', 'webm'].includes(ext) ? 'Watching video'
+        : ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus'].includes(ext) ? 'Listening to audio'
         : 'Building search vectors';
+      const left = ix.etaSeconds !== undefined ? ` · about ${formatDuration(ix.etaSeconds)} left` : '';
       return {
         indexTitle: `${verb}…`,
-        indexSubtitle: `${ix.indexed.toLocaleString()} / ${ix.total.toLocaleString()} files`,
+        indexSubtitle: `${ix.indexed.toLocaleString()} / ${ix.total.toLocaleString()} files${left}`,
       };
     }
     if (ix.state === 'paused') {
@@ -1095,6 +1158,9 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                     </>
                   )}
                 </div>
+
+                {/* First-pass estimate */}
+                {!indexRunning && <EstimateRow />}
 
                 {/* Rescan cadence */}
                 <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">

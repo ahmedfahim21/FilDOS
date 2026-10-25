@@ -59,6 +59,7 @@ export const Channels = {
   indexSetInterval: 'index:setInterval',
   indexSetAmbient: 'index:setAmbient',
   indexSetHours: 'index:setHours',
+  indexEstimate: 'index:estimate',
   indexSearch: 'index:search',
   indexSearchFile: 'index:searchFile',
   graphGet: 'graph:get',

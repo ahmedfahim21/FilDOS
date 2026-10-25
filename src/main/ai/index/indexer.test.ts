@@ -9,7 +9,7 @@ import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
-import { isUnder } from './ignore';
+import { isIgnored, isUnder } from './ignore';
 
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
@@ -618,5 +618,85 @@ describe('Indexer — gate (set hours)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Indexer — estimates', () => {
+  const costs = { text: 0.1, image: 1, frame: 0.3, audio: 0.8 };
+
+  it('estimates only what is not indexed yet, by top-level folder, with the crawl’s rules', async () => {
+    await fs.mkdir(join(tmp(), 'Docs'));
+    await fs.mkdir(join(tmp(), 'Pictures'));
+    await fs.mkdir(join(tmp(), 'node_modules'));
+    await fs.writeFile(join(tmp(), 'Docs', 'a.md'), 'x'.repeat(3600)); // 2 chunks
+    await fs.writeFile(join(tmp(), 'Pictures', 'p.png'), Buffer.from([1, 2, 3])); // 1 image
+    await fs.writeFile(join(tmp(), 'top.txt'), 'hello'); // 1 chunk, right in the root
+    await fs.writeFile(join(tmp(), 'node_modules', 'skip.md'), 'ignored');
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      // Built-in rules below the root (the temp dir itself may sit under an ignored segment).
+      ignore: (p, ex, root) => isIgnored(p, ex, root),
+    });
+
+    const before = await indexer.estimate(costs);
+    expect(before.files).toBe(3);
+    expect(before.seconds).toBeCloseTo(0.2 + 1 + 0.1, 6);
+    expect(before.folders).toEqual([
+      { path: join(tmp(), 'Pictures'), seconds: 1, files: 1 },
+      { path: join(tmp(), 'Docs'), seconds: expect.closeTo(0.2, 6), files: 1 },
+      { path: tmp(), seconds: expect.closeTo(0.1, 6), files: 1 },
+    ]);
+
+    await indexer.start();
+    expect(await indexer.estimate(costs)).toEqual({ seconds: 0, files: 0, folders: [] });
+  });
+
+  it('records the model time of each kind of work', async () => {
+    await write('a.txt', 'hello');
+    await fs.writeFile(join(tmp(), 'p.png'), Buffer.from([1]));
+    const recorded: [string, number][] = [];
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      recordCost: (kind, seconds, units) => {
+        expect(seconds).toBeGreaterThanOrEqual(0);
+        recorded.push([kind, units]);
+      },
+    });
+    await indexer.start();
+    expect(recorded.sort()).toEqual([
+      ['image', 1],
+      ['text', 1],
+    ]);
+  });
+
+  it('reports an ETA once part of the run is done, and none when idle', async () => {
+    for (let i = 0; i < 6; i++) await write(`f${i}.txt`, 'some words here');
+    const etas: (number | undefined)[] = [];
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: (p) => etas.push(p.etaSeconds),
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      costs: async () => costs,
+      // Slow enough that progress emits (throttled to ~8/s) happen mid-run.
+      pace: () => new Promise((r) => setTimeout(r, 150)),
+    });
+    await indexer.start();
+    expect(etas.some((e) => typeof e === 'number' && e >= 0)).toBe(true);
+    expect(indexer.status().etaSeconds).toBeUndefined();
   });
 });

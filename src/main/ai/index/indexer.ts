@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
-import type { ChunkKind, ChunkVector, DecodedInput, IndexInfo, IndexProgress, IndexState } from '@shared/types';
+import { basename, dirname, extname, join, relative, sep } from 'node:path';
+import type {
+  ChunkKind,
+  ChunkVector,
+  DecodedInput,
+  IndexEstimate,
+  IndexInfo,
+  IndexProgress,
+  IndexState,
+} from '@shared/types';
+import { secondsFor, unitsFor, type UnitKind, type Units } from './estimate';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import * as jobs from '../../db/indexJobs';
@@ -80,6 +89,19 @@ interface Piece {
   text: string;
   kind: ChunkKind;
   loc?: number;
+}
+
+/**
+ * A PDF's page count, reading only its tail and catalog (no page is parsed);
+ * null when it can't be opened (it'd be indexed by name only).
+ */
+async function pdfPageCount(path: string): Promise<number | null> {
+  try {
+    return (await extractPdfPages(path, 1, 0))?.total ?? null;
+  } catch (err) {
+    console.info('[fildos] estimate: PDF unreadable, counting its name only:', path, String(err));
+    return null;
+  }
 }
 
 /** How many bytes to sample from the start and end of a large file for the hash. */
@@ -188,6 +210,10 @@ export interface IndexerDeps {
    * only at set hours" in the app. Asked between files.
    */
   gate?: () => Promise<number>;
+  /** Model time a unit of work took (for estimates): `seconds` for `units` of `kind`. */
+  recordCost?: (kind: UnitKind, seconds: number, units: number) => void;
+  /** Seconds per unit to estimate the ETA with (measured costs, or seeds). */
+  costs?: () => Promise<Units>;
 }
 
 export class Indexer {
@@ -208,6 +234,8 @@ export class Indexer {
   private datasets: string[] = [];
   /** When a gate holds the indexer back: the epoch ms it may run again. */
   private waitingUntil: number | undefined;
+  /** This run's ETA bookkeeping: estimated seconds per queued path, done so far, wall time so far. */
+  private eta: { perPath: Map<string, number>; total: number; done: number; started: number } | null = null;
   /** Per-run cache: does this directory contain a codebase marker? */
   private readonly codebaseDirs = new Map<string, boolean>();
   /** Models confirmed downloaded during the current run (avoids repeat calls). */
@@ -232,6 +260,7 @@ export class Indexer {
       message: this.message,
       datasets: this.datasets.length ? [...this.datasets] : undefined,
       waitingUntil: this.waitingUntil,
+      etaSeconds: this.etaSeconds(),
     };
   }
 
@@ -365,22 +394,19 @@ export class Indexer {
     this.deps.emit(this.status());
   }
 
-  /** Walk one root: enqueue new/changed files, queue removals for vanished ones. */
-  private async crawlRoot(root: string, excludes: string[]): Promise<void> {
-    const states = new Map<string, IndexState>();
-    for (const s of await aiIndex.statesUnder(root)) states.set(s.path, s);
-    const seen = new Set<string>();
-    let changed: string[] = [];
-
-    const flush = async () => {
-      if (changed.length >= 500) {
-        await jobs.enqueueMany(changed, 'upsert');
-        changed = [];
-      }
-    };
-
+  /**
+   * Visit every file under `root` the indexer would read — the built-in and
+   * user ignore rules, codebases (docs only, no build output), caches and
+   * datasets all applied — with its stat. Shared by the crawl and the estimate.
+   */
+  private async walkRoot(
+    root: string,
+    excludes: string[],
+    visit: (path: string, stat: { mtimeMs: number; size: number }) => Promise<void>,
+    stop: () => boolean,
+  ): Promise<void> {
     const walk = async (dir: string, depth: number, inCodebase: boolean): Promise<void> => {
-      if (depth > MAX_DEPTH || this.paused) return;
+      if (depth > MAX_DEPTH || stop()) return;
       let dirents;
       try {
         dirents = await fs.readdir(dir, { withFileTypes: true });
@@ -392,7 +418,7 @@ export class Indexer {
       // a stray package.json in the home dir shouldn't demote the whole crawl.
       const codebase = inCodebase || (depth > 0 && hasCodebaseMarker(dirents.map((d) => d.name)));
       for (const dirent of dirents) {
-        if (this.paused) return;
+        if (stop()) return;
         const full = join(dir, dirent.name);
         if (dirent.isSymbolicLink() || this.ignore(full, excludes, root)) continue;
         if (dirent.isDirectory()) {
@@ -404,29 +430,89 @@ export class Indexer {
         }
         if (!dirent.isFile() || !this.indexable(full)) continue;
         if (codebase && !isCodebaseDoc(full)) continue;
-        this.scanned++;
-        seen.add(full);
         let stat;
         try {
           stat = await fs.stat(full);
         } catch {
           continue;
         }
-        if (isStale(states.get(full), stat, this.deps.model)) {
-          changed.push(full);
-          await flush();
-        }
-        if (this.state === 'scanning' && this.scanned % 200 === 0) this.emit();
+        await visit(full, stat);
       }
     };
-
     await walk(root, 0, false);
+  }
+
+  /** Walk one root: enqueue new/changed files, queue removals for vanished ones. */
+  private async crawlRoot(root: string, excludes: string[]): Promise<void> {
+    const states = new Map<string, IndexState>();
+    for (const s of await aiIndex.statesUnder(root)) states.set(s.path, s);
+    const seen = new Set<string>();
+    let changed: string[] = [];
+
+    await this.walkRoot(
+      root,
+      excludes,
+      async (full, stat) => {
+        this.scanned++;
+        seen.add(full);
+        if (isStale(states.get(full), stat, this.deps.model)) {
+          changed.push(full);
+          if (changed.length >= 500) {
+            await jobs.enqueueMany(changed, 'upsert');
+            changed = [];
+          }
+        }
+        if (this.state === 'scanning' && this.scanned % 200 === 0) this.emit();
+      },
+      () => this.paused,
+    );
     if (changed.length) await jobs.enqueueMany(changed, 'upsert');
 
     // Anything we had indexed under this root but didn't see is gone or now
     // excluded — queue it for removal.
     const gone = [...states.keys()].filter((p) => !seen.has(p));
     if (gone.length) await jobs.enqueueMany(gone, 'remove');
+  }
+
+  /**
+   * How long indexing what's not yet indexed will take, from metadata alone:
+   * the total and per folder (each root's first-level subfolders, plus the
+   * files right in the root). Model time at `costs`; pacing adds to it while
+   * the computer is in use.
+   */
+  async estimate(costs: Units): Promise<IndexEstimate> {
+    const { roots, excludes, excludeExtensions } = await this.deps.config();
+    this.excludeExts = new Set(excludeExtensions ?? []);
+    const folders = new Map<string, { seconds: number; files: number }>();
+    let seconds = 0;
+    let files = 0;
+    for (const root of roots) {
+      const states = new Map<string, IndexState>();
+      for (const st of await aiIndex.statesUnder(root)) states.set(st.path, st);
+      await this.walkRoot(
+        root,
+        excludes,
+        async (full, stat) => {
+          if (!isStale(states.get(full), stat, this.deps.model)) return;
+          const pages = extname(full).toLowerCase() === '.pdf' ? await pdfPageCount(full) : undefined;
+          const cost = secondsFor(unitsFor(full, stat.size, pages), costs);
+          const rel = relative(root, full);
+          const top = rel.includes(sep) ? join(root, rel.split(sep)[0]) : root;
+          const f = folders.get(top) ?? { seconds: 0, files: 0 };
+          folders.set(top, { seconds: f.seconds + cost, files: f.files + 1 });
+          seconds += cost;
+          files++;
+        },
+        () => false,
+      );
+    }
+    return {
+      seconds,
+      files,
+      folders: [...folders.entries()]
+        .map(([path, f]) => ({ path, ...f }))
+        .sort((a, b) => b.seconds - a.seconds),
+    };
   }
 
   /**
@@ -442,6 +528,7 @@ export class Indexer {
     this.state = 'indexing';
     this.emit(true);
     try {
+      await this.startEta();
       for (;;) {
         await this.drainJobs(provider);
         if (this.paused) break;
@@ -449,6 +536,7 @@ export class Indexer {
       }
     } finally {
       this.draining = false;
+      this.eta = null;
     }
     this.currentFile = null;
     this.state = this.paused ? 'paused' : 'idle';
@@ -474,6 +562,32 @@ export class Indexer {
     }
   }
 
+  /**
+   * Estimate the queued work at the start of a drain. The ETA then scales
+   * what's left by how fast this run has actually gone (pacing, the machine's
+   * load and all), once a few percent of it is done.
+   */
+  private async startEta(): Promise<void> {
+    if (!this.deps.costs) return;
+    const costs = await this.deps.costs();
+    const perPath = new Map<string, number>();
+    let total = 0;
+    for (const path of await jobs.pendingPaths()) {
+      const stat = await fs.stat(path).catch(() => null);
+      const s = stat ? secondsFor(unitsFor(path, stat.size), costs) : 0;
+      perPath.set(path, s);
+      total += s;
+    }
+    this.eta = { perPath, total, done: 0, started: Date.now() };
+  }
+
+  private etaSeconds(): number | undefined {
+    const e = this.eta;
+    if (!e || e.total <= 0 || e.done < e.total * 0.03) return undefined;
+    const elapsed = (Date.now() - e.started) / 1000;
+    return Math.max(0, Math.round((e.total - e.done) * (elapsed / e.done)));
+  }
+
   /** The first stage of `drain`: process queued jobs until none are left or paused. */
   private async drainJobs(provider: AiProvider): Promise<void> {
     while (!this.paused) {
@@ -493,6 +607,7 @@ export class Indexer {
         try {
           await this.commit(job, prep, provider);
           await jobs.done(job.path);
+          if (this.eta) this.eta.done += this.eta.perPath.get(job.path) ?? 0;
         } catch (err) {
           // Surface the reason — the UI only shows a count, and "why did
           // this file fail" is the first debugging question.
@@ -644,7 +759,9 @@ export class Indexer {
       }
       const t0 = Date.now();
       vectors.push(...(await provider.embed(modelId, batch.map((c) => c.text), 'passage', batch.map(() => title))));
-      await this.deps.pace?.(Date.now() - t0);
+      const took = Date.now() - t0;
+      this.deps.recordCost?.('text', took / 1000, batch.length);
+      await this.deps.pace?.(took);
     }
     return pieces.map((c, i) => ({
       chunkIx: c.chunkIx,
@@ -760,7 +877,9 @@ export class Indexer {
     if (prep.kind === 'image') {
       const t0 = Date.now();
       const [embedding] = await provider.embedMedia(modelId, 'image', [path], { budget: visionBudget(path) });
-      await this.deps.pace?.(Date.now() - t0);
+      const took = Date.now() - t0;
+      this.deps.recordCost?.('image', took / 1000, 1);
+      await this.deps.pace?.(took);
       await aiIndex.upsertState(this.stateFor(path, prep.stat, modelId, 'indexed'));
       const text = nameChunkText(path);
       await this.deps.vectorStore.upsert(path, [{ chunkIx: 0, text, embedding, modelId, kind: 'image' }]);
@@ -860,8 +979,11 @@ export class Indexer {
       const out: Float32Array[] = [];
       for (let i = 0; i < inputs.length; i += batch) {
         const t0 = Date.now();
-        out.push(...(await provider.embedDecoded(modelId, inputs.slice(i, i + batch))));
-        await this.deps.pace?.(Date.now() - t0);
+        const slice = inputs.slice(i, i + batch);
+        out.push(...(await provider.embedDecoded(modelId, slice)));
+        const took = Date.now() - t0;
+        this.deps.recordCost?.(slice[0].kind, took / 1000, slice.length);
+        await this.deps.pace?.(took);
       }
       return out;
     };

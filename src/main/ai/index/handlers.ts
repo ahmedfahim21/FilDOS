@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
-import type { AppError, IndexConfig, IndexProgress, Result, SearchResult, SemanticHit } from '@shared/types';
+import type { AppError, IndexConfig, IndexEstimate, IndexProgress, Result, SearchResult, SemanticHit } from '@shared/types';
 import { EMBED_MODEL_ID, indexFingerprint } from '@shared/aiModels';
 import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
 import { getPrefs, setPrefs } from '../../prefs';
@@ -15,6 +15,7 @@ import { clearGraph } from '../graph/handlers';
 import { Indexer } from './indexer';
 import { mergeIndexPrefs } from './indexPrefs';
 import { msUntilAllowed, parseHours } from './hours';
+import { recordCost, unitCosts, type MeasuredCosts, type UnitKind, type Units } from './estimate';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
@@ -68,6 +69,34 @@ async function effectiveExcludes(): Promise<string[]> {
 
 const vectorStore = new SqliteVectorStore();
 const mediaDecoder = new MediaDecoder();
+
+/**
+ * What indexing costs on this machine, per kind of work, persisted in
+ * prefs.index.costs (written at most every 30 s while indexing).
+ */
+const costs = (() => {
+  let measured: MeasuredCosts | null = null;
+  let timer: NodeJS.Timeout | null = null;
+  const load = async () => (measured ??= ((await getPrefs()).index?.costs ?? {}) as MeasuredCosts);
+  const save = async () => {
+    timer = null;
+    const prefs = await getPrefs();
+    await setPrefs({ index: { ...prefs.index, costs: measured ?? {} } });
+  };
+  return {
+    async current(): Promise<Units> {
+      return unitCosts(await load());
+    },
+    record(kind: UnitKind, seconds: number, units: number): void {
+      void load().then((m) => {
+        measured = recordCost(m, kind, seconds, units);
+        timer ??= setTimeout(() => {
+          save().catch((err: unknown) => console.error('[fildos] saving indexing costs failed', err));
+        }, 30_000);
+      });
+    },
+  };
+})();
 const keywordStore = new MiniSearchKeywordStore();
 
 function broadcast(progress: IndexProgress): void {
@@ -90,6 +119,8 @@ const indexer = new Indexer({
   pace,
   decodeMedia: (path) => mediaDecoder.decode(path),
   gate: async () => msUntilAllowed(parseHours((await getPrefs()).index?.hours), new Date()),
+  recordCost: (kind, seconds, units) => costs.record(kind, seconds, units),
+  costs: () => costs.current(),
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -220,6 +251,10 @@ export function registerIndexHandlers(): void {
 
   ipcMain.handle(Channels.indexSetAmbient, (_e, enabled: boolean) =>
     wrap<void>(async () => patchConfig({ ambient: !!enabled })),
+  );
+
+  ipcMain.handle(Channels.indexEstimate, () =>
+    wrap<IndexEstimate>(async () => indexer.estimate(await costs.current())),
   );
 
   ipcMain.handle(Channels.indexSetHours, (_e, hours: unknown) =>

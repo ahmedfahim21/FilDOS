@@ -205,6 +205,8 @@ export interface Prefs {
     fingerprint?: string;
     /** "Index only at set hours": minutes after local midnight; null/absent = any hour. */
     hours?: { start: number; end: number } | null;
+    /** What indexing has cost on this machine, per kind of work (see ai/index/estimate.ts). */
+    costs?: Partial<Record<'text' | 'image' | 'frame' | 'audio', { seconds: number; units: number }>>;
   };
   /** Knowledge-graph build bookkeeping (see src/main/ai/graph/builder.ts). */
   graph?: {
@@ -328,6 +330,17 @@ export interface IndexProgress {
   datasets?: string[];
   /** Set while "index only at set hours" holds indexing back: when it resumes (epoch ms). */
   waitingUntil?: number;
+  /** Seconds left in this run, once enough of it has run to tell (pacing included). */
+  etaSeconds?: number;
+}
+
+/** How long indexing what's not indexed yet will take: total and by folder. */
+export interface IndexEstimate {
+  /** Model time in seconds (pacing adds to it while the computer is in use). */
+  seconds: number;
+  files: number;
+  /** Each root's first-level folders (and the root itself, for files right in it), largest first. */
+  folders: { path: string; seconds: number; files: number }[];
 }
 
 /** Indexing configuration persisted in `prefs.index`. */
@@ -371,6 +384,8 @@ export interface IndexApi {
   setAmbient(enabled: boolean): Promise<Result<void>>;
   /** Index only between these local times (minutes after midnight); null = any hour. */
   setHours(hours: { start: number; end: number } | null): Promise<Result<void>>;
+  /** How long indexing what's not indexed yet will take (walks the roots; no file is read). */
+  estimate(): Promise<Result<IndexEstimate>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
   search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SearchResult>>;
   /** "Find similar": rank indexed files by similarity to the given file. */

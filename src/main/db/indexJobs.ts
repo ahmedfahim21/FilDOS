@@ -120,6 +120,15 @@ export async function countPending(): Promise<number> {
   return n;
 }
 
+/** Paths of every pending upsert (for estimating the queued work). */
+export async function pendingPaths(): Promise<string[]> {
+  const rows = await db()
+    .select({ path: indexJobs.path })
+    .from(indexJobs)
+    .where(and(eq(indexJobs.status, 'pending'), eq(indexJobs.op, 'upsert')));
+  return rows.map((r) => r.path);
+}
+
 /** Drop the whole queue (used by "Clear index"). */
 export async function clearJobs(): Promise<void> {
   await db().delete(indexJobs);

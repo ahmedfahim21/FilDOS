@@ -137,6 +137,7 @@ const indexApi: IndexApi = {
   setInterval: (minutes) => ipcRenderer.invoke(Channels.indexSetInterval, minutes),
   setAmbient: (enabled) => ipcRenderer.invoke(Channels.indexSetAmbient, enabled),
   setHours: (hours) => ipcRenderer.invoke(Channels.indexSetHours, hours),
+  estimate: () => ipcRenderer.invoke(Channels.indexEstimate),
   search: (query, opts) => ipcRenderer.invoke(Channels.indexSearch, query, opts),
   searchFile: (path, opts) => ipcRenderer.invoke(Channels.indexSearchFile, path, opts),
   onProgress: (cb: (progress: IndexProgress) => void) => {
