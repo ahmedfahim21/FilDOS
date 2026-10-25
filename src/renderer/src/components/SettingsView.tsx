@@ -167,7 +167,7 @@ function ModalityBadge({ def }: { def: LlmModelDef }) {
   );
 }
 
-/** One of the two managed models, with live status + a download/retry button. */
+/** A managed model, with live status + a download/retry button. */
 function ModelRow({
   id,
   status,
@@ -185,9 +185,11 @@ function ModelRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-foreground truncate text-sm">{def?.label ?? id}</span>
-          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-3xs">
-            {def?.modality === 'image' ? 'Images' : 'Text & docs'}
-          </span>
+          {(def?.components?.map((c) => c.label) ?? ['Text & docs']).map((label) => (
+            <span key={label} className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-3xs">
+              {label}
+            </span>
+          ))}
         </div>
         <div className="text-muted-foreground mt-0.5 text-2xs">
           {state === 'ready'
