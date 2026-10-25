@@ -1,18 +1,12 @@
 /**
- * Fixture documents and queries for the recall@k eval. Each document becomes a
- * real file on disk; each query names the documents that should appear in the
- * top-k results. Aim for real-world variety: code, docs, notes, data files.
+ * A small engineering project's files for the testbed: source, docs, notes,
+ * config and SQL. `testbed/manifest.ts` places them — source and config inside
+ * a codebase (only its docs get indexed), notes in a work folder.
  */
 
 export interface Fixture {
   name: string;
   content: string;
-}
-
-export interface Query {
-  q: string;
-  /** Basenames of the files that should appear in the result set. */
-  expected: string[];
 }
 
 export const FIXTURES: Fixture[] = [
@@ -289,22 +283,4 @@ and payment information processed by Stripe. We never sell personal data.
 Users may request deletion of their account and all associated data at any time.
 Logs are retained for 90 days for security purposes, then permanently deleted.`,
   },
-];
-
-export const QUERIES: Query[] = [
-  { q: 'JWT authentication token verification', expected: ['auth.ts'] },
-  { q: 'PostgreSQL database connection pooling', expected: ['database.ts'] },
-  { q: 'Redis cache set get expiry', expected: ['cache.ts'] },
-  { q: 'send email nodemailer SMTP', expected: ['emailService.ts'] },
-  { q: 'rate limiting requests per minute per IP', expected: ['rateLimiter.ts'] },
-  { q: 'Docker Kubernetes deployment rolling update', expected: ['deployment.md'] },
-  { q: 'session cookie Safari SameSite bug fix', expected: ['bug-report-432.txt'] },
-  { q: 'slow query performance index database latency', expected: ['performance-analysis.txt'] },
-  { q: 'SQL injection security vulnerability high', expected: ['security-review.txt'] },
-  { q: 'BM25 RRF vector hybrid search cross-encoder', expected: ['search-design.md'] },
-  { q: 'user email table index schema create', expected: ['schema.sql'] },
-  { q: 'session expiry purge cron scheduled job', expected: ['cron-jobs.md'] },
-  { q: 'Prometheus Grafana metrics monitoring latency', expected: ['observability.md'] },
-  { q: 'meeting product roadmap semantic search feature', expected: ['meeting-notes-2024-03.txt'] },
-  { q: 'changelog security patch XSS CVE', expected: ['CHANGELOG.md'] },
 ];
