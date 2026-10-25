@@ -7,6 +7,7 @@ import { baseName, parentOf } from '@/lib/path';
 import { resolveDroppedPaths } from '@/lib/dragState';
 import { fileLogo } from '@/lib/fileLogo';
 import { Marked, markedWords } from '@/lib/marks';
+import { placeLabel, placeOf, type Place } from '@/lib/place';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -18,7 +19,7 @@ import {
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
-import { PagePreview } from './PagePreview';
+import { PlacePreview } from './PlacePreview';
 
 type Scope = 'folder' | 'all';
 type Modified = 'any' | 'day' | 'week' | 'month';
@@ -29,10 +30,6 @@ function queryWords(query: string): string[] {
   return [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => [...w].length >= 3))];
 }
 
-/** The PDF page a hit points at, if it points at one. */
-function pageOf(hit: SemanticHit): number | undefined {
-  return hit.segment === 'page' && hit.loc ? hit.loc : undefined;
-}
 
 interface Row {
   entry: Entry;
@@ -42,8 +39,8 @@ interface Row {
   score?: number;
   /** The single strongest result — gets the "Best" pill. */
   best?: boolean;
-  /** PDF page the hit points at (1-based), when it points at one. */
-  page?: number;
+  /** Where in the file the hit points (a PDF page, a moment of a recording). */
+  place?: Place;
   /** Below the clear matches: folded under "weaker matches" until expanded. */
   weak?: boolean;
 }
@@ -197,7 +194,7 @@ export function SearchOverlay({
   /** How many of aiHits are clear matches; the rest fold as weaker ones. */
   const [aiStrong, setAiStrong] = useState(0);
   const [showWeak, setShowWeak] = useState(false);
-  const [preview, setPreview] = useState<{ path: string; name: string; page: number; words: string[] } | null>(null);
+  const [preview, setPreview] = useState<{ path: string; name: string; place: Place; words: string[] } | null>(null);
   const [nameHits, setNameHits] = useState<SearchHit[]>([]);
   const [tagFiles, setTagFiles] = useState<Entry[]>([]);
   const [recents, setRecents] = useState<RecentItem[]>([]);
@@ -410,7 +407,7 @@ export function SearchOverlay({
     if (similarFile) {
       const rows = aiHits
         .filter((h) => passes(h))
-        .map((h, i) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score, best: i === 0, page: pageOf(h) }));
+        .map((h, i) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score, best: i === 0, place: placeOf(h) }));
       return rows.length
         ? [{ title: 'Similar files', icon: 'sparkles' as const, iconClass: 'text-mint', rows }]
         : [];
@@ -421,9 +418,9 @@ export function SearchOverlay({
     // Filename evidence is high-precision, so it anchors the score; semantic
     // relevance is discounted against it, and a file found by both lanes gets a
     // corroboration bump.
-    const byPath = new Map<string, { entry: Entry; snippet?: string; sem: number; page?: number; semWeak: boolean }>();
+    const byPath = new Map<string, { entry: Entry; snippet?: string; sem: number; place?: Place; semWeak: boolean }>();
     aiHits.forEach((h, i) => {
-      if (passes(h)) byPath.set(h.path, { entry: h, snippet: h.snippet, sem: h.score, page: pageOf(h), semWeak: i >= aiStrong });
+      if (passes(h)) byPath.set(h.path, { entry: h, snippet: h.snippet, sem: h.score, place: placeOf(h), semWeak: i >= aiStrong });
     });
     for (const h of nameHits) {
       if (passes(h) && !byPath.has(h.path)) byPath.set(h.path, { entry: h, sem: 0, semWeak: false });
@@ -438,7 +435,7 @@ export function SearchOverlay({
           entry: r.entry,
           sub: r.snippet?.trim() ? r.snippet : pretty(r.entry.path),
           score: r.sem > 0 ? r.sem : undefined,
-          page: r.page,
+          place: r.place,
           // A weaker meaning match stays weak unless its name matches too.
           weak: r.semWeak && nameScore === 0,
           rank: Math.max(nameScore, semScore) + corroborated,
@@ -449,7 +446,7 @@ export function SearchOverlay({
           b.rank - a.rank || (b.score ?? 0) - (a.score ?? 0) || a.entry.path.length - b.entry.path.length,
       )
       .slice(0, 50)
-      .map(({ entry, sub, score, page, weak }, i) => ({ entry, sub, score, page, weak, best: i === 0 && !weak }));
+      .map(({ entry, sub, score, place, weak }, i) => ({ entry, sub, score, place, weak, best: i === 0 && !weak }));
 
     const strongRows = fused.filter((r) => !r.weak);
     const weakRows = fused.filter((r) => r.weak);
@@ -809,16 +806,17 @@ export function SearchOverlay({
                               <Marked text={row.sub} />
                             </div>
                           </div>
-                          {row.page && (
+                          {row.place && (
                             <button
                               className="border-border text-muted-foreground hover:text-foreground hover:bg-foreground/6 shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-3xs"
-                              title={`Preview page ${row.page}`}
+                              title={row.place.kind === 'page' ? `Preview page ${row.place.page}` : `Play from ${placeLabel(row.place)}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPreview({ path: row.entry.path, name: row.entry.name, page: row.page!, words: markedWords(row.sub).length ? markedWords(row.sub) : queryWords(text) });
+                                const words = markedWords(row.sub);
+                                setPreview({ path: row.entry.path, name: row.entry.name, place: row.place!, words: words.length ? words : queryWords(text) });
                               }}
                             >
-                              p. {row.page}
+                              {placeLabel(row.place)}
                             </button>
                           )}
                           {isBest && (
@@ -885,7 +883,7 @@ export function SearchOverlay({
         </div>
       </div>
       {/* A sibling, not a child: the preview's clicks must not reach the overlay's close-on-mousedown. */}
-      {preview && <PagePreview {...preview} onClose={() => setPreview(null)} />}
+      {preview && <PlacePreview {...preview} onClose={() => setPreview(null)} />}
     </>
   );
 }

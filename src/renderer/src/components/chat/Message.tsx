@@ -5,12 +5,13 @@ import { MarkdownLite } from '@/lib/markdownLite';
 import { fileLogo } from '@/lib/fileLogo';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/Icon';
-import { PagePreview } from '@/components/PagePreview';
+import { PlacePreview } from '@/components/PlacePreview';
+import { placeLabel, placeOf } from '@/lib/place';
 import { markedWords } from '@/lib/marks';
 import { MentionChip } from './MentionChip';
 import { TOOL_ICONS } from './util';
 
-/** Ranked /find results under an answer — each row jumps to the file; a PDF hit can preview its page. */
+/** Ranked /find results under an answer — each row jumps to the file; a hit with a place previews it there. */
 export function SourcesCard({ hits, onOpen }: { hits: SemanticHit[]; onOpen: (hit: SemanticHit) => void }) {
   const [preview, setPreview] = useState<SemanticHit | null>(null);
   if (!hits.length) return null;
@@ -21,20 +22,20 @@ export function SourcesCard({ hits, onOpen }: { hits: SemanticHit[]; onOpen: (hi
         <span className="bg-mint/12 text-mint rounded-full px-1.5 font-mono normal-case">{hits.length}</span>
       </div>
       {hits.map((h) => {
-        const page = h.segment === 'page' && h.loc ? h.loc : undefined;
+        const place = placeOf(h);
         return (
           <div key={h.path} className="hover:bg-accent group flex w-full items-center gap-2 px-2.5 py-1.5">
             <button onClick={() => onOpen(h)} title={h.path} className="flex min-w-0 flex-1 items-center gap-2 text-left">
               <img src={fileLogo(h)} alt="" className="size-4 shrink-0" />
               <span className="text-foreground min-w-0 flex-1 truncate text-xs">{h.name}</span>
             </button>
-            {page && (
+            {place && (
               <button
                 onClick={() => setPreview(h)}
-                title={`Preview page ${page}`}
+                title={place.kind === 'page' ? `Preview page ${place.page}` : `Play from ${placeLabel(place)}`}
                 className="border-border text-muted-foreground hover:text-foreground shrink-0 rounded-sm border px-1 font-mono text-3xs"
               >
-                p. {page}
+                {placeLabel(place)}
               </button>
             )}
             {/* Relevance meter — an honest mint bar per hit. */}
@@ -47,11 +48,11 @@ export function SourcesCard({ hits, onOpen }: { hits: SemanticHit[]; onOpen: (hi
           </div>
         );
       })}
-      {preview && (
-        <PagePreview
+      {preview && placeOf(preview) && (
+        <PlacePreview
           path={preview.path}
           name={preview.name}
-          page={preview.loc ?? 1}
+          place={placeOf(preview)!}
           words={markedWords(preview.snippet)}
           onClose={() => setPreview(null)}
         />
