@@ -1,8 +1,7 @@
 import { ipcMain } from 'electron';
 import { Channels, Events } from '@shared/channels';
 import type { AiModelStatus, AppError, Result } from '@shared/types';
-import { DEFAULT_MODEL_ID } from '@shared/aiModels';
-import { getPrefs } from '../prefs';
+import { EMBED_MODEL_ID } from '@shared/aiModels';
 import { activeAiProvider } from './registry';
 
 /** Wrap an async op in the Result union (mirrors cloud/handlers.ts). */
@@ -28,23 +27,21 @@ async function provider() {
   return p;
 }
 
-/** The selected model id (explicit arg wins; else prefs; else the default). */
-async function activeModelId(modelId?: string): Promise<string> {
-  if (modelId) return modelId;
-  const prefs = await getPrefs();
-  return prefs.ai?.modelId ?? DEFAULT_MODEL_ID;
+/** The model a request names, else the embedding model. */
+function modelOf(modelId?: string): string {
+  return modelId ?? EMBED_MODEL_ID;
 }
 
 /** Register the AI IPC handlers. Call once after the providers are registered. */
 export function registerAiHandlers(): void {
   ipcMain.handle(Channels.aiStatus, (_e, modelId?: string) =>
-    wrap<AiModelStatus>(async () => (await provider()).status(await activeModelId(modelId))),
+    wrap<AiModelStatus>(async () => (await provider()).status(modelOf(modelId))),
   );
 
   ipcMain.handle(Channels.aiDownload, (e, modelId?: string) =>
     wrap<void>(async () => {
       const p = await provider();
-      const id = await activeModelId(modelId);
+      const id = modelOf(modelId);
       // Forward the provider's progress to the requesting renderer for the
       // duration of the download (same sender.send pattern as fs/watch.ts).
       const off = p.onProgress?.((status) => {
@@ -61,21 +58,7 @@ export function registerAiHandlers(): void {
   ipcMain.handle(Channels.aiCancelDownload, (_e, modelId?: string) =>
     wrap<void>(async () => {
       const p = await provider();
-      await p.cancelDownload?.(await activeModelId(modelId));
-    }),
-  );
-
-  ipcMain.handle(Channels.aiEmbed, (_e, texts: string[]) =>
-    wrap<number[][]>(async () => {
-      const vectors = await (await provider()).embed(await activeModelId(), texts);
-      return vectors.map((v) => Array.from(v));
-    }),
-  );
-
-  ipcMain.handle(Channels.aiEmbedImages, (_e, paths: string[]) =>
-    wrap<number[][]>(async () => {
-      const vectors = await (await provider()).embedImages(await activeModelId(), paths);
-      return vectors.map((v) => Array.from(v));
+      await p.cancelDownload?.(modelOf(modelId));
     }),
   );
 }

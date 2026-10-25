@@ -75,12 +75,41 @@ export interface SearchHit extends Entry {
   relativePath: string;
 }
 
-/** A semantic-search hit: a file ranked by meaning, with the matching snippet. */
+/** Decoded media handed to the embedder: an RGBA video frame, or a mono 16 kHz audio window. */
+export type DecodedInput =
+  | { kind: 'frame'; width: number; height: number; rgba: Uint8Array }
+  | { kind: 'audio'; samples: Float32Array };
+
+/** Where EmbeddingGemma 2's vision encoder runs (its text model always runs on the CPU). */
+export type EmbedDevice = 'cpu' | 'coreml' | 'dml' | 'cuda';
+
+/** Outcome of the one-time device check: timings and agreement with the CPU per device. */
+export interface DeviceCheckResult {
+  chosen: EmbedDevice;
+  results: { device: EmbedDevice; msPerImage?: number; agreement?: number; error?: string }[];
+  /** The pictures it timed (base names). */
+  images: string[];
+}
+
+/** A semantic-search hit: a file ranked by meaning and words, pointing at where it matched. */
 export interface SemanticHit extends SearchHit {
-  /** Cosine similarity of the best-matching chunk, in [0, 1]. */
+  /** Relevance in [0, 1) for display (fused meaning + word evidence). */
   score: number;
-  /** A slice of the matching chunk's text, for preview. */
+  /** A slice of the matched segment's text; query words marked «like this» when they matched there. */
   snippet: string;
+  /** The matched segment's text (up to ~1.5K chars), what chat answers from. Absent in older saved chats. */
+  passage?: string;
+  /** What the hit points at: a passage, a PDF page, a picture, the file name. */
+  segment?: ChunkKind;
+  /** PDF page (1-based) of the matched segment, when it's a page. */
+  loc?: number | null;
+  locEnd?: number | null;
+}
+
+/** A search's hits, best first; the first `strong` are clear matches, the rest weaker ones. */
+export interface SearchResult {
+  hits: SemanticHit[];
+  strong: number;
 }
 
 /** Column the file views sort by. */
@@ -154,7 +183,6 @@ export interface Prefs {
   ai?: {
     enabled: boolean;
     activeProvider: string;
-    modelId?: string;
     /** The chat model the Assistant uses. */
     llmModelId?: string;
     /** Per-chat-model generation settings (partial; see `@shared/llmModels`). */
@@ -173,6 +201,12 @@ export interface Prefs {
     intervalMinutes?: number;
     /** Keep indexing (app resident in the tray) after the last window closes. */
     ambient?: boolean;
+    /** What produced the stored vectors (`indexFingerprint`); a mismatch rebuilds the index. */
+    fingerprint?: string;
+    /** "Index only at set hours": minutes after local midnight; null/absent = any hour. */
+    hours?: { start: number; end: number } | null;
+    /** What indexing has cost on this machine, per kind of work (see ai/index/estimate.ts). */
+    costs?: Partial<Record<'text' | 'image' | 'frame' | 'audio', { seconds: number; units: number }>>;
   };
   /** Knowledge-graph build bookkeeping (see src/main/ai/graph/builder.ts). */
   graph?: {
@@ -201,8 +235,23 @@ export interface AiModelStatus {
   message?: string;
 }
 
-/** Outcome of indexing a single file. */
-export type IndexStatus = 'indexed' | 'skipped' | 'error';
+/**
+ * Outcome of indexing a single file. 'partial': a long file whose first pages
+ * or passages are searchable and whose rest the later pass is still reading.
+ */
+export type IndexStatus = 'indexed' | 'partial' | 'skipped' | 'error';
+
+/** Progress of a long file's later pass (index_state.info, JSON). */
+export interface IndexInfo {
+  /** PDFs: pages in the file, and pages read so far (from the start). */
+  pages?: number;
+  pagesRead?: number;
+  /** Documents: passages in the file, and passages read so far. */
+  chunks?: number;
+  chunksRead?: number;
+  /** The chunk index the next step's chunks start at. */
+  nextChunkIx?: number;
+}
 
 /** Bookkeeping row for an indexed file (mirrors the index_state table). */
 export interface IndexState {
@@ -224,25 +273,30 @@ export interface IndexState {
   /** When the file was last indexed, in ms. */
   indexedAt: number;
   status: IndexStatus;
+  /** Later-pass progress for long files; absent otherwise. */
+  info?: IndexInfo | null;
 }
 
-/** A stored text chunk with its (optional) embedding. */
-export interface FileChunk {
-  path: string;
-  /** 0-based position of the chunk within the file. */
-  chunkIx: number;
-  text: string;
-  /** Embedding vector; null until the embedder has run. */
-  embedding: Float32Array | null;
-  modelId: string;
-}
+/**
+ * What a chunk is, so a hit can say where it points: a document passage, a PDF
+ * page's text, a picture, or the humanized file name (the fallback for files
+ * whose content can't be read).
+ */
+export type ChunkKind = 'text' | 'page' | 'image' | 'name' | 'frame' | 'audio';
 
-/** A chunk paired with its embedding, ready to persist in the vector store. */
+/** A chunk paired with its embedding, ready to persist in the vector store.
+ * A null embedding is a keyword-only chunk (e.g. mostly-numeric text). */
 export interface ChunkVector {
   chunkIx: number;
   text: string;
-  embedding: Float32Array;
+  embedding: Float32Array | null;
   modelId: string;
+  kind: ChunkKind;
+  /** Page number (1-based) for 'page' chunks; seconds into the file for 'frame'/'audio'. */
+  loc?: number | null;
+  locEnd?: number | null;
+  /** 2 for chunks the later pass added (they don't set the score scale). */
+  pass?: number;
 }
 
 /** A vector-search hit: the matching chunk plus its cosine similarity. */
@@ -272,6 +326,21 @@ export interface IndexProgress {
   currentFile: string | null;
   /** Error detail when `state === 'error'`. */
   message?: string;
+  /** Folders the last crawl left out because they look like datasets. */
+  datasets?: string[];
+  /** Set while "index only at set hours" holds indexing back: when it resumes (epoch ms). */
+  waitingUntil?: number;
+  /** Seconds left in this run, once enough of it has run to tell (pacing included). */
+  etaSeconds?: number;
+}
+
+/** How long indexing what's not indexed yet will take: total and by folder. */
+export interface IndexEstimate {
+  /** Model time in seconds (pacing adds to it while the computer is in use). */
+  seconds: number;
+  files: number;
+  /** Each root's first-level folders (and the root itself, for files right in it), largest first. */
+  folders: { path: string; seconds: number; files: number }[];
 }
 
 /** Indexing configuration persisted in `prefs.index`. */
@@ -313,8 +382,12 @@ export interface IndexApi {
   setInterval(minutes: number): Promise<Result<void>>;
   /** Keep indexing in the background after the last window closes. */
   setAmbient(enabled: boolean): Promise<Result<void>>;
+  /** Index only between these local times (minutes after midnight); null = any hour. */
+  setHours(hours: { start: number; end: number } | null): Promise<Result<void>>;
+  /** How long indexing what's not indexed yet will take (walks the roots; no file is read). */
+  estimate(): Promise<Result<IndexEstimate>>;
   /** Semantic search: ranked file hits with snippets, optionally scoped to a folder. */
-  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
+  search(query: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SearchResult>>;
   /** "Find similar": rank indexed files by similarity to the given file. */
   searchFile(path: string, opts?: { rootPath?: string; k?: number }): Promise<Result<SemanticHit[]>>;
   /** Subscribe to indexing progress; returns an unsubscribe fn. */
@@ -334,6 +407,17 @@ export interface GraphApi {
 }
 
 /** The API surface exposed on `window.fsapi` by the preload bridge. */
+/** What Quick Look can show for a file (`fs:preview`). */
+export type FilePreview =
+  /** Read through `url` — a one-time `fildos-media://preview/` grant, or a data URL for OS-decoded pictures. */
+  | { kind: 'image' | 'pdf' | 'video' | 'audio'; url: string }
+  /** The first 128 KB of a text file; `language` is its extension. */
+  | { kind: 'text'; text: string; truncated: boolean; language: string }
+  /** A document's extracted text (DOCX). */
+  | { kind: 'document'; text: string; truncated: boolean }
+  | { kind: 'folder'; items: number }
+  | { kind: 'none' };
+
 export interface FsApi {
   listDir(path: string): Promise<Result<Entry[]>>;
   getInfo(path: string): Promise<Result<FileInfo>>;
@@ -356,6 +440,8 @@ export interface FsApi {
   appVersion(): Promise<Result<string>>;
   /** Recursive byte size of a folder (depth-guarded). */
   folderSize(path: string): Promise<Result<number>>;
+  /** What Quick Look can show for a local file or folder. */
+  preview(path: string): Promise<Result<FilePreview>>;
   /** Recursive name search under rootPath, capped result set. */
   search(rootPath: string, query: string): Promise<Result<SearchHit[]>>;
   /** Thumbnail data URL for an image file, or null if unavailable. */
@@ -560,16 +646,12 @@ export interface LlmApi {
 
 /** The API surface exposed on `window.ai` by the preload bridge. */
 export interface AiApi {
-  /** State of a model (defaults to the active one when modelId is omitted). */
+  /** State of a model (defaults to the embedding model when modelId is omitted). */
   status(modelId?: string): Promise<Result<AiModelStatus>>;
-  /** Ensure a model is downloaded (defaults to the text model; progress via onModelProgress). */
+  /** Ensure a model is downloaded (defaults to the embedding model; progress via onModelProgress). */
   download(modelId?: string): Promise<Result<void>>;
-  /** Abort an in-flight download (defaults to the text model). */
+  /** Abort an in-flight download (defaults to the embedding model). */
   cancelDownload(modelId?: string): Promise<Result<void>>;
-  /** Embed each string; rows are plain number[] (Float32Array doesn't survive IPC). */
-  embed(texts: string[]): Promise<Result<number[][]>>;
-  /** Embed each image file by path; image-capable models (CLIP) only. */
-  embedImages(paths: string[]): Promise<Result<number[][]>>;
   /** Subscribe to model download/state progress; returns an unsubscribe fn. */
   onModelProgress(cb: (status: AiModelStatus) => void): () => void;
 }

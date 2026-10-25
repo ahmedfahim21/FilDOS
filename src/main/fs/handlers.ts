@@ -11,6 +11,11 @@ import { copyAcross, moveAcross } from './transfer';
 import { quickAccess } from './quickAccess';
 import { closeWatch, setWatch } from './watch';
 import { thumbnail } from './thumbnails';
+import { previewOf } from './preview';
+import { grantPreview } from '../media/protocol';
+import { canDecodeWithOs, osThumbnail } from '../media/osImage';
+import { needsOsDecode } from '../ai/index/extract';
+import { extractor } from '../ai/index/extractor';
 import { getPrefs, setPrefs } from '../prefs';
 import type { Prefs } from '@shared/types';
 import { remapPaths } from '../db';
@@ -70,6 +75,9 @@ async function wrap<T>(fn: () => Promise<T>): Promise<Result<T>> {
 }
 
 const { assertValidPath } = service;
+
+/** Longest side of an OS-decoded picture in Quick Look. */
+const PREVIEW_IMAGE_SIDE = 1600;
 
 /** Like assertValidPath but passes remote URIs through unchanged. */
 const validatePath = (p: string) => (isRemote(p) ? p : assertValidPath(p));
@@ -245,6 +253,22 @@ export function registerFsHandlers(): void {
   ipcMain.handle(Channels.search, (_e, rootPath: string, query: string) => {
     if (isRemote(rootPath)) return wrap(async () => { throw notSupported('Search'); });
     return wrap(() => service.search(assertValidPath(rootPath), query));
+  });
+
+  ipcMain.handle(Channels.preview, (_e, path: string) => {
+    if (isRemote(path)) return wrap(async () => { throw notSupported('Quick Look'); });
+    return wrap(() =>
+      previewOf(assertValidPath(path), {
+        grant: grantPreview,
+        osImage: async (p) => {
+          if (!canDecodeWithOs) return null;
+          // HEIF: sized from its container (the thumbnailer stretches); TIFF: aspect kept by toPNG.
+          if (needsOsDecode(p)) return `data:image/png;base64,${(await osThumbnail(p, PREVIEW_IMAGE_SIDE)).toPNG().toString('base64')}`;
+          return thumbnail(p, PREVIEW_IMAGE_SIDE);
+        },
+        docText: (p) => extractor.text(p),
+      }),
+    );
   });
 
   ipcMain.handle(Channels.thumbnail, (_e, path: string, size: number) => {

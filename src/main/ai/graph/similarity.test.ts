@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centroids, defaultMinCosine, knnEdges, type FileCentroid } from './similarity';
+import { centroids, knnEdges, MIN_COSINE, type FileCentroid } from './similarity';
 
 const vec = (...v: number[]) => Float32Array.from(v);
 
@@ -34,7 +34,7 @@ describe('knnEdges', () => {
   ];
 
   it('links similar files, skips dissimilar ones, in canonical order', async () => {
-    const edges = await knnEdges(points, { minCosine: () => 0.9 });
+    const edges = await knnEdges(points, { minCosine: 0.9 });
     expect(edges).toHaveLength(1);
     expect(edges[0].src).toBe('/a');
     expect(edges[0].dst).toBe('/b');
@@ -47,7 +47,7 @@ describe('knnEdges', () => {
         { path: '/a', modelId: 'm1', vec: unit(0) },
         { path: '/b', modelId: 'm2', vec: unit(0) },
       ],
-      { minCosine: () => 0.5 },
+      { minCosine: 0.5 },
     );
     expect(edges).toEqual([]);
   });
@@ -58,7 +58,7 @@ describe('knnEdges', () => {
       modelId: 'm',
       vec: unit(i * 0.01),
     }));
-    const edges = await knnEdges(many, { k: 2, minCosine: () => 0.9 });
+    const edges = await knnEdges(many, { k: 2, minCosine: 0.9 });
     const degree = new Map<string, number>();
     for (const e of edges) {
       degree.set(e.src, (degree.get(e.src) ?? 0) + 1);
@@ -70,7 +70,7 @@ describe('knnEdges', () => {
   });
 
   it('onlyFor limits fresh scans but candidates span all files', async () => {
-    const edges = await knnEdges(points, { minCosine: () => 0.9, onlyFor: new Set(['/b']) });
+    const edges = await knnEdges(points, { minCosine: 0.9, onlyFor: new Set(['/b']) });
     expect(edges).toHaveLength(1);
     expect([edges[0].src, edges[0].dst].sort()).toEqual(['/a', '/b']);
   });
@@ -84,16 +84,26 @@ describe('knnEdges', () => {
       many.push({ path: `/l${i}`, modelId: 'm', vec: unit(0 + (i % 60) * 0.0005) });
       many.push({ path: `/r${i}`, modelId: 'm', vec: unit(Math.PI / 2 + (i % 60) * 0.0005) });
     }
-    const edges = await knnEdges(many, { k: 2, minCosine: () => 0.9 });
+    const edges = await knnEdges(many, { k: 2, minCosine: 0.9 });
     expect(edges.length).toBeGreaterThan(0);
     for (const e of edges) {
       expect(e.src[1]).toBe(e.dst[1]); // both /l… or both /r…
     }
   });
 
-  it('default floors are stricter for CLIP than for text models', () => {
-    expect(defaultMinCosine('Xenova/clip-vit-base-patch32')).toBeGreaterThan(
-      defaultMinCosine('Xenova/bge-base-en-v1.5'),
-    );
+  it('uses one floor for every modality pair', async () => {
+    // `close` sits just above the floor from `a`, `far` just below it from `a`
+    // and well below it from `close` (they lean along different axes).
+    const c = MIN_COSINE + 0.05;
+    const f = MIN_COSINE - 0.05;
+    const a = new Float32Array([1, 0, 0]);
+    const close = new Float32Array([c, Math.sqrt(1 - c * c), 0]);
+    const far = new Float32Array([f, 0, Math.sqrt(1 - f * f)]);
+    const edges = await knnEdges([
+      { path: '/note.md', modelId: 'm', vec: a },
+      { path: '/photo.jpg', modelId: 'm', vec: close },
+      { path: '/other.jpg', modelId: 'm', vec: far },
+    ]);
+    expect(edges.map((e) => [e.src, e.dst])).toEqual([['/note.md', '/photo.jpg']]);
   });
 });

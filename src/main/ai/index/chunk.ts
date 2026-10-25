@@ -20,6 +20,8 @@ export interface TextChunk {
   /** 0-based position within the file. */
   chunkIx: number;
   text: string;
+  /** PDFs: the page the slice comes from (1-based). */
+  page?: number;
 }
 
 /**
@@ -40,4 +42,22 @@ export function chunk(text: string, window = WINDOW, overlap = OVERLAP): TextChu
     if (start + window >= trimmed.length) break;
   }
   return chunks;
+}
+
+/**
+ * Chunk a PDF's pages, each on its own (a chunk never spans two pages, so a hit
+ * names exactly one). Numbering continues from `startIx`, so a later pass can
+ * append to a file's chunks. Empty pages yield nothing.
+ */
+export function chunkPages(
+  pages: { n: number; text: string }[],
+  window = WINDOW,
+  overlap = OVERLAP,
+  startIx = 0,
+): TextChunk[] {
+  const out: TextChunk[] = [];
+  for (const p of pages) {
+    for (const c of chunk(p.text, window, overlap)) out.push({ chunkIx: startIx + out.length, text: c.text, page: p.n });
+  }
+  return out;
 }

@@ -40,8 +40,28 @@ manager:
 | Undo | `⌘ Z` |
 | Search | `⌘ K` |
 | Info panel | `⌘ I` |
+| Quick Look | `Space` |
 
 Copies and moves never overwrite — a collision gets a `" copy"` suffix instead.
+
+## Quick Look
+
+Select a file and press **Space** (or choose **Quick Look** from the context
+menu) to see it without opening another app. Every file shows on the same
+fixed stage, so stepping through a folder with the arrow keys never makes the
+window jump. **Space** or **Esc** closes it.
+
+| File | Shows |
+|------|-------|
+| Pictures (HEIC too, on macOS and Windows) | The picture, fitted |
+| PDFs | Pages, with ‹ › to turn them |
+| Audio and video | A player |
+| Text, code, Markdown | The first 128 KB, wrapped |
+| DOCX | Its text |
+| Folders | How many items they hold |
+
+**Open** hands the file to its default app. Quick Look works on local files;
+cloud drives don't offer it yet.
 
 ## Undo
 

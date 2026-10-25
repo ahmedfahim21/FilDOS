@@ -1,4 +1,4 @@
-import type { ChunkVector, SearchMatch } from '@shared/types';
+import type { ChunkKind, ChunkVector, SearchMatch } from '@shared/types';
 
 /**
  * The vector store abstraction the indexing phase searches against. The default
@@ -11,14 +11,30 @@ import type { ChunkVector, SearchMatch } from '@shared/types';
 export interface VectorStore {
   /** Persist the embedded chunks for a file, replacing any previous set. */
   upsert(path: string, chunks: ChunkVector[]): Promise<void>;
+  /** Add chunks to a file's set (the later pass over a long file). */
+  append(path: string, chunks: ChunkVector[]): Promise<void>;
   /** Nearest chunks to `query` by cosine similarity, highest score first. */
   search(query: Float32Array, opts?: SearchOpts): Promise<SearchMatch[]>;
+  /**
+   * Every chunk's cosine with `query` (no texts, unsorted). Search needs the
+   * whole distribution to put a query's scores on one scale.
+   */
+  scan(query: Float32Array, opts?: { underPath?: string; modelId?: string }): Promise<ScoredChunk[]>;
   /** Forget the given paths entirely. */
   remove(paths: string[]): Promise<void>;
   /** Carry a file's vectors to a new path after a rename/move. */
   remap(oldPath: string, newPath: string): Promise<void>;
   /** Drop any in-memory state after the backing rows were wiped externally. */
   clear?(): void;
+}
+
+/** A chunk's similarity to a query, with what it is and which pass added it. */
+export interface ScoredChunk {
+  path: string;
+  chunkIx: number;
+  score: number;
+  kind: ChunkKind;
+  pass: number;
 }
 
 export interface SearchOpts {

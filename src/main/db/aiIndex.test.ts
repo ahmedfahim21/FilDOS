@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { IndexState } from '@shared/types';
-import { getState, prune, remove, replaceChunks, searchCandidates, upsertState } from './aiIndex';
+import { appendChunks, chunkDetails, getState, partialStates, prune, remove, replaceChunks, statesUnder, upsertState } from './aiIndex';
 import { closeDb, db, initDb } from './index';
 import { fileChunks } from './schema';
 
@@ -43,12 +43,12 @@ describe('replaceChunks', () => {
   it('replaces the previous set rather than appending', async () => {
     await upsertState(state('/a.txt'));
     await replaceChunks('/a.txt', [
-      { chunkIx: 0, text: 'one', embedding: null, modelId: 'm1' },
-      { chunkIx: 1, text: 'two', embedding: null, modelId: 'm1' },
+      { chunkIx: 0, text: 'one', embedding: null, modelId: 'm1', kind: 'text' },
+      { chunkIx: 1, text: 'two', embedding: null, modelId: 'm1', kind: 'text' },
     ]);
     expect(await chunkRows('/a.txt')).toEqual([0, 1]);
 
-    await replaceChunks('/a.txt', [{ chunkIx: 0, text: 'only', embedding: null, modelId: 'm1' }]);
+    await replaceChunks('/a.txt', [{ chunkIx: 0, text: 'only', embedding: null, modelId: 'm1', kind: 'text' }]);
     expect(await chunkRows('/a.txt')).toEqual([0]);
   });
 });
@@ -56,7 +56,7 @@ describe('replaceChunks', () => {
 describe('remove / prune', () => {
   it('cascades chunks when an index_state row is removed', async () => {
     await upsertState(state('/a.txt'));
-    await replaceChunks('/a.txt', [{ chunkIx: 0, text: 'x', embedding: null, modelId: 'm1' }]);
+    await replaceChunks('/a.txt', [{ chunkIx: 0, text: 'x', embedding: null, modelId: 'm1', kind: 'text' }]);
 
     await remove(['/a.txt']);
 
@@ -75,15 +75,46 @@ describe('remove / prune', () => {
   });
 });
 
-describe('searchCandidates', () => {
-  it('returns only rows that have an embedding', async () => {
-    await upsertState(state('/a.txt'));
-    await replaceChunks('/a.txt', [
-      { chunkIx: 0, text: 'embedded', embedding: Buffer.from([1, 2, 3, 4]), modelId: 'm1' },
-      { chunkIx: 1, text: 'bare', embedding: null, modelId: 'm1' },
+describe('state info + partial files', () => {
+  it('round-trips the later-pass info as JSON and lists partial files oldest first', async () => {
+    await upsertState(state('/book.pdf', { status: 'partial', indexedAt: 5, info: { pages: 200, pagesRead: 30 } }));
+    await upsertState(state('/old.pdf', { status: 'partial', indexedAt: 2, info: { pages: 90, pagesRead: 30 } }));
+    await upsertState(state('/done.txt'));
+
+    expect(await getState('/book.pdf')).toEqual(
+      state('/book.pdf', { status: 'partial', indexedAt: 5, info: { pages: 200, pagesRead: 30 } }),
+    );
+    expect(await getState('/done.txt')).toEqual(state('/done.txt', { info: null }));
+    expect((await partialStates()).map((s) => s.path)).toEqual(['/old.pdf', '/book.pdf']);
+    expect((await statesUnder()).find((s) => s.path === '/book.pdf')?.info).toEqual({ pages: 200, pagesRead: 30 });
+
+    // Finishing clears the info and the partial status; nothing else changes.
+    await upsertState(state('/book.pdf', { indexedAt: 5, info: null }));
+    expect(await getState('/book.pdf')).toEqual(state('/book.pdf', { indexedAt: 5, info: null }));
+    expect((await partialStates()).map((s) => s.path)).toEqual(['/old.pdf']);
+  });
+});
+
+describe('appendChunks / chunkDetails', () => {
+  it('appends later-pass chunks and reports each chunk’s text and place', async () => {
+    await upsertState(state('/book.pdf'));
+    await replaceChunks('/book.pdf', [
+      { chunkIx: 0, text: 'page one', embedding: null, modelId: 'm1', kind: 'page', loc: 1, locEnd: 1 },
+    ]);
+    await appendChunks('/book.pdf', [
+      { chunkIx: 1, text: 'page forty', embedding: null, modelId: 'm1', kind: 'page', loc: 40, locEnd: 40, pass: 2 },
     ]);
 
-    const rows = await searchCandidates();
-    expect(rows.map((r) => r.text)).toEqual(['embedded']);
+    expect(await chunkRows('/book.pdf')).toEqual([0, 1]);
+    const rows = await db().select().from(fileChunks).where(eq(fileChunks.path, '/book.pdf'));
+    expect(rows.map((r) => ({ ix: r.chunkIx, kind: r.kind, loc: r.loc, pass: r.pass }))).toEqual([
+      { ix: 0, kind: 'page', loc: 1, pass: 1 },
+      { ix: 1, kind: 'page', loc: 40, pass: 2 },
+    ]);
+
+    const details = await chunkDetails([{ path: '/book.pdf', chunkIx: 1 }]);
+    expect([...details.entries()]).toEqual([
+      ['/book.pdf\x001', { text: 'page forty', kind: 'page', loc: 40, locEnd: 40 }],
+    ]);
   });
 });

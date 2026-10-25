@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { IndexProgress } from '@shared/types';
 import type { AiProvider } from '../providers/types';
@@ -9,11 +9,14 @@ import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
-import { isUnder } from './ignore';
+import type { Extractor } from './extractClient';
+import { isIgnored, isUnder, PHOTO_BUDGET } from './ignore';
 
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
-import { INDEX_VERSION, isStale } from './indexer';
+import { FIRST_PASS_CHUNKS, FIRST_PASS_PAGES, INDEX_VERSION, isStale, PASS_PAGES } from './indexer';
+import { MiniSearchKeywordStore } from './keywordStore';
+import { AUDIO_RATE, type DecodedImage, type DecodedMedia, type Frame } from '../../media/signals';
 
 // ---------------------------------------------------------------------------
 // isStale — truth table
@@ -41,12 +44,10 @@ describe('isStale', () => {
   it('stale when size changed', () =>
     expect(isStale(BASE, { mtimeMs: 1000, size: 9999 }, 'm1')).toBe(true));
   it('stale when modelId changed', () => expect(isStale(BASE, STAT, 'm2')).toBe(true));
-  it('fresh on v1 rows with content chunks (v2 only changed skipped files)', () =>
-    expect(isStale({ ...BASE, indexVersion: 1 }, STAT, 'm1')).toBe(false));
-  it('stale on v1 rows that were skipped (they gain a filename chunk in v2)', () =>
-    expect(isStale({ ...BASE, indexVersion: 1, status: 'skipped' }, STAT, 'm1')).toBe(true));
-  it('stale on any older indexVersion', () =>
-    expect(isStale({ ...BASE, indexVersion: 0 }, STAT, 'm1')).toBe(true));
+  it.each([0, 1, 2])('stale on older indexVersion %i, whatever its status', (v) => {
+    expect(isStale({ ...BASE, indexVersion: v }, STAT, 'm1')).toBe(true);
+    expect(isStale({ ...BASE, indexVersion: v, status: 'skipped' }, STAT, 'm1')).toBe(true);
+  });
   it('fresh when all fields match', () => expect(isStale(BASE, STAT, 'm1')).toBe(false));
   it('fresh even when prior status is skipped', () =>
     expect(isStale({ ...BASE, status: 'skipped' }, STAT, 'm1')).toBe(false));
@@ -57,6 +58,10 @@ const tmp = useTempDir();
 /** A provider that embeds deterministically and can be told to fail on a marker. */
 function fakeProvider(boom?: string) {
   let calls = 0;
+  const seen: { texts: string[]; role?: string; titles?: string[] }[] = [];
+  const media: { paths: string[]; budget?: number }[] = [];
+  const decoded: string[][] = [];
+  const decodedBudgets: (number | undefined)[] = [];
   const provider: AiProvider = {
     id: 'fake',
     capabilities: { embed: true, generate: false, images: false },
@@ -64,23 +69,55 @@ function fakeProvider(boom?: string) {
       return { state: 'ready', modelId, dim: 3 };
     },
     async download() {},
-    async embed(_modelId, texts) {
+    async embed(_modelId, texts, role, titles) {
       calls++;
+      seen.push({ texts, role, titles });
       if (boom && texts.some((t) => t.includes(boom))) throw new Error('boom');
       return texts.map((t) => Float32Array.from([t.length, 1, 0]));
     },
-    async embedImages(_modelId, paths) {
+    async embedMedia(_modelId, _kind, paths, opts) {
+      media.push({ paths, budget: opts?.budget });
       return paths.map(() => Float32Array.from([0, 0, 1]));
     },
+    async embedDecoded(_modelId, inputs, opts) {
+      decoded.push(inputs.map((i) => i.kind));
+      decodedBudgets.push(opts?.budget);
+      return inputs.map((i) => Float32Array.from(i.kind === 'audio' ? [0, 1, 0] : [1, 0, 0]));
+    },
   };
-  return { provider, calls: () => calls };
+  return { provider, calls: () => calls, seen, media, decoded, decodedBudgets };
+}
+
+/**
+ * Extraction that fails the way a corrupt document does — the fallback tests
+ * are about the indexer, not pdfjs (real parsing of broken files is covered in
+ * extract.test.ts), and a cold pdfjs load can outlast a slow CI runner's timeout.
+ */
+const unreadable: Extractor = {
+  text: async () => null,
+  pdfPages: async () => {
+    throw new Error('Invalid PDF structure.');
+  },
+};
+
+/** An indexer over the temp dir that reads files through `extract`. */
+function indexerWith(provider: AiProvider, extract: Extractor) {
+  return new Indexer({
+    provider: async () => provider,
+    model: 'm1',
+    config: async () => ({ roots: [tmp()], excludes: [] }),
+    vectorStore: new SqliteVectorStore(),
+    emit: () => {},
+    ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    extract,
+  });
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
 function makeIndexer(
   provider: AiProvider,
   excludes: string[] = [],
-  textModel = 'm1',
+  model = 'm1',
   countTokens?: (modelId: string, texts: string[]) => Promise<number[]>,
   excludeExtensions: string[] = [],
 ) {
@@ -88,8 +125,7 @@ function makeIndexer(
   let emits = 0;
   const indexer = new Indexer({
     provider: async () => provider,
-    textModel,
-    imageModel: 'clip',
+    model,
     config: async () => ({ roots: [tmp()], excludes, excludeExtensions }),
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
@@ -184,19 +220,78 @@ describe('Indexer.start', () => {
   });
 });
 
-describe('Indexer — multimodal routing', () => {
-  it('indexes text and image files with their respective models', async () => {
+describe('Indexer — one model for text and pictures', () => {
+  it('embeds text as titled passages and pictures as media, both with the one model', async () => {
     await write('a.txt', 'hello world');
     await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
-    const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider); // textModel 'm1', imageModel 'clip'
+    await fs.writeFile(join(tmp(), 'Screenshot 2026-10-01 at 14.22.10.png'), Buffer.from([1, 2, 3, 4]));
+    const { provider, seen, media } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
 
     await indexer.start();
 
     expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.modelId).toBe('m1');
+    expect(seen).toEqual([{ texts: ['hello world'], role: 'passage', titles: ['a.txt'] }]);
     const img = await aiIndex.getState(join(tmp(), 'pic.png'));
-    expect(img?.status).toBe('indexed');
-    expect(img?.modelId).toBe('clip'); // routed to the image model
+    expect(img).toMatchObject({ status: 'indexed', modelId: 'm1', indexVersion: INDEX_VERSION });
+    // Screenshots get the larger vision budget (small text, UI detail).
+    expect(media).toEqual(
+      expect.arrayContaining([
+        { paths: [join(tmp(), 'pic.png')], budget: 140 },
+        { paths: [join(tmp(), 'Screenshot 2026-10-01 at 14.22.10.png')], budget: 280 },
+      ]),
+    );
+    expect(media).toHaveLength(2);
+  });
+
+  it('gives pictures a keyword entry: their humanized name', async () => {
+    await fs.writeFile(join(tmp(), 'beach_trip-2026.png'), Buffer.from([1, 2, 3]));
+    const { provider } = fakeProvider();
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    });
+    await indexer.start();
+
+    const rows = await db().select().from(fileChunks);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ chunkIx: 0, text: 'beach trip 2026 png', modelId: 'm1' });
+    expect(keywordStore.search('beach').map((m) => m.path)).toEqual([join(tmp(), 'beach_trip-2026.png')]);
+  });
+});
+
+describe('Indexer — keyword-only content', () => {
+  it('stores data files and mostly-numeric text without vectors, still keyword-searchable', async () => {
+    await write('orders.csv', 'order_id,amount\nORD-48151623,1250.00\nORD-48151624,320.50');
+    await write('readings.txt', Array.from({ length: 40 }, (_, i) => `${i} ${i * 3} ${i * 7}`).join('\n'));
+    await write('note.txt', 'A short note about the garden and the roses in June.');
+    const { provider, seen } = fakeProvider();
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    });
+    await indexer.start();
+
+    const rows = await db().select().from(fileChunks);
+    const byName = (n: string) => rows.filter((r) => r.path === join(tmp(), n));
+    expect(byName('orders.csv').every((r) => r.embedding === null)).toBe(true);
+    expect(byName('readings.txt').every((r) => r.embedding === null)).toBe(true);
+    expect(byName('note.txt').every((r) => r.embedding !== null)).toBe(true);
+    // Only the note reached the model.
+    expect(seen.flatMap((s) => s.titles)).toEqual(['note.txt']);
+    expect(keywordStore.search('ORD-48151623').map((m) => m.path)).toContain(join(tmp(), 'orders.csv'));
   });
 });
 
@@ -276,8 +371,7 @@ describe('Indexer.start — guards', () => {
     const seen: IndexProgress[] = [];
     const indexer = new Indexer({
       provider: async () => null,
-      textModel: 'm1',
-      imageModel: 'clip',
+      model: 'm1',
       config: async () => ({ roots: [tmp()], excludes: [] }),
       vectorStore: new SqliteVectorStore(),
       emit: (p) => seen.push(p),
@@ -292,12 +386,11 @@ describe('Indexer.start — guards', () => {
 
 describe('Indexer — filename fallback', () => {
   it('indexes the humanized filename when a document’s content can’t be extracted', async () => {
-    // Garbage bytes with a .pdf extension: extractText yields null (parse fails).
+    // A .pdf whose parse fails.
     await write('Modern_Angular_Also_covers_signals.pdf', 'not really a pdf');
 
     const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider);
-    await indexer.start();
+    await indexerWith(provider, unreadable).start();
 
     const path = join(tmp(), 'Modern_Angular_Also_covers_signals.pdf');
     expect((await aiIndex.getState(path))?.status).toBe('skipped');
@@ -392,3 +485,366 @@ describe('Indexer — excluded extensions', () => {
     expect(await aiIndex.getState(join(tmp(), 'a.txt'))).toBeNull();
   });
 });
+
+describe('Indexer — places and the later pass', () => {
+  it('locates PDF chunks by page and reads a long PDF’s rest in the later pass', async () => {
+    const { makePdf } = await import('../../../../eval/testbed/writers');
+    const pages = Array.from({ length: FIRST_PASS_PAGES + PASS_PAGES + 5 }, (_, i) => `Page ${i + 1} about topic ${i + 1}.`);
+    await fs.writeFile(join(tmp(), 'book.pdf'), makePdf(pages));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.map((r) => r.loc)).toEqual(pages.map((_, i) => i + 1));
+    expect(rows.every((r) => r.kind === 'page')).toBe(true);
+    expect(rows.map((r) => r.chunkIx)).toEqual(pages.map((_, i) => i));
+    // First pass: the first FIRST_PASS_PAGES; the later pass appended the rest.
+    expect(rows.filter((r) => r.pass === 1).map((r) => r.loc)).toEqual(pages.slice(0, FIRST_PASS_PAGES).map((_, i) => i + 1));
+    expect(rows.filter((r) => r.pass === 2)).toHaveLength(pages.length - FIRST_PASS_PAGES);
+    expect(rows.find((r) => r.loc === pages.length)?.text).toBe(`Page ${pages.length} about topic ${pages.length}.`);
+    expect(await aiIndex.getState(join(tmp(), 'book.pdf'))).toMatchObject({ status: 'indexed', info: null });
+  });
+
+  it('reads a long document’s first passages first and appends the rest', async () => {
+    const paragraph = (i: number) => `Paragraph ${i}. ${'word '.repeat(380)}`;
+    await write('long.txt', Array.from({ length: FIRST_PASS_CHUNKS + 10 }, (_, i) => paragraph(i)).join('\n'));
+    const { provider } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.length).toBeGreaterThan(FIRST_PASS_CHUNKS);
+    expect(rows.map((r) => r.chunkIx)).toEqual(rows.map((_, i) => i));
+    expect(rows.filter((r) => r.pass === 1)).toHaveLength(FIRST_PASS_CHUNKS);
+    expect(rows.every((r) => r.kind === 'text' && r.loc === null)).toBe(true);
+    expect(await aiIndex.getState(join(tmp(), 'long.txt'))).toMatchObject({ status: 'indexed', info: null });
+  });
+
+  it('indexes an unreadable PDF by name, as skipped', async () => {
+    await write('Broken_Report.pdf', 'not a pdf');
+    const { provider } = fakeProvider();
+    await indexerWith(provider, unreadable).start();
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.kind, r.text])).toEqual([['name', 'Broken Report pdf']]);
+    expect((await aiIndex.getState(join(tmp(), 'Broken_Report.pdf')))?.status).toBe('skipped');
+  });
+});
+
+describe('Indexer — audio and video', () => {
+  const frame = (t: number, gray: number): Frame => ({
+    t,
+    width: 8,
+    height: 8,
+    rgba: new Uint8Array(256).map((_, i) => (i % 4 === 3 ? 255 : gray)),
+  });
+
+  function mediaIndexer(provider: AiProvider, decode: (path: string) => Promise<DecodedMedia>) {
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      decodeMedia: decode,
+    });
+    return { indexer, keywordStore };
+  }
+
+  it('embeds a video’s distinct shots and its sound windows, each at its moment', async () => {
+    await fs.writeFile(join(tmp(), 'Trip_to_Lisbon.mp4'), 'video bytes');
+    const { provider, decoded } = fakeProvider();
+    const { indexer, keywordStore } = mediaIndexer(provider, async () => ({
+      duration: 70,
+      // 3 and 6 look alike: one shot.
+      frames: [frame(0.5, 10), frame(3.5, 11), frame(6.5, 200)],
+      audio: new Float32Array(70 * AUDIO_RATE),
+    }));
+
+    await indexer.start();
+
+    const rows = (await db().select().from(fileChunks)).sort((a, b) => a.chunkIx - b.chunkIx);
+    expect(rows.map((r) => [r.kind, r.loc, r.locEnd, r.embedding === null])).toEqual([
+      ['name', null, null, true],
+      ['frame', 0.5, 0.5, false],
+      ['frame', 6.5, 6.5, false],
+      ['audio', 0, 30, false],
+      ['audio', 25, 55, false],
+      ['audio', 50, 70, false],
+    ]);
+    expect(rows[0].text).toBe('Trip to Lisbon mp4');
+    expect(decoded).toEqual([['frame', 'frame'], ['audio', 'audio', 'audio']]);
+    expect(await aiIndex.getState(join(tmp(), 'Trip_to_Lisbon.mp4'))).toMatchObject({ status: 'indexed', modelId: 'm1' });
+    // Keyword search finds it by name; moments have no text to match.
+    expect(keywordStore.search('lisbon').map((m) => [m.path, m.chunkIx])).toEqual([[join(tmp(), 'Trip_to_Lisbon.mp4'), 0]]);
+  });
+
+  it('keeps a recording with nothing decodable findable by name, as skipped', async () => {
+    await fs.writeFile(join(tmp(), 'empty.mp3'), 'x');
+    const { provider, decoded } = fakeProvider();
+    const { indexer } = mediaIndexer(provider, async () => ({ duration: 0, frames: [], audio: null }));
+    await indexer.start();
+    expect((await db().select().from(fileChunks)).map((r) => r.kind)).toEqual(['name']);
+    expect(decoded).toEqual([]);
+    expect((await aiIndex.getState(join(tmp(), 'empty.mp3')))?.status).toBe('skipped');
+  });
+
+  it('marks the file errored when decoding fails, and leaves media alone without a decoder', async () => {
+    await fs.writeFile(join(tmp(), 'broken.mp4'), 'x');
+    const { provider } = fakeProvider();
+    const { indexer } = mediaIndexer(provider, async () => {
+      throw new Error('Unreadable media');
+    });
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'broken.mp4'))).toBeNull();
+    expect(indexer.status().errors).toBe(1);
+
+    // No decoder (e.g. a host without Chromium): media isn't indexable at all.
+    const plain = makeIndexer(fakeProvider().provider);
+    await plain.indexer.start();
+    expect(plain.progress()?.errors ?? 0).toBe(0);
+  });
+});
+
+describe('Indexer — gate (set hours)', () => {
+  it('waits while the gate holds it back, reporting when it resumes', async () => {
+    // Real timers and a short hold: fake timers raced the real file I/O, and a
+    // timed-out run left them installed for the tests after it.
+    await write('a.txt', 'hello');
+    const { provider } = fakeProvider();
+    const waits = [40, 0];
+    const seen: (number | undefined)[] = [];
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: (p) => seen.push(p.waitingUntil),
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      gate: async () => waits.shift() ?? 0,
+    });
+    const started = Date.now();
+    await indexer.start();
+    expect(Date.now() - started).toBeGreaterThanOrEqual(35);
+    const held = seen.find((w) => w !== undefined);
+    expect(held).toBeGreaterThanOrEqual(started + 40);
+    expect(seen.at(-1)).toBeUndefined();
+    expect(waits).toEqual([]); // asked again after the hold
+    expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
+  });
+});
+
+describe('Indexer — estimates', () => {
+  const costs = { text: 0.1, image: 1, frame: 0.3, audio: 0.8 };
+
+  it('estimates only what is not indexed yet, by top-level folder, with the crawl’s rules', async () => {
+    await fs.mkdir(join(tmp(), 'Docs'));
+    await fs.mkdir(join(tmp(), 'Pictures'));
+    await fs.mkdir(join(tmp(), 'node_modules'));
+    await fs.writeFile(join(tmp(), 'Docs', 'a.md'), 'x'.repeat(3600)); // 2 chunks
+    await fs.writeFile(join(tmp(), 'Pictures', 'p.png'), Buffer.from([1, 2, 3])); // 1 image
+    await fs.writeFile(join(tmp(), 'top.txt'), 'hello'); // 1 chunk, right in the root
+    await fs.writeFile(join(tmp(), 'node_modules', 'skip.md'), 'ignored');
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      // Built-in rules below the root (the temp dir itself may sit under an ignored segment).
+      ignore: (p, ex, root) => isIgnored(p, ex, root),
+    });
+
+    const before = await indexer.estimate(costs);
+    expect(before.files).toBe(3);
+    expect(before.seconds).toBeCloseTo(0.2 + 1 + 0.1, 6);
+    expect(before.folders).toEqual([
+      { path: join(tmp(), 'Pictures'), seconds: 1, files: 1 },
+      { path: join(tmp(), 'Docs'), seconds: expect.closeTo(0.2, 6), files: 1 },
+      { path: tmp(), seconds: expect.closeTo(0.1, 6), files: 1 },
+    ]);
+
+    await indexer.start();
+    expect(await indexer.estimate(costs)).toEqual({ seconds: 0, files: 0, folders: [] });
+  });
+
+  it('records the model time of each kind of work', async () => {
+    await write('a.txt', 'hello');
+    await fs.writeFile(join(tmp(), 'p.png'), Buffer.from([1]));
+    const recorded: [string, number][] = [];
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      recordCost: (kind, seconds, units) => {
+        expect(seconds).toBeGreaterThanOrEqual(0);
+        recorded.push([kind, units]);
+      },
+    });
+    await indexer.start();
+    expect(recorded.sort()).toEqual([
+      ['image', 1],
+      ['text', 1],
+    ]);
+  });
+
+  it('reports an ETA once part of the run is done, and none when idle', async () => {
+    for (let i = 0; i < 6; i++) await write(`f${i}.txt`, 'some words here');
+    const etas: (number | undefined)[] = [];
+    const { provider } = fakeProvider();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: (p) => etas.push(p.etaSeconds),
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      costs: async () => costs,
+      // Slow enough that progress emits (throttled to ~8/s) happen mid-run.
+      pace: () => new Promise((r) => setTimeout(r, 150)),
+    });
+    await indexer.start();
+    expect(etas.some((e) => typeof e === 'number' && e >= 0)).toBe(true);
+    expect(indexer.status().etaSeconds).toBeUndefined();
+  });
+});
+
+describe('Indexer — pictures only the OS decodes (HEIC)', () => {
+  function heicIndexer(provider: AiProvider, decodeImage?: (path: string) => Promise<DecodedImage>) {
+    return new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      decodeImage,
+    });
+  }
+
+  it('embeds the OS-decoded pixels at the photo budget, never through the path reader', async () => {
+    await fs.writeFile(join(tmp(), 'IMG_6921.HEIC'), 'heic bytes');
+    const { provider, media, decoded, decodedBudgets } = fakeProvider();
+    const asked: string[] = [];
+    const indexer = heicIndexer(provider, async (path) => {
+      asked.push(path);
+      return { width: 4, height: 3, rgba: new Uint8Array(48) };
+    });
+
+    await indexer.start();
+
+    expect(asked).toEqual([join(tmp(), 'IMG_6921.HEIC')]);
+    expect(media).toEqual([]);
+    expect(decoded).toEqual([['frame']]);
+    expect(decodedBudgets).toEqual([PHOTO_BUDGET]);
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.chunkIx, r.kind, r.text, r.embedding === null])).toEqual([[0, 'image', 'IMG 6921 HEIC', false]]);
+    expect(await aiIndex.getState(join(tmp(), 'IMG_6921.HEIC'))).toMatchObject({ status: 'indexed', modelId: 'm1' });
+  });
+
+  it('keeps it by name, as skipped, where nothing can decode it', async () => {
+    await fs.writeFile(join(tmp(), 'Beach.heif'), 'heif bytes');
+    const { provider, media, decoded } = fakeProvider();
+    await heicIndexer(provider).start();
+    expect(media).toEqual([]);
+    expect(decoded).toEqual([]);
+    const rows = await db().select().from(fileChunks);
+    expect(rows.map((r) => [r.chunkIx, r.kind, r.text, r.embedding])).toEqual([[0, 'name', 'Beach heif', null]]);
+    expect((await aiIndex.getState(join(tmp(), 'Beach.heif')))?.status).toBe('skipped');
+  });
+
+  it('marks it errored when the OS fails to decode it', async () => {
+    await fs.writeFile(join(tmp(), 'bad.heic'), 'x');
+    const indexer = heicIndexer(fakeProvider().provider, async () => {
+      throw new Error('The system could not decode this picture.');
+    });
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'bad.heic'))).toBeNull();
+    expect(indexer.status().errors).toBe(1);
+  });
+
+  it('still reads ordinary pictures by path', async () => {
+    await fs.writeFile(join(tmp(), 'cat.jpg'), 'jpg bytes');
+    const { provider, media, decoded } = fakeProvider();
+    await heicIndexer(provider, async () => {
+      throw new Error('should not be called');
+    }).start();
+    expect(media).toEqual([{ paths: [join(tmp(), 'cat.jpg')], budget: PHOTO_BUDGET }]);
+    expect(decoded).toEqual([]);
+  });
+});
+
+
+describe('Indexer — extraction through the injected extractor', () => {
+  it('reads text and PDF pages only through `extract`, and a failed read falls back as before', async () => {
+    await write('notes.md', 'never read from disk directly');
+    await write('Report.pdf', 'not really a pdf');
+    const asked: string[] = [];
+    const extract: Extractor = {
+      async text(path) {
+        asked.push(`text ${basename(path)}`);
+        return 'remote extracted words';
+      },
+      async pdfPages(path, from, to) {
+        asked.push(`pdf ${basename(path)} ${from}-${to}`);
+        throw Object.assign(new Error('Reading this file took over 120 s; it was stopped.'), { code: 'ETIMEDOUT' });
+      },
+    };
+    const indexer = new Indexer({
+      provider: async () => fakeProvider().provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      extract,
+    });
+
+    await indexer.start();
+
+    expect(asked.sort()).toEqual([`pdf Report.pdf 1-${FIRST_PASS_PAGES}`, 'text notes.md']);
+    const rows = (await db().select().from(fileChunks)).map((r) => [basename(r.path), r.kind, r.text]).sort();
+    expect(rows).toEqual([
+      ['Report.pdf', 'name', 'Report pdf'],
+      ['notes.md', 'text', 'remote extracted words'],
+    ]);
+    expect((await aiIndex.getState(join(tmp(), 'Report.pdf')))?.status).toBe('skipped');
+    expect((await aiIndex.getState(join(tmp(), 'notes.md')))?.status).toBe('indexed');
+  });
+});
+
+describe('Indexer — cache folders', () => {
+  it('skips a folder tagged with CACHEDIR.TAG', async () => {
+    await fs.mkdir(join(tmp(), 'cache'));
+    await fs.writeFile(join(tmp(), 'cache', 'CACHEDIR.TAG'), 'Signature: 8a477f597d28d172789f06886806bc55\n');
+    await fs.writeFile(join(tmp(), 'cache', 'blob.txt'), 'cached words');
+    await write('kept.txt', 'my notes');
+    const { indexer } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'cache', 'blob.txt'))).toBeNull();
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+  });
+
+  it('crawls on past an unreadable CACHEDIR.TAG instead of ending the crawl', async () => {
+    // A directory named CACHEDIR.TAG: opening it as a file fails.
+    await fs.mkdir(join(tmp(), 'odd', 'CACHEDIR.TAG'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'odd', 'inside.txt'), 'still my notes');
+    await write('kept.txt', 'my notes');
+    const { indexer, progress } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect((await aiIndex.getState(join(tmp(), 'odd', 'inside.txt')))?.status).toBe('indexed');
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+    expect(progress()?.state).toBe('idle');
+  });
+});
+

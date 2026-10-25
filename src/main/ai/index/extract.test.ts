@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../fs/fixtures';
-import { extractText, isExtractable, isImage, MAX_BYTES } from './extract';
+import { extractText, isDataFile, isExtractable, isImage, isMostlyNumeric, MAX_BYTES, needsOsDecode } from './extract';
 
 describe('isExtractable', () => {
   it('accepts text/code/data and parsed documents (pdf/docx)', () => {
@@ -23,6 +23,13 @@ describe('isImage', () => {
     for (const p of ['/a/notes.md', '/a/report.docx', '/a/clip.mp4']) {
       expect(isImage(p)).toBe(false);
     }
+  });
+});
+
+describe('needsOsDecode', () => {
+  it('is true for HEIC/HEIF pictures only', () => {
+    for (const p of ['/a/IMG_6921.HEIC', '/a/b.heic', '/a/c.heif']) expect(needsOsDecode(p)).toBe(true);
+    for (const p of ['/a/photo.jpg', '/a/x.avif', '/a/heic.png', '/a/notes.md']) expect(needsOsDecode(p)).toBe(false);
   });
 });
 
@@ -124,5 +131,24 @@ describe('extractText', () => {
     const dir = join(tmp(), 'sub.txt');
     await fs.mkdir(dir);
     expect(await extractText(dir)).toBeNull();
+  });
+});
+
+describe('keyword-only content', () => {
+  it('marks data and config formats', () => {
+    for (const f of ['a.csv', 'b.JSON', 'c.yaml', 'd.log', 'e.sql']) expect(isDataFile(f)).toBe(true);
+    for (const f of ['a.md', 'b.txt', 'c.pdf', 'd.ts']) expect(isDataFile(f)).toBe(false);
+  });
+
+  it('no longer reads .env files as text', () => {
+    expect(isExtractable('/home/me/prod.env')).toBe(false);
+  });
+
+  it('detects mostly-numeric text', () => {
+    const table = Array.from({ length: 30 }, (_, i) => `${i} ${i * 2.5} ${i * 7}%`).join('\n');
+    expect(isMostlyNumeric(table)).toBe(true);
+    expect(isMostlyNumeric('The 3 little pigs built 3 houses of straw, sticks and bricks in 1886, they say, and so on and on.')).toBe(false);
+    // Too short to judge.
+    expect(isMostlyNumeric('1 2 3 4 5')).toBe(false);
   });
 });

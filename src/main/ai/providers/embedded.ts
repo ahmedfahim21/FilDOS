@@ -1,10 +1,21 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import { setPriority } from 'node:os';
 import { join } from 'node:path';
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, DecodedInput } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
 import type { EntitySpan } from '@shared/graphTypes';
 import type { AiProvider } from './types';
+
+/** Vectors cross the utilityProcess port as Float32Arrays (structured clone keeps typed arrays). */
+export function vectors(data: unknown): Float32Array[] {
+  if (!Array.isArray(data) || !data.every((v) => v instanceof Float32Array)) {
+    throw Object.assign(new Error('The AI worker returned malformed vectors.'), { code: 'EAIFAILED' });
+  }
+  return data as Float32Array[];
+}
+
+/** Unused this long, the embedding worker exits (freeing the model's memory). */
+export const WORKER_IDLE_MS = 2 * 60_000;
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -34,6 +45,8 @@ export class EmbeddedAiProvider implements AiProvider {
   /** Model ids whose download was deliberately cancelled, so the worker-exit
    * rejection it causes can be told apart from a real crash. */
   private readonly cancelling = new Set<string>();
+  /** Shuts the worker down once nothing has asked it anything for a while. */
+  private idleTimer: NodeJS.Timeout | null = null;
 
   /** Subscribe to model download/state progress. Returns an unsubscribe fn. */
   onProgress(cb: (status: AiModelStatus) => void): () => void {
@@ -56,9 +69,13 @@ export class EmbeddedAiProvider implements AiProvider {
       }
     });
     worker.on('message', (msg: WorkerReply) => this.onMessage(msg));
-    worker.on('exit', () => {
+    worker.on('exit', (code) => {
       this.worker = null;
-      for (const p of this.pending.values()) p.reject(new Error('The AI worker stopped.'));
+      // 0 after an idle shutdown or a cancel; anything else is a crash worth tracing.
+      if (code !== 0 || this.pending.size) {
+        console.error(`[fildos] AI worker exited (code ${code}) with ${this.pending.size} request(s) pending`);
+      }
+      for (const p of this.pending.values()) p.reject(new Error(`The AI worker stopped (exit code ${code}).`));
       this.pending.clear();
     });
     this.worker = worker;
@@ -74,6 +91,7 @@ export class EmbeddedAiProvider implements AiProvider {
     const p = this.pending.get(msg.id);
     if (!p) return;
     this.pending.delete(msg.id);
+    if (this.pending.size === 0) this.scheduleIdleExit();
     if (msg.ok) {
       p.resolve(msg.data);
     } else {
@@ -83,7 +101,22 @@ export class EmbeddedAiProvider implements AiProvider {
     }
   }
 
+  /**
+   * The loaded model holds ~0.5–1 GB; free it when idle. The worker forks
+   * again (and reloads lazily) on the next request.
+   */
+  private scheduleIdleExit(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.pending.size === 0 && this.worker) this.worker.kill();
+    }, WORKER_IDLE_MS);
+    this.idleTimer.unref?.();
+  }
+
   private request<T>(type: string, payload?: Record<string, unknown>): Promise<T> {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
     const worker = this.ensureWorker();
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
@@ -112,7 +145,7 @@ export class EmbeddedAiProvider implements AiProvider {
    * cancellation hook, so the only way to stop a fetch already underway is to
    * kill the worker process doing it — it forks again lazily on the next
    * request. Only acts while the given model is actually downloading, so a
-   * stale/late cancel can't kill an unrelated in-flight embed/rerank call.
+   * stale/late cancel can't kill an unrelated in-flight embed call.
    */
   async cancelDownload(modelId: string): Promise<void> {
     if (!this.worker) return;
@@ -125,22 +158,20 @@ export class EmbeddedAiProvider implements AiProvider {
     }
   }
 
-  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage'): Promise<Float32Array[]> {
-    const rows = await this.request<number[][]>('embed', { modelId, texts, role });
-    return rows.map((row) => Float32Array.from(row));
+  async embed(modelId: string, texts: string[], role: EmbedRole = 'passage', titles?: string[]): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embed', { modelId, texts, role, titles }));
   }
 
-  async embedImages(modelId: string, paths: string[]): Promise<Float32Array[]> {
-    const rows = await this.request<number[][]>('embedImages', { modelId, paths });
-    return rows.map((row) => Float32Array.from(row));
+  async embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embedMedia', { modelId, kind, paths, budget: opts?.budget }));
+  }
+
+  async embedDecoded(modelId: string, inputs: DecodedInput[], opts?: { budget?: number }): Promise<Float32Array[]> {
+    return vectors(await this.request<unknown>('embedDecoded', { modelId, inputs, budget: opts?.budget }));
   }
 
   async countTokens(modelId: string, texts: string[]): Promise<number[]> {
     return this.request<number[]>('countTokens', { modelId, texts });
-  }
-
-  async rerank(modelId: string, query: string, passages: string[]): Promise<number[]> {
-    return this.request<number[]>('rerank', { modelId, query, passages });
   }
 
   async extractEntities(modelId: string, texts: string[]): Promise<EntitySpan[][]> {

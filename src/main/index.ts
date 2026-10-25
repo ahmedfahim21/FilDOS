@@ -10,6 +10,7 @@ import { OpenDalProvider } from './cloud/providers/opendal';
 import { OPENDAL_BACKENDS } from '@shared/opendalBackends';
 import { registerAiHandlers } from './ai/handlers';
 import { registerAiProvider } from './ai/registry';
+import { removeRetiredModels } from './ai/retiredModels';
 import { EmbeddedAiProvider } from './ai/providers/embedded';
 import { CloudAiProvider } from './ai/providers/cloud';
 import {
@@ -20,6 +21,7 @@ import {
 import { registerGraphHandlers, stopGraphBackground } from './ai/graph/handlers';
 import { registerLlmHandlers } from './ai/llm/handlers';
 import { closeDb, initDb } from './db';
+import { handleMediaProtocol, registerMediaScheme } from './media/protocol';
 import { getPrefs, setPrefs } from './prefs';
 import { destroyTray, showTray } from './tray';
 
@@ -77,6 +79,9 @@ async function createWindow(): Promise<void> {
   }
 }
 
+// Privileged schemes must be registered before the app is ready.
+registerMediaScheme();
+
 app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   // Cloud credentials are encrypted with the OS keyring (safeStorage). Warn once
@@ -95,10 +100,15 @@ app.whenReady().then(() => {
   }
   // The embedded AI worker can't call app.getPath; hand it the model cache dir.
   process.env.FILDOS_MODELS_DIR = join(app.getPath('userData'), 'models');
+  void removeRetiredModels(process.env.FILDOS_MODELS_DIR).then(
+    (removed) => removed.length && console.info(`[fildos] removed retired models: ${removed.join(', ')}`),
+    (err) => console.error('[fildos] could not remove retired models', err),
+  );
   // Same for the chat LLM worker's GGUF weights.
   process.env.FILDOS_LLM_DIR = join(app.getPath('userData'), 'models', 'llm');
   registerAiProvider('embedded', new EmbeddedAiProvider());
   registerAiProvider('cloud', new CloudAiProvider());
+  handleMediaProtocol();
   registerFsHandlers();
   registerCloudHandlers();
   registerAiHandlers();
@@ -107,7 +117,7 @@ app.whenReady().then(() => {
   registerLlmHandlers();
   createWindow();
   // Resume any indexing left over from last session (no-op unless enabled).
-  startIndexBackground();
+  startIndexBackground().catch((err) => console.error('[fildos] indexing failed to start', err));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

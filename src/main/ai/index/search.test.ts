@@ -1,16 +1,23 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { IndexState } from '@shared/types';
+import type { ChunkKind, IndexState } from '@shared/types';
+import { EMBED_MODEL_ID, getModelDef } from '@shared/aiModels';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
 import { closeDb, initDb } from '../../db';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { useTempDir } from '../../fs/fixtures';
-import { semanticSearch, similarByFile } from './search';
+import { MiniSearchKeywordStore } from './keywordStore';
+import type { ScoredChunk } from './vectorStore';
+import { markedSnippet, semanticSearch, similarByFile, STRONG_RATIO, Z_GATE, zScores } from './search';
 
 const tmp = useTempDir();
-const store = new SqliteVectorStore();
+let store: SqliteVectorStore;
+let keywords: MiniSearchKeywordStore;
+
+/** Roles the fake was asked to embed with, for asserting the task prefix choice. */
+const roles: (string | undefined)[] = [];
 
 /** A provider that embeds any query to a fixed vector (the test controls ranking). */
 function fakeProvider(queryVec: number[]): AiProvider {
@@ -21,11 +28,15 @@ function fakeProvider(queryVec: number[]): AiProvider {
       return { state: 'ready', modelId, dim: queryVec.length };
     },
     async download() {},
-    async embed() {
+    async embed(_m, _texts, role) {
+      roles.push(role);
       return [Float32Array.from(queryVec)];
     },
-    async embedImages() {
-      return [];
+    async embedMedia() {
+      return [Float32Array.from(queryVec)];
+    },
+    async embedDecoded() {
+      return [Float32Array.from(queryVec)];
     },
   };
 }
@@ -41,188 +52,313 @@ const state = (path: string): IndexState => ({
   status: 'indexed',
 });
 
-/** Write a real file and index it with one chunk carrying `vec`. */
-async function indexFile(path: string, vec: number[], text: string): Promise<void> {
-  await fs.writeFile(path, text);
+/** A unit vector at `angle` radians from the x axis, in the xy plane. */
+const at = (angle: number) => [Math.cos(angle), Math.sin(angle), 0];
+
+/** Write a real file and index it with chunks (vectors, kinds, places, words). */
+async function indexFile(
+  name: string,
+  chunks: { vec: number[] | null; text: string; kind?: ChunkKind; loc?: number; pass?: number }[],
+): Promise<string> {
+  const path = join(tmp(), name);
+  await fs.writeFile(path, chunks.map((c) => c.text).join('\n'));
   await aiIndex.upsertState(state(path));
-  await store.upsert(path, [{ chunkIx: 0, text, embedding: Float32Array.from(vec), modelId: 'm1' }]);
+  await store.upsert(
+    path,
+    chunks.map((c, i) => ({
+      chunkIx: i,
+      text: c.text,
+      embedding: c.vec ? Float32Array.from(c.vec) : null,
+      modelId: 'm1',
+      kind: c.kind ?? 'text',
+      loc: c.loc ?? null,
+      locEnd: c.loc ?? null,
+      pass: c.pass ?? 1,
+    })),
+  );
+  keywords.upsert(path, chunks.map((c, i) => ({ chunkIx: i, text: c.text })));
+  return path;
 }
 
-beforeEach(() => initDb(':memory:'));
+/** Thirty unrelated files spread around the circle, so a query has a real score distribution. */
+async function filler(): Promise<void> {
+  for (let i = 0; i < 30; i++) await indexFile(`filler-${i}.txt`, [{ vec: at(1.2 + (i / 30) * 1.9), text: `filler note ${i}` }]);
+}
+
+beforeEach(() => {
+  initDb(':memory:');
+  store = new SqliteVectorStore();
+  keywords = new MiniSearchKeywordStore();
+  roles.length = 0;
+});
 afterEach(() => closeDb());
 
-describe('semanticSearch', () => {
-  it('ranks the most similar file first and returns its snippet', async () => {
-    const a = join(tmp(), 'a.txt');
-    const b = join(tmp(), 'b.txt');
-    const c = join(tmp(), 'c.txt');
-    await indexFile(a, [1, 0, 0], 'alpha content about ships');
-    await indexFile(b, [0, 1, 0], 'beta content about trains');
-    await indexFile(c, [0, 0, 1], 'gamma content about planes');
+describe('zScores', () => {
+  const chunk = (score: number, kind: ChunkKind = 'text', pass = 1): ScoredChunk => ({ path: '/x', chunkIx: 0, score, kind, pass });
 
-    const hits = await semanticSearch(fakeProvider([0.9, 0.1, 0]), { text: 'm1', image: 'clip' }, store, 'vessels at sea');
-
-    expect(hits[0].path).toBe(a);
-    expect(hits[0].snippet).toContain('alpha');
-    expect(hits[0].score).toBeGreaterThan(hits[1].score);
+  it('puts each chunk on the query’s own scale', () => {
+    const z = zScores([chunk(0.5), chunk(0.5), chunk(0.5), chunk(0.9)]);
+    expect(z[3]).toBeGreaterThan(z[0]);
+    expect(z.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 6);
   });
 
-  it('collapses multiple chunks of one file to a single best-scored hit', async () => {
-    const a = join(tmp(), 'a.txt');
-    await fs.writeFile(a, 'two chunks');
-    await aiIndex.upsertState(state(a));
-    await store.upsert(a, [
-      // Different directions — cosine ignores magnitude — so 'strong' wins.
-      { chunkIx: 0, text: 'weak match', embedding: Float32Array.from([1, 1, 0]), modelId: 'm1' },
-      { chunkIx: 1, text: 'strong match', embedding: Float32Array.from([1, 0, 0]), modelId: 'm1' },
+  it('centres pictures and text on their own means once each has enough vectors', () => {
+    const text = Array.from({ length: 20 }, () => chunk(0.6));
+    const images = Array.from({ length: 20 }, () => chunk(0.4, 'image'));
+    const z = zScores([...text, ...images, chunk(0.7), chunk(0.5, 'image')]);
+    // Both sit 0.1 above their modality's mean, so they stand out equally.
+    expect(z.at(-1)).toBeCloseTo(z.at(-2)!, 1);
+  });
+
+  it('treats video frames as pictures and sound as its own modality', () => {
+    const images = Array.from({ length: 10 }, () => chunk(0.4, 'image'));
+    const frames = Array.from({ length: 10 }, () => chunk(0.4, 'frame'));
+    const audio = Array.from({ length: 20 }, () => chunk(0.3, 'audio'));
+    const text = Array.from({ length: 20 }, () => chunk(0.6));
+    const z = zScores([...images, ...frames, ...audio, ...text, chunk(0.5, 'frame'), chunk(0.4, 'audio'), chunk(0.7)]);
+    // Each sits 0.1 above its own modality's mean (pictures pooled with frames).
+    expect(z.at(-3)).toBeCloseTo(z.at(-1)!, 1);
+    expect(z.at(-2)).toBeCloseTo(z.at(-1)!, 1);
+  });
+
+  it('scores later-pass chunks without letting them set the scale', () => {
+    const base = [chunk(0.5), chunk(0.52), chunk(0.48), chunk(0.5)];
+    const withLater = zScores([...base, ...Array.from({ length: 100 }, () => chunk(0.1, 'page', 2)), chunk(0.9, 'page', 2)]);
+    const alone = zScores([...base, chunk(0.9, 'page', 2)]);
+    expect(withLater.at(-1)).toBeCloseTo(alone.at(-1)!, 6);
+  });
+});
+
+describe('markedSnippet', () => {
+  it('marks query words where they matched, centring on the first', () => {
+    expect(markedSnippet('Rest the dough, then bake at 250°C until brown.', ['bake'])).toBe(
+      'Rest the dough, then «bake» at 250°C until brown.',
+    );
+  });
+
+  it('marks words that start with a term (stemmed endings) and leaves others alone', () => {
+    expect(markedSnippet('Invoices and invoiced totals; no voice here.', ['invoice'])).toBe(
+      '«Invoices» and «invoiced» totals; no voice here.',
+    );
+  });
+
+  it('elides long text around the match', () => {
+    const text = `${'x '.repeat(200)}the needle is here ${'y '.repeat(200)}`;
+    const out = markedSnippet(text, ['needle'], 60);
+    expect(out.startsWith('…')).toBe(true);
+    expect(out.endsWith('…')).toBe(true);
+    expect(out).toContain('«needle»');
+  });
+
+  it('is plain when there are no terms', () => {
+    expect(markedSnippet('  a\n b  ', [])).toBe('a b');
+  });
+});
+
+describe('semanticSearch — meaning gate', () => {
+  it('finds the file that stands out and points at its matching chunk', async () => {
+    await filler();
+    const target = await indexFile('notes.txt', [
+      { vec: at(1.5), text: 'shopping list' },
+      { vec: at(0.02), text: 'vessels at sea and harbour ships' },
     ]);
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
+    const { hits, strong } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'ships in the harbour');
 
-    expect(hits).toHaveLength(1);
-    expect(hits[0].snippet).toContain('strong');
+    expect(hits[0].path).toBe(target);
+    expect(hits[0]).toMatchObject({ name: 'notes.txt', segment: 'text', loc: null, passage: 'vessels at sea and harbour ships' });
+    expect(hits[0].score).toBeGreaterThan(0);
+    expect(hits[0].score).toBeLessThan(1);
+    expect(strong).toBeGreaterThanOrEqual(1);
+    expect(roles).toEqual(['query']);
   });
 
-  it('scopes results to rootPath', async () => {
+  it('finds nothing when nothing stands out', async () => {
+    // Every file is equally (un)related: no z-score clears the gate.
+    for (let i = 0; i < 20; i++) await indexFile(`same-${i}.txt`, [{ vec: at(1), text: 'same' }]);
+    const { hits, strong } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'quantum chromodynamics');
+    expect(hits).toEqual([]);
+    expect(strong).toBe(0);
+  });
+
+  it('needs the model’s minimum cosine as well as standing out', async () => {
+    // Only EmbeddingGemma has a floor; build a distribution whose best is far below it.
+    const floor = getModelDef(EMBED_MODEL_ID)!.minMatch!;
+    const path = join(tmp(), 'weak.txt');
+    await fs.writeFile(path, 'weak');
+    await aiIndex.upsertState({ ...state(path), modelId: EMBED_MODEL_ID });
+    const lowAngle = Math.acos(floor - 0.2);
+    await store.upsert(path, [{ chunkIx: 0, text: 'weak', embedding: Float32Array.from(at(lowAngle)), modelId: EMBED_MODEL_ID, kind: 'text' }]);
+    for (let i = 0; i < 20; i++) {
+      const p = join(tmp(), `far-${i}.txt`);
+      await fs.writeFile(p, 'far');
+      await aiIndex.upsertState({ ...state(p), modelId: EMBED_MODEL_ID });
+      await store.upsert(p, [{ chunkIx: 0, text: 'far', embedding: Float32Array.from(at(Math.PI / 2 + i * 0.01)), modelId: EMBED_MODEL_ID, kind: 'text' }]);
+    }
+    expect((await semanticSearch(fakeProvider(at(0)), EMBED_MODEL_ID, store, 'anything')).hits).toEqual([]);
+  });
+
+  it('reports the PDF page a hit points at', async () => {
+    await filler();
+    const book = await indexFile('guide.pdf', [
+      { vec: at(1.4), text: 'owls', kind: 'page', loc: 5 },
+      { vec: at(0.01), text: 'kingfishers dive from low branches', kind: 'page', loc: 120, pass: 2 },
+    ]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'kingfisher diving');
+    expect(hits[0]).toMatchObject({ path: book, segment: 'page', loc: 120, locEnd: 120 });
+  });
+
+  it('scopes results to rootPath, keeping the whole index’s scale', async () => {
+    await filler();
     await fs.mkdir(join(tmp(), 'docs'));
-    await fs.mkdir(join(tmp(), 'other'));
-    const inDocs = join(tmp(), 'docs', 'a.txt');
-    const outside = join(tmp(), 'other', 'c.txt');
-    await indexFile(inDocs, [1, 0, 0], 'in docs');
-    await indexFile(outside, [1, 0, 0], 'outside');
-
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q', {
-      rootPath: join(tmp(), 'docs'),
-    });
-
+    const inDocs = await indexFile(join('docs', 'a.txt'), [{ vec: at(0), text: 'in docs' }]);
+    await indexFile('b.txt', [{ vec: at(0), text: 'outside' }]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'q', { rootPath: join(tmp(), 'docs') });
     expect(hits.map((h) => h.path)).toEqual([inDocs]);
   });
 
-  it('returns empty for a blank query or an empty index', async () => {
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, '   ')).toEqual([]);
-    expect(await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'anything')).toEqual([]);
+  it('returns nothing for a blank query without embedding it', async () => {
+    expect(await semanticSearch(fakeProvider(at(0)), 'm1', store, '   ')).toEqual({ hits: [], strong: 0 });
+    expect(roles).toEqual([]);
   });
 
   it('ignores chunks embedded by a different model', async () => {
     const a = join(tmp(), 'a.txt');
     await fs.writeFile(a, 'alpha');
-    await aiIndex.upsertState(state(a)); // state() uses modelId 'm1'
-    // Chunk was embedded by a *different* model than the query will use.
-    await store.upsert(a, [
-      { chunkIx: 0, text: 'alpha', embedding: Float32Array.from([1, 0, 0]), modelId: 'OTHER' },
-    ]);
-
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
-
-    expect(hits).toEqual([]); // no same-model chunks → clean empty, not a false match
+    await aiIndex.upsertState(state(a));
+    await store.upsert(a, [{ chunkIx: 0, text: 'alpha', embedding: Float32Array.from(at(0)), modelId: 'OTHER', kind: 'text' }]);
+    expect((await semanticSearch(fakeProvider(at(0)), 'm1', store, 'q')).hits).toEqual([]);
   });
 
   it('prunes and omits files deleted on disk', async () => {
-    const a = join(tmp(), 'a.txt');
-    const b = join(tmp(), 'b.txt');
-    await indexFile(a, [1, 0, 0], 'alpha');
-    await indexFile(b, [0, 1, 0], 'beta');
-    await fs.rm(a); // deleted after indexing
+    await filler();
+    const gone = await indexFile('gone.txt', [{ vec: at(0), text: 'alpha' }]);
+    await fs.rm(gone);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'q');
+    expect(hits.map((h) => h.path)).not.toContain(gone);
+    expect(await aiIndex.getState(gone)).toBeNull();
+  });
 
-    const hits = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'q');
+  it('embeds chat questions with the question prefix', async () => {
+    await semanticSearch(fakeProvider(at(0)), 'm1', store, 'when is it due?', { role: 'question' });
+    expect(roles).toEqual(['question']);
+  });
+});
 
-    expect(hits.map((h) => h.path)).not.toContain(a);
-    expect(await aiIndex.getState(a)).toBeNull(); // pruned from the index
+describe('semanticSearch — moments', () => {
+  it('points at the moment of a recording, with nothing to quote', async () => {
+    await filler();
+    const talk = await indexFile('talk.mp3', [
+      { vec: null, text: 'talk mp3', kind: 'name' },
+      { vec: at(1.5), text: '', kind: 'audio', loc: 0 },
+      { vec: at(0.01), text: '', kind: 'audio', loc: 25 },
+    ]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'where they talk about sleep');
+    expect(hits[0]).toMatchObject({ path: talk, segment: 'audio', loc: 25, snippet: '', passage: '' });
+  });
+});
+
+describe('semanticSearch — words', () => {
+  it('qualifies a file on words alone when it holds most of the query’s terms', async () => {
+    await filler();
+    // Far from the query in meaning, but it contains both terms.
+    const doc = await indexFile('orders.csv', [{ vec: null, text: 'order_id amount ORD-48151623 1250.00' }]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'ORD-48151623', { keywordStore: keywords });
+    expect(hits.map((h) => h.path)).toEqual([doc]);
+    expect(hits[0].snippet).toContain('«ORD»-«48151623»');
+  });
+
+  it('treats a code query as a lookup: no meaning-only matches', async () => {
+    await filler();
+    await indexFile('close.txt', [{ vec: at(0), text: 'nothing about it' }]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'XQZ-99817734', { keywordStore: keywords });
+    expect(hits).toEqual([]);
+  });
+
+  it('matches a term that is in no file as typed as a word start', async () => {
+    await filler();
+    const doc = await indexFile('ideas.txt', [{ vec: at(2), text: 'notes on grokipedia' }]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'grok', { keywordStore: keywords });
+    expect(hits.map((h) => h.path)).toContain(doc);
+  });
+
+  it('boosts the file kind the query names', async () => {
+    await filler();
+    const note = await indexFile('invoice-note.txt', [{ vec: at(0.02), text: 'invoice table' }]);
+    const shot = await indexFile('Screenshot 2026-10-01 at 14.22.10.png', [{ vec: at(0.03), text: 'Screenshot', kind: 'image' }]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'screenshot of an invoice table');
+    expect(hits[0].path).toBe(shot);
+    expect(hits[0].segment).toBe('image');
+    expect(hits[0].snippet).toBe('');
+    expect(hits.map((h) => h.path)).toContain(note);
+  });
+
+  it('only marks words from the chunk the hit points at', async () => {
+    await filler();
+    await indexFile('mixed.txt', [
+      { vec: at(0.01), text: 'the meaning matches here' },
+      { vec: at(1.5), text: 'zebra crossing' },
+    ]);
+    const { hits } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'zebra', { keywordStore: keywords });
+    // Meaning points at chunk 0; the word matched chunk 1 — so no marks.
+    expect(hits[0].passage).toBe('the meaning matches here');
+    expect(hits[0].snippet).not.toContain('«');
+  });
+
+  it('counts hits under STRONG_RATIO of the top as weaker matches', async () => {
+    await filler();
+    const best = await indexFile('best.txt', [{ vec: at(0), text: 'ships in the harbour' }]);
+    // Half the terms, nothing in meaning: it qualifies, but trails far behind.
+    const weak = await indexFile('weak.txt', [{ vec: at(2.5), text: 'harbour fees' }]);
+    const { hits, strong } = await semanticSearch(fakeProvider(at(0)), 'm1', store, 'harbour ships', { keywordStore: keywords });
+    expect(hits.map((h) => h.path)).toEqual([best, weak]);
+    expect(strong).toBe(1);
+    expect(hits.length).toBeGreaterThan(strong);
+    const top = hits[0].score;
+    expect(hits.slice(0, strong).every((h) => h.score >= top * STRONG_RATIO)).toBe(true);
+    expect(Z_GATE).toBe(2);
   });
 });
 
 describe('similarByFile', () => {
   it('ranks files by similarity to a text probe and excludes the probe itself', async () => {
-    const probe = join(tmp(), 'probe.txt');
-    const near = join(tmp(), 'near.txt');
-    const far = join(tmp(), 'far.txt');
-    await indexFile(probe, [1, 0, 0], 'the probe document');
-    await indexFile(near, [0.9, 0.1, 0], 'a very similar document');
-    await indexFile(far, [0, 1, 0], 'something unrelated');
+    const probe = await indexFile('probe.txt', [{ vec: at(0), text: 'the probe document' }]);
+    const near = await indexFile('near.txt', [{ vec: at(0.1), text: 'a very similar document' }]);
+    await indexFile('far.txt', [{ vec: at(1.5), text: 'something unrelated' }]);
 
-    // Provider embeds every text to the probe's direction.
-    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe);
+    const hits = await similarByFile(fakeProvider(at(0)), 'm1', store, probe);
 
     expect(hits.map((h) => h.path)).not.toContain(probe);
     expect(hits[0].path).toBe(near);
     expect(hits[0].score).toBeGreaterThan(hits[1].score);
   });
 
-  it('scopes similar results to rootPath', async () => {
-    await fs.mkdir(join(tmp(), 'docs'));
-    const probe = join(tmp(), 'probe.txt');
-    const inDocs = join(tmp(), 'docs', 'a.txt');
-    const outside = join(tmp(), 'b.txt');
-    await fs.writeFile(probe, 'probe text');
-    await indexFile(inDocs, [1, 0, 0], 'in docs');
-    await indexFile(outside, [1, 0, 0], 'outside');
-
-    const hits = await similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, probe, {
-      rootPath: join(tmp(), 'docs'),
-    });
-
-    expect(hits.map((h) => h.path)).toEqual([inDocs]);
-  });
-
   it('rejects file types it cannot read', async () => {
     const bin = join(tmp(), 'movie.mp4');
     await fs.writeFile(bin, 'not really a movie');
-
-    await expect(
-      similarByFile(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, bin),
-    ).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
+    await expect(similarByFile(fakeProvider(at(0)), 'm1', store, bin)).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
   });
 
-  it('uses the image lane for image probes', async () => {
+  it('embeds picture probes as media and matches any file in the shared space', async () => {
     const probeImg = join(tmp(), 'photo.png');
-    const otherImg = join(tmp(), 'other.png');
-    const textFile = join(tmp(), 'a.txt');
     await fs.writeFile(probeImg, 'png-bytes');
-    // Index one image chunk (CLIP lane) and one text chunk (text lane).
-    await fs.writeFile(otherImg, 'png-bytes-2');
-    await aiIndex.upsertState(state(otherImg));
-    await store.upsert(otherImg, [
-      { chunkIx: 0, text: 'other.png', embedding: Float32Array.from([1, 0, 0]), modelId: 'clip' },
-    ]);
-    await indexFile(textFile, [1, 0, 0], 'text content');
+    const otherImg = await indexFile('other.png', [{ vec: at(0), text: 'other png', kind: 'image' }]);
+    const note = await indexFile('a.txt', [{ vec: at(0.1), text: 'a note about the same scene' }]);
 
-    const provider = {
-      ...fakeProvider([1, 0, 0]),
-      async embedImages() {
-        return [Float32Array.from([1, 0, 0])];
+    let budget: number | undefined;
+    const provider: AiProvider = {
+      ...fakeProvider(at(0)),
+      async embedMedia(_m, kind, paths, opts) {
+        expect(kind).toBe('image');
+        expect(paths).toEqual([probeImg]);
+        budget = opts?.budget;
+        return [Float32Array.from(at(0))];
       },
     };
-    const hits = await similarByFile(provider, { text: 'm1', image: 'clip' }, store, probeImg);
+    const hits = await similarByFile(provider, 'm1', store, probeImg);
 
-    // Only the CLIP-lane chunk matches; the text-lane file must not leak in.
-    expect(hits.map((h) => h.path)).toEqual([otherImg]);
-  });
-});
-
-describe('semanticSearch — RRF hybrid fusion', () => {
-  it('BM25-boosted exact match surfaces higher than vector-only ranking would place it', async () => {
-    // Vector: file A ranks first (high cosine), file B ranks second (lower cosine).
-    // BM25: file B is an exact filename/identifier match → ranks first in keyword lane.
-    // RRF should fuse: A gets 1/(61+1)=0.0164, B gets 1/(61+2)+1/(61+1)≈0.0322 → B wins.
-    const a = join(tmp(), 'alpha.txt');
-    const b = join(tmp(), 'beta.txt');
-    await indexFile(a, [1, 0, 0], 'unrelated prose content here alpha topic');
-    await indexFile(b, [0.85, 0, 0], 'fetchUser function signature docs'); // lower cosine
-
-    // Keyword store populated with the same content.
-    const { MiniSearchKeywordStore } = await import('./keywordStore');
-    const ks = new MiniSearchKeywordStore();
-    ks.upsert(a, [{ chunkIx: 0, text: 'unrelated prose content here alpha topic' }]);
-    ks.upsert(b, [{ chunkIx: 0, text: 'fetchUser function signature docs' }]);
-
-    // Without BM25: A wins (higher cosine).
-    const vecOnly = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser');
-    expect(vecOnly[0].path).toBe(a);
-
-    // With BM25: B surfaces first because 'fetchUser' is an exact identifier match.
-    const hybrid = await semanticSearch(fakeProvider([1, 0, 0]), { text: 'm1', image: 'clip' }, store, 'fetchUser', {
-      keywordStore: ks,
-    });
-    expect(hybrid[0].path).toBe(b);
+    expect(hits.map((h) => h.path)).toEqual([otherImg, note]);
+    expect(hits[0].segment).toBe('image');
+    expect(budget).toBe(140);
   });
 });

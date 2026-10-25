@@ -1,8 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { homedir } from 'node:os';
 import { Channels, Events } from '@shared/channels';
-import type { AppError, IndexConfig, IndexProgress, Result, SemanticHit } from '@shared/types';
-import { IMAGE_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import type { AppError, IndexConfig, IndexEstimate, IndexProgress, Result, SearchResult, SemanticHit } from '@shared/types';
+import { EMBED_MODEL_ID, indexFingerprint } from '@shared/aiModels';
+import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
 import { getPrefs, setPrefs } from '../../prefs';
 import { assertValidPath } from '../../fs/service';
 import { activeAiProvider } from '../registry';
@@ -12,9 +13,15 @@ import { updateTrayStatus } from '../../tray';
 import { pace } from '../pace';
 import { clearGraph } from '../graph/handlers';
 import { Indexer } from './indexer';
+import { mergeIndexPrefs } from './indexPrefs';
+import { msUntilAllowed, parseHours } from './hours';
+import { recordCost, unitCosts, type MeasuredCosts, type UnitKind, type Units } from './estimate';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
+import { MediaDecoder } from '../../media/decoder';
+import { extractor } from './extractor';
+import { canDecodeWithOs, decodeImageWithOs } from '../../media/osImage';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -48,7 +55,7 @@ async function indexConfig(): Promise<IndexConfig> {
 }
 
 async function patchConfig(patch: Partial<IndexConfig>): Promise<void> {
-  await setPrefs({ index: { ...(await indexConfig()), ...patch } });
+  await setPrefs({ index: mergeIndexPrefs((await getPrefs()).index, await indexConfig(), patch) });
 }
 
 /**
@@ -63,6 +70,36 @@ async function effectiveExcludes(): Promise<string[]> {
 }
 
 const vectorStore = new SqliteVectorStore();
+const mediaDecoder = new MediaDecoder();
+
+
+/**
+ * What indexing costs on this machine, per kind of work, persisted in
+ * prefs.index.costs (written at most every 30 s while indexing).
+ */
+const costs = (() => {
+  let measured: MeasuredCosts | null = null;
+  let timer: NodeJS.Timeout | null = null;
+  const load = async () => (measured ??= ((await getPrefs()).index?.costs ?? {}) as MeasuredCosts);
+  const save = async () => {
+    timer = null;
+    const prefs = await getPrefs();
+    await setPrefs({ index: { ...prefs.index, costs: measured ?? {} } });
+  };
+  return {
+    async current(): Promise<Units> {
+      return unitCosts(await load());
+    },
+    record(kind: UnitKind, seconds: number, units: number): void {
+      void load().then((m) => {
+        measured = recordCost(m, kind, seconds, units);
+        timer ??= setTimeout(() => {
+          save().catch((err: unknown) => console.error('[fildos] saving indexing costs failed', err));
+        }, 30_000);
+      });
+    },
+  };
+})();
 const keywordStore = new MiniSearchKeywordStore();
 
 function broadcast(progress: IndexProgress): void {
@@ -74,8 +111,7 @@ function broadcast(progress: IndexProgress): void {
 
 const indexer = new Indexer({
   provider: () => activeAiProvider(),
-  textModel: TEXT_MODEL_ID,
-  imageModel: IMAGE_MODEL_ID,
+  model: EMBED_MODEL_ID,
   config: async () => {
     const c = await indexConfig();
     return { roots: c.roots, excludes: await effectiveExcludes(), excludeExtensions: c.excludeExtensions };
@@ -84,6 +120,12 @@ const indexer = new Indexer({
   keywordStore,
   emit: broadcast,
   pace,
+  decodeMedia: (path) => mediaDecoder.decode(path),
+  gate: async () => msUntilAllowed(parseHours((await getPrefs()).index?.hours), new Date()),
+  recordCost: (kind, seconds, units) => costs.record(kind, seconds, units),
+  costs: () => costs.current(),
+  decodeImage: canDecodeWithOs ? decodeImageWithOs : undefined,
+  extract: extractor,
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -106,24 +148,23 @@ const watcher = new IndexWatcher({
 /**
  * Semantic search against the live index singletons. Shared by the
  * `index:search` channel below and the Assistant's /find command
- * (`../llm/handlers.ts`), so both rank with the same stores and reranker.
+ * (`../llm/handlers.ts`), so both rank with the same stores.
  */
 export async function searchIndex(
   query: string,
-  opts?: { rootPath?: string; k?: number },
-): Promise<SemanticHit[]> {
+  opts?: { rootPath?: string; k?: number; role?: 'query' | 'question' },
+): Promise<SearchResult> {
   const provider = await activeAiProvider();
   if (!provider) {
     throw Object.assign(new Error('No AI provider is configured.'), { code: 'EINVAL' });
   }
   const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-  return semanticSearch(
-    provider,
-    { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-    vectorStore,
-    query,
-    { rootPath, k: opts?.k, keywordStore, rerankerModelId: RERANKER_MODEL_ID },
-  );
+  return semanticSearch(provider, EMBED_MODEL_ID, vectorStore, query, {
+    rootPath,
+    k: opts?.k,
+    keywordStore,
+    role: opts?.role,
+  });
 }
 
 /** Register the indexing IPC handlers. Call once after the AI providers exist. */
@@ -131,6 +172,7 @@ export function registerIndexHandlers(): void {
   ipcMain.handle(Channels.indexStart, () =>
     wrap<void>(async () => {
       await patchConfig({ enabled: true });
+      await ensureFingerprint();
       await watcher.refresh();
       void indexer.start(); // fire-and-forget; progress streams via events
     }),
@@ -216,6 +258,21 @@ export function registerIndexHandlers(): void {
     wrap<void>(async () => patchConfig({ ambient: !!enabled })),
   );
 
+  ipcMain.handle(Channels.indexEstimate, () =>
+    wrap<IndexEstimate>(async () => indexer.estimate(await costs.current())),
+  );
+
+  ipcMain.handle(Channels.indexSetHours, (_e, hours: unknown) =>
+    wrap<void>(async () => {
+      const parsed = hours === null ? null : parseHours(hours);
+      if (hours !== null && !parsed) {
+        throw Object.assign(new Error('Indexing hours must be whole minutes within a day.'), { code: 'EINVAL' });
+      }
+      const prefs = await getPrefs();
+      await setPrefs({ index: { ...prefs.index, hours: parsed } });
+    }),
+  );
+
   ipcMain.handle(Channels.indexSetExcludeExtensions, (_e, exts: string[]) =>
     wrap<string[]>(async () => {
       // Normalize: lowercase, no leading dot, alphanumeric, deduped.
@@ -237,7 +294,7 @@ export function registerIndexHandlers(): void {
   ipcMain.handle(
     Channels.indexSearch,
     (_e, query: string, opts?: { rootPath?: string; k?: number }) =>
-      wrap<SemanticHit[]>(() => searchIndex(query, opts)),
+      wrap<SearchResult>(() => searchIndex(query, opts)),
   );
 
   ipcMain.handle(
@@ -250,30 +307,20 @@ export function registerIndexHandlers(): void {
         }
         const p = assertValidPath(path);
         const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return similarByFile(
-          provider,
-          { text: TEXT_MODEL_ID, image: IMAGE_MODEL_ID },
-          vectorStore,
-          p,
-          { rootPath, k: opts?.k },
-        );
+        return similarByFile(provider, EMBED_MODEL_ID, vectorStore, p, { rootPath, k: opts?.k, extract: extractor });
       }),
   );
 }
 
 /**
- * Populate the in-memory BM25 store from all chunks already in the DB.
- * Skips the embedding BLOBs so this is fast at personal-filesystem scale.
- * Non-fatal: a failure leaves the store empty and search falls back to vector-only.
+ * Populate the in-memory BM25 store from all chunks already in the DB (every
+ * file has a keyword entry — a picture's is its humanized name). Skips the
+ * embedding BLOBs so this is fast at personal-filesystem scale.
  */
 async function rebuildKeywordIndex(): Promise<void> {
   const chunks = await aiIndex.allChunks();
   const byPath = new Map<string, { chunkIx: number; text: string }[]>();
   for (const c of chunks) {
-    // Image chunks (modelId === IMAGE_MODEL_ID) carry the basename as text and
-    // belong only in the vector lane. Exclude them so the keyword store stays
-    // consistent with how Indexer.process() updates it (text-only writes).
-    if (c.modelId === IMAGE_MODEL_ID) continue;
     const arr = byPath.get(c.path) ?? [];
     arr.push({ chunkIx: c.chunkIx, text: c.text });
     byPath.set(c.path, arr);
@@ -281,13 +328,37 @@ async function rebuildKeywordIndex(): Promise<void> {
   for (const [path, pathChunks] of byPath) keywordStore.upsert(path, pathChunks);
 }
 
+/**
+ * Empty the index when its vectors came from another model, precision,
+ * dimension or prompt format (`indexFingerprint`): old vectors can't be
+ * compared with new queries. Also covers upgrades from before fingerprints.
+ * Returns whether it wiped.
+ */
+async function ensureFingerprint(): Promise<boolean> {
+  const want = indexFingerprint(PROMPTS_VERSION);
+  if ((await getPrefs()).index?.fingerprint === want) return false;
+  await indexer.clear();
+  await clearGraph();
+  await setPrefs({ index: { ...(await getPrefs()).index, fingerprint: want } });
+  return true;
+}
+
 /** Arm the watcher and resume leftover jobs, if indexing was enabled. Call at startup. */
 export async function startIndexBackground(): Promise<void> {
   if (!(await indexConfig()).enabled) return;
+  const wiped = await ensureFingerprint();
   // Rebuild BM25 from DB before arming the watcher so keyword search is
-  // available immediately on the first query after startup.
-  try { await rebuildKeywordIndex(); } catch { /* non-fatal; search falls back to vector-only */ }
+  // available immediately on the first query after startup. A failure must not
+  // keep the watcher and the leftover jobs from starting: it's logged, and
+  // search runs on meaning alone until the next launch.
+  await rebuildKeywordIndex().catch((err: unknown) =>
+    console.error('[fildos] keyword index rebuild failed; searching by meaning only this session:', err),
+  );
   await watcher.start();
+  if (wiped) {
+    void indexer.reconcile();
+    return;
+  }
   void indexer.resume();
 }
 
@@ -295,4 +366,6 @@ export async function startIndexBackground(): Promise<void> {
 export function stopIndexBackground(): void {
   watcher.stop();
   indexer.pause();
+  mediaDecoder.close();
+  extractor.close();
 }

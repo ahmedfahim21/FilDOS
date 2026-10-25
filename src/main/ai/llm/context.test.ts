@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatSendPayload, Entry, SemanticHit } from '@shared/types';
 import {
+  assembleSystem,
+  budgetsFor,
   buildChat,
   CONTENT_BUDGET,
   MAX_FOLDER_ENTRIES,
   RESEARCH_BUDGETS,
+  TOOLS_SYSTEM,
   type ChatContextDeps,
 } from './context';
 
@@ -194,6 +197,28 @@ describe('buildChat', () => {
     expect(built.prompt).toContain('last year tax form');
   });
 
+  it('/find hands the model each hit’s matched passage, with its page', async () => {
+    const recipe = 'Mix the flour and water. ' + 'Fold every half hour. '.repeat(20) + 'Bake at 250°C for 20 minutes.';
+    const hits: SemanticHit[] = [
+      { ...hit('sourdough.md', 'Mix the «flour»…'), passage: recipe },
+      { ...hit('lease.pdf', 'pets clause'), passage: 'Pets need the landlord’s written consent.', segment: 'page', loc: 7 },
+    ];
+    const built = await buildChat(payload({ command: 'find', prompt: 'oven temperature' }), deps({ search: async () => hits }));
+    // The fact at the end of the passage reaches the model (not just the snippet).
+    expect(built.prompt).toContain('Bake at 250°C for 20 minutes.');
+    expect(built.prompt).toContain('lease.pdf (/docs/lease.pdf, page 7)');
+    expect(built.prompt).toContain('Pets need the landlord’s written consent.');
+    expect(built.prompt).not.toContain('«');
+  });
+
+  it('/find falls back to the snippet for hits saved before passages existed', async () => {
+    const built = await buildChat(
+      payload({ command: 'find', prompt: 'tax' }),
+      deps({ search: async () => [hit('taxes.pdf', 'total   tax due')] }),
+    );
+    expect(built.prompt).toContain('"total tax due"');
+  });
+
   it('/find without a search backend fails with EUNSUPPORTED', async () => {
     await expect(
       buildChat(payload({ command: 'find' }), deps({ search: undefined })),
@@ -208,3 +233,61 @@ describe('buildChat', () => {
     expect(built.prompt).toContain('none — nothing in the index matched');
   });
 });
+
+describe('assembleSystem', () => {
+  const built = { system: 'You are FilDOS.', prompt: 'hi', material: '', question: 'hi' };
+
+  it('appends the tool guidance to the built system prompt', () => {
+    expect(assembleSystem(built)).toBe(`You are FilDOS. ${TOOLS_SYSTEM}`);
+  });
+
+  it('adds the open folder and the user instructions, in that order', () => {
+    expect(assembleSystem(built, { cwd: '/home/me/Docs', instructions: 'Answer in French.' })).toBe(
+      `You are FilDOS. ${TOOLS_SYSTEM}\nThe folder currently open in the browser: /home/me/Docs` +
+        '\n\nAdditional instructions from the user: Answer in French.',
+    );
+  });
+
+  it('omits empty instructions', () => {
+    expect(assembleSystem(built, { instructions: '' })).toBe(`You are FilDOS. ${TOOLS_SYSTEM}`);
+  });
+});
+
+describe('budgetsFor', () => {
+  it('scales the content pre-trim to small windows instead of flooring it above them', () => {
+    // A 4k window holds ~16k chars in all: half of it at most goes to content.
+    expect(budgetsFor('chat', 4096)).toEqual({ content: 8192, folderEntries: MAX_FOLDER_ENTRIES, findHits: 8 });
+    expect(budgetsFor('chat', 1024).content).toBe(2048);
+    expect(budgetsFor('chat', 512).content).toBe(1500); // never below the floor
+  });
+
+  it('keeps the base budgets when the window is wide enough, or unknown', () => {
+    expect(budgetsFor('chat', 32768).content).toBe(CONTENT_BUDGET);
+    expect(budgetsFor('chat').content).toBe(CONTENT_BUDGET);
+    expect(budgetsFor('research', 8192)).toEqual({ ...RESEARCH_BUDGETS, content: 16384 });
+  });
+});
+
+describe('buildChat — material and question', () => {
+  it('keeps the attached material apart from what the user asked', async () => {
+    const mentions = [{ kind: 'file' as const, path: '/tmp/notes.txt', name: 'notes.txt' }];
+    const built = await buildChat(
+      payload({ prompt: 'What is due?', command: 'summarize', mentions }),
+      deps({ extract: async () => 'Rent is due Friday.' }),
+    );
+    expect(built.material).toContain('Rent is due Friday.');
+    expect(built.material).not.toContain('What is due?');
+    expect(built.question).toContain('What is due?');
+    expect(built.question).toContain('Summarize the material above');
+    expect(built.question).not.toContain('Rent is due');
+    expect(built.prompt).toBe(`${built.material}\n\n${built.question}`);
+  });
+
+  it('has no material for a plain question', async () => {
+    const built = await buildChat(payload({ prompt: 'hello' }), deps({}));
+    expect(built.material).toBe('');
+    expect(built.question).toBe('hello');
+    expect(built.prompt).toBe('hello');
+  });
+});
+

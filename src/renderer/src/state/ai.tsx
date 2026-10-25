@@ -8,22 +8,22 @@ import {
   type ReactNode,
 } from 'react';
 import type { AiModelStatus, Result } from '@shared/types';
-import { getModelDef, IMAGE_MODEL_ID, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID, TEXT_MODEL_ID } from '@shared/aiModels';
+import { EMBED_MODEL_ID, getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID } from '@shared/aiModels';
 
 interface AiContextValue {
   /** Whether the user has enabled the AI features. */
   enabled: boolean;
   /** The selected provider id ('embedded' | 'cloud'). */
   activeProvider: string;
-  /** Live status of the two internal models, keyed by id. */
+  /** Live status of the managed models, keyed by id. */
   statuses: Record<string, AiModelStatus>;
-  /** True once the text model is downloaded and ready (search/index can run). */
+  /** True once the embedding model is downloaded and ready (search/index can run). */
   ready: boolean;
   /** True while a download request is in flight. */
   busy: boolean;
   setEnabled: (value: boolean) => void;
   setProvider: (id: string) => void;
-  /** Download both internal models (text + image). */
+  /** Download the embedding model (text + pictures). */
   downloadModels: () => Promise<void>;
   /** Download a single model by id (retry button). */
   downloadModel: (id: string) => Promise<Result<void>>;
@@ -33,10 +33,10 @@ interface AiContextValue {
 const AiContext = createContext<AiContextValue | null>(null);
 
 /**
- * Holds the AI enable toggle + provider and the live status of the two models
- * the app manages automatically (a text model + CLIP for images — the user never
- * picks a model). Enabling AI downloads both. Statuses are fetched on mount and
- * kept fresh by the main-process progress stream.
+ * Holds the AI enable toggle + provider and the live status of the models the
+ * app manages automatically (EmbeddingGemma 2 for text and pictures — the user
+ * never picks a model). Enabling AI downloads it. Statuses are fetched on mount
+ * and kept fresh by the main-process progress stream.
  */
 export function AiProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(false);
@@ -48,7 +48,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
   const autoStarted = useRef<Set<string>>(new Set());
 
   const refreshStatuses = useCallback(async () => {
-    const allIds = [...INDEX_MODEL_IDS, RERANKER_MODEL_ID, NER_MODEL_ID];
+    const allIds = [...INDEX_MODEL_IDS, NER_MODEL_ID];
     const entries = await Promise.all(
       allIds.map(async (id) => {
         const res = await window.ai.status(id);
@@ -65,8 +65,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
 
   const downloadModels = useCallback(async () => {
     setBusy(true);
-    await window.ai.download(TEXT_MODEL_ID);
-    await window.ai.download(IMAGE_MODEL_ID);
+    await window.ai.download(EMBED_MODEL_ID);
     setBusy(false);
     await refreshStatuses();
   }, [refreshStatuses]);
@@ -135,7 +134,7 @@ export function AiProvider({ children }: { children: ReactNode }) {
         enabled,
         activeProvider,
         statuses,
-        ready: enabled && statuses[TEXT_MODEL_ID]?.state === 'ready',
+        ready: enabled && statuses[EMBED_MODEL_ID]?.state === 'ready',
         busy,
         setEnabled,
         setProvider,

@@ -118,10 +118,10 @@ describe('allChunks + keyword rebuild round-trip', () => {
     await aiIndex.upsertState(stateA);
     await aiIndex.upsertState(stateB);
     await aiIndex.replaceChunks('/src/auth.ts', [
-      { chunkIx: 0, text: 'verifyToken validates JWT claims', embedding: null, modelId: 'm1' },
+      { chunkIx: 0, text: 'verifyToken validates JWT claims', embedding: null, modelId: 'm1', kind: 'text' },
     ]);
     await aiIndex.replaceChunks('/src/db.ts', [
-      { chunkIx: 0, text: 'connect to PostgreSQL database', embedding: null, modelId: 'm1' },
+      { chunkIx: 0, text: 'connect to PostgreSQL database', embedding: null, modelId: 'm1', kind: 'text' },
     ]);
 
     // Rebuild a fresh store from the DB.
@@ -141,3 +141,38 @@ describe('allChunks + keyword rebuild round-trip', () => {
   });
 });
 
+
+describe('MiniSearchKeywordStore — term search', () => {
+  let store: MiniSearchKeywordStore;
+
+  beforeEach(() => {
+    store = new MiniSearchKeywordStore();
+    store.upsert('/a/orders.csv', [{ chunkIx: 0, text: 'order ORD-48151623 shipped' }]);
+    store.upsert('/a/notes.md', [
+      { chunkIx: 0, text: 'meeting notes' },
+      { chunkIx: 1, text: 'grokipedia ideas' },
+    ]);
+    store.upsert('/b/other.md', [{ chunkIx: 0, text: 'order of business' }]);
+  });
+
+  it('finds files holding a term exactly, or as a word start when asked', () => {
+    expect([...store.filesWith('order', { prefix: false })].sort()).toEqual(['/a/orders.csv', '/b/other.md']);
+    expect([...store.filesWith('grok', { prefix: false })]).toEqual([]);
+    expect([...store.filesWith('grok', { prefix: true })]).toEqual(['/a/notes.md']);
+    expect([...store.filesWith('order', { prefix: false, underPath: '/b' })]).toEqual(['/b/other.md']);
+  });
+
+  it('ranks chunks over exact terms, with prefixes only where asked, and returns their text', () => {
+    const hits = store.searchTerms(['grok', 'ideas'], { prefixed: new Set(['grok']) });
+    expect(hits[0]).toMatchObject({ path: '/a/notes.md', chunkIx: 1, text: 'grokipedia ideas' });
+    expect(store.searchTerms(['grok'], { prefixed: new Set() })).toEqual([]);
+  });
+
+  it('appends chunks without dropping the earlier ones', () => {
+    store.append('/a/notes.md', [{ chunkIx: 2, text: 'kingfisher sightings' }]);
+    expect(store.search('kingfisher')[0]).toMatchObject({ path: '/a/notes.md', chunkIx: 2, text: 'kingfisher sightings' });
+    expect(store.search('meeting')[0]).toMatchObject({ path: '/a/notes.md', chunkIx: 0 });
+    store.remove(['/a/notes.md']);
+    expect(store.search('kingfisher')).toEqual([]);
+  });
+});

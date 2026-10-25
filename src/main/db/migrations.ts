@@ -181,6 +181,18 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_graph_edges_dst ON graph_edges(dst);
   `,
+  `
+  -- Where each chunk sits in its file, so a hit can point at it: kind (a
+  -- document passage, a PDF page, a picture, a filename fallback…), loc/loc_end
+  -- (page number, or seconds into a recording) and the indexing pass that
+  -- added it (2 = the later pass over the rest of a long file). index_state
+  -- gains a JSON info column for that pass's progress (pages read, total).
+  ALTER TABLE file_chunks ADD COLUMN kind TEXT NOT NULL DEFAULT 'text';
+  ALTER TABLE file_chunks ADD COLUMN loc REAL;
+  ALTER TABLE file_chunks ADD COLUMN loc_end REAL;
+  ALTER TABLE file_chunks ADD COLUMN pass INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE index_state ADD COLUMN info TEXT;
+  `,
 ];
 
 /** Bring a freshly opened database up to the latest schema version. */

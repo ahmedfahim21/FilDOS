@@ -1,13 +1,8 @@
-import { createRequire } from 'node:module';
-import { cpSync, mkdirSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
-import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { config as loadDotenv } from 'dotenv';
-
-const require = createRequire(import.meta.url);
 
 // Populate process.env from a local `.env` so production builds on a dev machine
 // bake in the same credentials dev uses. CI passes them as real env (secrets),
@@ -30,42 +25,18 @@ const cloudCredentialDefine = Object.fromEntries(
   ),
 );
 
-/**
- * Copy onnxruntime-web's `.wasm` binaries beside the built main output so the
- * embedded AI worker can load them offline. The worker sets `wasmPaths` to its
- * own __dirname (out/main), so the files must land there.
- */
-function copyOnnxWasm(): Plugin {
-  return {
-    name: 'copy-onnx-wasm',
-    apply: 'build',
-    closeBundle() {
-      let distDir: string;
-      try {
-        distDir = dirname(require.resolve('onnxruntime-web'));
-      } catch {
-        return; // onnxruntime-web (via @huggingface/transformers) not installed yet
-      }
-      const outDir = resolve('out/main');
-      mkdirSync(outDir, { recursive: true });
-      for (const file of readdirSync(distDir)) {
-        if (file.endsWith('.wasm')) cpSync(join(distDir, file), join(outDir, file));
-      }
-    },
-  };
-}
-
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), copyOnnxWasm()],
+    plugins: [externalizeDepsPlugin()],
     define: cloudCredentialDefine,
     build: {
       rollupOptions: {
-        // Two main entries: the app and the standalone AI utilityProcess worker.
+        // Main entries: the app and its utilityProcess workers (embedding, chat, extraction).
         input: {
           index: resolve('src/main/index.ts'),
           modelWorker: resolve('src/main/ai/modelWorker.ts'),
           llmWorker: resolve('src/main/ai/llm/llmWorker.ts'),
+          extractWorker: resolve('src/main/ai/index/extractWorker.ts'),
         },
       },
     },

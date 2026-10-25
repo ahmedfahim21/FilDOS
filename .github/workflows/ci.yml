@@ -21,6 +21,29 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  eval-smoke:
+    # Eval wiring on bag-of-words embeddings (no model downloads): builds the
+    # testbed, indexes it, runs the search/index/graph suites end to end.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Testbed media come from a pinned dataset revision (SHA-256 checked), so
+      # the cache can't go stale; it keeps the job off the network.
+      - uses: actions/cache@v4
+        with:
+          path: eval/.media-cache
+          key: eval-media-${{ hashFiles('eval/testbed/manifest.ts') }}
+      # The eval decodes the testbed's audio/video with ffmpeg (the app uses Chromium).
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Eval (smoke)
+        run: npm run eval:smoke
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -1,9 +1,9 @@
 import { sep } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IndexState } from '@shared/types';
 import { upsertState } from './aiIndex';
 import { closeDb, initDb } from './index';
-import { SqliteVectorStore } from './vectorStore.sqlite';
+import { CACHE_IDLE_MS, SqliteVectorStore } from './vectorStore.sqlite';
 
 // Build paths with the OS separator so the underPath prefix filter (which uses
 // node:path's sep) matches on every platform CI runs.
@@ -33,7 +33,7 @@ const state = (path: string): IndexState => ({
 async function indexFile(path: string, vec: number[]): Promise<void> {
   await upsertState(state(path));
   await store.upsert(path, [
-    { chunkIx: 0, text: path, embedding: new Float32Array(vec), modelId: 'm1' },
+    { chunkIx: 0, text: path, embedding: new Float32Array(vec), modelId: 'm1', kind: 'text' },
   ]);
 }
 
@@ -118,5 +118,64 @@ describe('SqliteVectorStore cache coherence', () => {
 
     const hits = await store.search(new Float32Array([1, 0, 0]), { k: 1 });
     expect(hits[0].path).toBe(DOCS_A); // rows still in the DB; cache rebuilt
+  });
+});
+
+describe('SqliteVectorStore.scan / append', () => {
+  it('scores every chunk (any order) with its kind and pass, scoped by folder', async () => {
+    const all = await store.scan(new Float32Array([1, 0, 0]));
+    expect(all.map((c) => [c.path, Number(c.score.toFixed(3)), c.kind, c.pass]).sort()).toEqual(
+      [
+        [DOCS_A, 1, 'text', 1],
+        [DOCS_B, 0, 'text', 1],
+        [OTHER_C, 0, 'text', 1],
+      ].sort(),
+    );
+    const docs = await store.scan(new Float32Array([1, 0, 0]), { underPath: p('docs') });
+    expect(docs.map((c) => c.path).sort()).toEqual([DOCS_A, DOCS_B].sort());
+  });
+
+  it('appends later-pass chunks to the stored set and the cache', async () => {
+    await store.scan(new Float32Array([1, 0, 0])); // warm the cache first
+    await store.append(DOCS_A, [
+      { chunkIx: 1, text: 'page 40', embedding: new Float32Array([0, 1, 0]), modelId: 'm1', kind: 'page', loc: 40, pass: 2 },
+      { chunkIx: 2, text: 'numbers', embedding: null, modelId: 'm1', kind: 'text', pass: 2 },
+    ]);
+    const forA = (await store.scan(new Float32Array([0, 1, 0]))).filter((c) => c.path === DOCS_A);
+    // The keyword-only chunk has no vector, so it isn't scored.
+    expect(forA.map((c) => [c.chunkIx, c.kind, c.pass, Number(c.score.toFixed(3))])).toEqual([
+      [0, 'text', 1, 0],
+      [1, 'page', 2, 1],
+    ]);
+    // A fresh store (cold cache) reads the same from the database.
+    const cold = new SqliteVectorStore();
+    const coldA = (await cold.scan(new Float32Array([0, 1, 0]))).filter((c) => c.path === DOCS_A);
+    expect(coldA.map((c) => [c.chunkIx, c.kind, c.pass])).toEqual([
+      [0, 'text', 1],
+      [1, 'page', 2],
+    ]);
+  });
+});
+
+describe('SqliteVectorStore idle release', () => {
+  it('frees the vectors after a quiet spell and reloads them on the next search', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const q = new Float32Array([1, 0, 0]);
+      expect((await store.search(q, { k: 1 }))[0].path).toBe(DOCS_A);
+      expect(store.warm).toBe(true);
+      vi.advanceTimersByTime(CACHE_IDLE_MS - 1);
+      await store.scan(q); // a search resets the clock
+      vi.advanceTimersByTime(CACHE_IDLE_MS - 1);
+      expect(store.warm).toBe(true);
+      vi.advanceTimersByTime(2);
+      expect(store.warm).toBe(false);
+      // Writes while cold go to the database only; the reload sees them.
+      await indexFile(p('docs', 'new.md'), [0.9, 0.1, 0]);
+      expect((await store.search(q, { k: 2 })).map((m) => m.path)).toEqual([DOCS_A, p('docs', 'new.md')]);
+      expect(store.warm).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

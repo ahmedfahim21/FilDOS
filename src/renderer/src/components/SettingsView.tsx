@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AiModelStatus, Theme } from '@shared/types';
-import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID, RERANKER_MODEL_ID } from '@shared/aiModels';
+import type { AiModelStatus, IndexEstimate, Theme } from '@shared/types';
+import { getModelDef, INDEX_MODEL_IDS, NER_MODEL_ID } from '@shared/aiModels';
 import {
   HF_GGUF_MODELS_URL,
   LLM_CONFIG_LIMITS,
@@ -18,6 +18,7 @@ import { applyTheme } from '@/lib/theme';
 import { playToggle, setSoundsEnabled, soundsEnabled } from '@/lib/sounds';
 import { modelLogo } from '@/lib/modelLogo';
 import { cn } from '@/lib/utils';
+import { formatDuration } from '@/lib/duration';
 import { Icon } from './Icon';
 import { Mark, Wordmark } from './Logo';
 import { Button } from '@/components/ui/button';
@@ -167,7 +168,7 @@ function ModalityBadge({ def }: { def: LlmModelDef }) {
   );
 }
 
-/** One of the two managed models, with live status + a download/retry button. */
+/** A managed model, with live status + a download/retry button. */
 function ModelRow({
   id,
   status,
@@ -185,9 +186,11 @@ function ModelRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-foreground truncate text-sm">{def?.label ?? id}</span>
-          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-3xs">
-            {def?.modality === 'image' ? 'Images' : 'Text & docs'}
-          </span>
+          {(def?.components?.map((c) => c.label) ?? ['Text & docs']).map((label) => (
+            <span key={label} className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-3xs">
+              {label}
+            </span>
+          ))}
         </div>
         <div className="text-muted-foreground mt-0.5 text-2xs">
           {state === 'ready'
@@ -224,6 +227,74 @@ function ModelRow({
       )}
     </div>
   );
+}
+
+/**
+ * "How long will indexing take?": walks the indexed folders on request (no file
+ * is read — sizes and kinds only) and shows the time for what isn't indexed
+ * yet, by folder.
+ */
+function EstimateRow() {
+  const { notifyError } = useToast();
+  const [estimate, setEstimate] = useState<IndexEstimate | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [home, setHome] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.fsapi.getHome().then((r) => r.ok && setHome(r.data));
+  }, []);
+
+  const run = async () => {
+    setLoading(true);
+    const r = await window.index.estimate();
+    setLoading(false);
+    if (r.ok) setEstimate(r.data);
+    else notifyError(r.error);
+  };
+  const pretty = (p: string) => (home && p.startsWith(home) ? `~${p.slice(home.length)}` : p);
+
+  return (
+    <div className="border-border flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-foreground text-sm">Time to index</div>
+          <div className="text-muted-foreground text-2xs">
+            {loading
+              ? 'Looking through your folders…'
+              : estimate
+                ? estimate.files
+                  ? `About ${formatDuration(estimate.seconds)} for ${estimate.files.toLocaleString()} files not indexed yet — longer while you use the computer`
+                  : 'Everything is indexed.'
+                : 'Estimate how long indexing what’s not indexed yet will take, measured on this computer'}
+          </div>
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => void run()} disabled={loading}>
+          {estimate ? 'Re-estimate' : 'Estimate'}
+        </Button>
+      </div>
+      {estimate && estimate.folders.length > 0 && !loading && (
+        <div className="flex flex-col gap-0.5">
+          {estimate.folders.slice(0, 6).map((f) => (
+            <div key={f.path} className="text-muted-foreground flex justify-between gap-3 font-mono text-3xs">
+              <span className="truncate" title={f.path}>
+                {pretty(f.path)}
+              </span>
+              <span className="shrink-0">{formatDuration(f.seconds)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Minutes after midnight ↔ "HH:MM" for <input type="time">. */
+function toClock(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+function fromClock(value: string): number {
+  const [h, m] = value.split(':').map(Number);
+  return h * 60 + m;
 }
 
 /** "Apple Silicon · Metal GPU · 12 GB memory · 8 cores" from the worker's probe. */
@@ -843,6 +914,12 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
         indexSubtitle: ix.scanned > 0 ? `${ix.scanned.toLocaleString()} files found` : null,
       };
     }
+    if (ix.state === 'indexing' && ix.waitingUntil) {
+      return {
+        indexTitle: 'Waiting for indexing hours',
+        indexSubtitle: `Resumes at ${new Date(ix.waitingUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      };
+    }
     if (ix.state === 'indexing') {
       const ext = ix.currentFile?.split('.').pop()?.toLowerCase() ?? '';
       const verb =
@@ -853,10 +930,13 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
         : ['go', 'rs', 'java', 'cpp', 'c', 'cs', 'swift', 'rb', 'kt'].includes(ext) ? 'Embedding source code'
         : ['json', 'yaml', 'yml', 'toml'].includes(ext) ? 'Indexing config'
         : ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'].includes(ext) ? 'Encoding image'
+        : ['mp4', 'm4v', 'mov', 'webm'].includes(ext) ? 'Watching video'
+        : ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus'].includes(ext) ? 'Listening to audio'
         : 'Building search vectors';
+      const left = ix.etaSeconds !== undefined ? ` · about ${formatDuration(ix.etaSeconds)} left` : '';
       return {
         indexTitle: `${verb}…`,
-        indexSubtitle: `${ix.indexed.toLocaleString()} / ${ix.total.toLocaleString()} files`,
+        indexSubtitle: `${ix.indexed.toLocaleString()} / ${ix.total.toLocaleString()} files${left}`,
       };
     }
     if (ix.state === 'paused') {
@@ -1015,21 +1095,8 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                       }
                     />
                   ))}
-                  <div className="border-border mt-1 border-t pt-1.5">
-                    <ModelRow
-                      id={RERANKER_MODEL_ID}
-                      status={ai.statuses[RERANKER_MODEL_ID]}
-                      onDownload={() =>
-                        ai.downloadModel(RERANKER_MODEL_ID).then((r) => {
-                          if (!r.ok) notifyError(r.error);
-                          ai.refreshStatuses();
-                        })
-                      }
-                    />
-                  </div>
                   <p className="text-muted-foreground mt-1 text-2xs leading-snug">
-                    These download automatically when embeddings are enabled. The reranker is optional
-                    and sharpens search precision.
+                    Downloads automatically when embeddings are enabled.
                   </p>
                 </div>
               </Section>
@@ -1092,6 +1159,9 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                   )}
                 </div>
 
+                {/* First-pass estimate */}
+                {!indexRunning && <EstimateRow />}
+
                 {/* Rescan cadence */}
                 <div className="border-border flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
                   <div className="min-w-0">
@@ -1111,6 +1181,51 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Set hours */}
+                <div className="border-border flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-foreground text-sm">Index only at set hours</div>
+                      <div className="text-muted-foreground text-2xs">
+                        Read and embed files only between these times. Search works at any hour.
+                      </div>
+                    </div>
+                    <Toggle
+                      checked={indexing.hours !== null}
+                      onChange={(v) =>
+                        void indexing.setHours(v ? { start: 60, end: 420 } : null).then((r) => !r.ok && notifyError(r.error))
+                      }
+                      label="Index only at set hours"
+                    />
+                  </div>
+                  {indexing.hours && (
+                    <div className="text-muted-foreground flex items-center gap-2 text-2xs">
+                      From
+                      <input
+                        type="time"
+                        value={toClock(indexing.hours.start)}
+                        onChange={(e) =>
+                          void indexing
+                            .setHours({ ...indexing.hours!, start: fromClock(e.target.value) })
+                            .then((r) => !r.ok && notifyError(r.error))
+                        }
+                        className="border-border bg-card text-foreground rounded-md border px-1.5 py-0.5 font-mono text-xs"
+                      />
+                      to
+                      <input
+                        type="time"
+                        value={toClock(indexing.hours.end)}
+                        onChange={(e) =>
+                          void indexing
+                            .setHours({ ...indexing.hours!, end: fromClock(e.target.value) })
+                            .then((r) => !r.ok && notifyError(r.error))
+                        }
+                        className="border-border bg-card text-foreground rounded-md border px-1.5 py-0.5 font-mono text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Ambient mode */}

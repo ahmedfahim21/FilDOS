@@ -8,7 +8,7 @@
  * names the model to use. Methods throw on failure — the IPC handler converts
  * thrown errors into the `Result<T>` discriminated union, like the FS handlers.
  */
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, DecodedInput } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
 import type { EntitySpan } from '@shared/graphTypes';
 
@@ -27,10 +27,15 @@ export interface AiProvider {
   /** Abort an in-flight download for a model, if one is running. */
   cancelDownload?(modelId: string): Promise<void>;
   /** Embed each input string into a vector; one Float32Array per input. The
-   * `role` lets asymmetric retrieval models prefix queries vs. passages. */
-  embed(modelId: string, texts: string[], role?: EmbedRole): Promise<Float32Array[]>;
-  /** Embed each image file (by path) into a vector; image-capable models only. */
-  embedImages(modelId: string, paths: string[]): Promise<Float32Array[]>;
+   * `role` picks the task prefix (query, question or passage); `titles` (one per
+   * passage, usually the file name) title the documents. */
+  embed(modelId: string, texts: string[], role?: EmbedRole, titles?: string[]): Promise<Float32Array[]>;
+  /** Embed media files by path, one vector each, into the same space as text.
+   * `budget` is the vision soft-token budget per picture (70–1120). */
+  embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]>;
+  /** Embed decoded media (video frames, decoded pictures, audio windows) — one kind
+   * per call — one vector each. `budget` overrides the frame vision budget. */
+  embedDecoded(modelId: string, inputs: DecodedInput[], opts?: { budget?: number }): Promise<Float32Array[]>;
   /**
    * Count tokens for each text using the model's own tokenizer. One IPC call,
    * no inference — used by the indexer to calibrate chunk window size so dense
@@ -38,15 +43,8 @@ export interface AiProvider {
    */
   countTokens?(modelId: string, texts: string[]): Promise<number[]>;
   /**
-   * Cross-encoder reranking: score each (query, passage) pair. Higher score =
-   * more relevant. Only supported by providers with a reranker model loaded;
-   * callers must check `provider.status(modelId)` before calling to avoid
-   * triggering a download on the query path.
-   */
-  rerank?(modelId: string, query: string, passages: string[]): Promise<number[]>;
-  /**
    * Named-entity recognition: one EntitySpan[] per input text (people, orgs,
-   * places for the knowledge graph). Same contract as `rerank`: callers must
+   * places for the knowledge graph). Callers must
    * check `provider.status(modelId)` first so a build never triggers a download.
    */
   extractEntities?(modelId: string, texts: string[]): Promise<EntitySpan[][]>;

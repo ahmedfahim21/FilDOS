@@ -25,7 +25,12 @@ export interface ChatContextDeps {
 
 export interface BuiltChat {
   system: string;
+  /** `material` and `question` joined — the whole message as the model would see it untrimmed. */
   prompt: string;
+  /** File contents, folder listings and search results — the worker trims this to the window. */
+  material: string;
+  /** The command's instruction and the user's words — never trimmed. */
+  question: string;
   /** Semantic hits backing a /find answer, for the UI's source chips. */
   hits?: SemanticHit[];
 }
@@ -48,24 +53,24 @@ export const RESEARCH_BUDGETS = {
   findHits: 16,
 } as const;
 
-/** Rough chars-per-token for sizing the content budget against the window. */
-const CHARS_PER_TOKEN = 4;
 /**
- * Chars the rest of the turn (history + system prompt + generated answer) is
- * expected to consume. The content budget is capped to the window minus this,
- * so a wide research budget can't push the whole prompt past the model's
- * context window and get silently truncated.
+ * Characters of file content per token of context window gathered up front:
+ * at most half the window's worth (~4 chars/token). It's a coarse pre-trim so
+ * a small window never receives a book; the worker then fits the turn exactly
+ * with the model's tokenizer (`fitTurn.ts`).
  */
-const PROMPT_OVERHEAD_CHARS = 22_000;
+const CONTENT_CHARS_PER_WINDOW_TOKEN = 2;
+/** Content is never pre-trimmed below this, however small the window. */
+const MIN_CONTENT_CHARS = 1_500;
 
-/** Per-message budgets, widened for research and clamped to the context window. */
-function budgetsFor(mode: ChatSendPayload['mode'], contextTokens?: number) {
+/** Per-message budgets, widened for research and scaled to the context window. */
+export function budgetsFor(mode: ChatSendPayload['mode'], contextTokens?: number) {
   const base =
     mode === 'research'
       ? { content: RESEARCH_BUDGETS.content, folderEntries: RESEARCH_BUDGETS.folderEntries, findHits: RESEARCH_BUDGETS.findHits }
       : { content: CONTENT_BUDGET, folderEntries: MAX_FOLDER_ENTRIES, findHits: FIND_HITS };
   if (!contextTokens) return base;
-  const cap = Math.max(CONTENT_BUDGET, contextTokens * CHARS_PER_TOKEN - PROMPT_OVERHEAD_CHARS);
+  const cap = Math.max(MIN_CONTENT_CHARS, contextTokens * CONTENT_CHARS_PER_WINDOW_TOKEN);
   return { ...base, content: Math.min(base.content, cap) };
 }
 
@@ -141,11 +146,21 @@ async function folderBlock(
   return `Folder: ${name} (${path}) — ${visible.length} entries\n${lines.join('\n')}`;
 }
 
-function hitsBlock(hits: SemanticHit[]): string {
+/** Shortest passage per hit, however many hits share the budget. */
+const MIN_PASSAGE_CHARS = 300;
+
+/**
+ * The /find hits as context: each hit's matched passage (where in the file the
+ * answer is, page included), sharing the content budget.
+ */
+function hitsBlock(hits: SemanticHit[], budget: number): string {
   if (!hits.length) return 'Search results: none — nothing in the index matched.';
-  const lines = hits.map(
-    (h, i) => `${i + 1}. ${h.name} (${h.path})\n   "${h.snippet.replace(/\s+/g, ' ').slice(0, 200)}"`,
-  );
+  const per = Math.max(MIN_PASSAGE_CHARS, Math.floor(budget / hits.length));
+  const lines = hits.map((h, i) => {
+    const where = h.segment === 'page' && h.loc ? `, page ${h.loc}` : '';
+    const text = (h.passage || h.snippet).replace(/[«»]/g, '').replace(/\s+/g, ' ').slice(0, per);
+    return `${i + 1}. ${h.name} (${h.path}${where})\n   "${text}"`;
+  });
   return `Search results (best first):\n${lines.join('\n')}`;
 }
 
@@ -172,7 +187,7 @@ export async function buildChat(
       );
     }
     hits = await deps.search(prompt, budgets.findHits);
-    blocks.push(hitsBlock(hits));
+    blocks.push(hitsBlock(hits, budgets.content));
   }
 
   // Mentioned folders first (cheap listings), then files sharing the budget.
@@ -188,9 +203,30 @@ export async function buildChat(
   }
 
   const instruction = command ? COMMAND_INSTRUCTIONS[command] : undefined;
-  const parts = [...blocks];
-  if (instruction) parts.push(instruction);
-  if (prompt || !instruction) parts.push(prompt);
+  const asked: string[] = [];
+  if (instruction) asked.push(instruction);
+  if (prompt || !instruction) asked.push(prompt);
+  const material = blocks.join('\n\n');
+  const question = asked.join('\n\n');
 
-  return { system: SYSTEM_PROMPT, prompt: parts.join('\n\n'), hits };
+  return { system: SYSTEM_PROMPT, prompt: [material, question].filter(Boolean).join('\n\n'), material, question, hits };
+}
+
+/** Appended to the system prompt when the file tools are available. */
+export const TOOLS_SYSTEM = [
+  'You can also act on the user\'s files with the provided functions: create files and folders, copy, move, rename, delete (to the OS Trash), list folders, read files, and search the index.',
+  'Only call an action that changes files (create/copy/move/rename/delete) when the user clearly asks for it — never delete, move, or modify anything they did not ask about.',
+  'To research or answer questions about the user\'s files, use search_index to find relevant files, then read_file to read them; you may search several times to gather what you need before answering.',
+  'Prefer paths from the message or the current folder. After acting, briefly confirm what you did, naming the files.',
+].join(' ');
+
+/**
+ * The full system prompt for a tool-enabled turn: the built context, the tool
+ * guidance, the open folder, and the user's standing instructions.
+ */
+export function assembleSystem(built: BuiltChat, opts: { cwd?: string; instructions?: string } = {}): string {
+  let system = `${built.system} ${TOOLS_SYSTEM}`;
+  if (opts.cwd) system += `\nThe folder currently open in the browser: ${opts.cwd}`;
+  if (opts.instructions) system += `\n\nAdditional instructions from the user: ${opts.instructions}`;
+  return system;
 }

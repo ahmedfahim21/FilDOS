@@ -14,13 +14,13 @@ files:
 
 # Native binaries and WASM cannot run from inside the asar archive — they must
 # be unpacked to the filesystem. node-llama-cpp ships llama.cpp platform bins;
-# the AI embed/rerank path loads onnxruntime-web's .wasm (copied beside the
-# worker in out/main by the copyOnnxWasm vite plugin).
+# the embedding runtime runs on onnxruntime-node, whose binding loads a shared
+# library (libonnxruntime) from beside itself.
 asar: true
 asarUnpack:
   - "**/node_modules/node-llama-cpp/**"
   - "**/node_modules/@node-llama-cpp/**"
-  - "**/node_modules/onnxruntime-web/**"
+  - "**/node_modules/onnxruntime-node/**"
   - "**/*.node"
   - "**/*.wasm"
 

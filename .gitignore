@@ -20,3 +20,10 @@ blob-report/
 website/.next/
 website/out/
 .gstack/
+
+# Eval harness: built testbed, media/model downloads, cached indexes
+eval/testbed-data/
+eval/.media-cache/
+eval/.models/
+eval/.cache/
+eval/results/

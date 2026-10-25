@@ -17,7 +17,8 @@ function fakeProvider(id: string): AiProvider {
     status: async (modelId: string): Promise<AiModelStatus> => ({ state: 'absent', modelId, dim: 384 }),
     download: async () => {},
     embed: async () => [],
-    embedImages: async () => [],
+    embedMedia: async () => [],
+    embedDecoded: async () => [],
   };
 }
 
@@ -47,7 +48,7 @@ describe('ai registry', () => {
     const cloud = fakeProvider('cloud');
     registerAiProvider('embedded', embedded);
     registerAiProvider('cloud', cloud);
-    await setPrefs({ ai: { enabled: true, activeProvider: 'cloud', modelId: 'm' } });
+    await setPrefs({ ai: { enabled: true, activeProvider: 'cloud' } });
     expect(await activeAiProvider()).toBe(cloud);
   });
 });

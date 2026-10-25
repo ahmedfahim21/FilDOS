@@ -18,15 +18,46 @@ operation — create, read, rename, copy, move, …) are **true integration test
 they exercise real files in an `os.tmpdir()` sandbox provisioned by
 `src/main/fs/fixtures.ts`.
 
-The AI layer is tested the same way: dependencies are injected into `Indexer`,
-`IndexWatcher`, and `GraphBuilder`, so tests drive the whole pipeline with a fake
-provider and a temp directory — no Electron required. Chat tools are tested
-against a temp dir in `tools.test.ts`.
+The AI layer is tested the same way. Dependencies (provider, extractor, media
+and picture decoders, pacing) are injected into `Indexer`, `IndexWatcher` and
+`GraphBuilder`, so tests drive the whole pipeline with a fake provider and a
+temp directory, no Electron required. The extraction watchdog is tested against
+a fake worker (timeouts, crashes, retries). Chat tools are tested against a temp
+dir in `tools.test.ts`.
 
 ```bash
 npm test            # vitest run — unit + integration
 npm run test:watch  # vitest in watch mode
 ```
+
+## AI quality evals
+
+Unit tests prove the AI layer is wired correctly. **Evals** measure how good it
+is. `eval/` builds a deterministic testbed, then runs the production indexer,
+search, graph and chat code over it with the real models. The testbed holds:
+
+- notes and documents in four languages
+- a 200-page PDF with facts on known pages
+- pictures, audio and video pinned by SHA-256
+- traps that must never be indexed: secrets, caches, a dataset folder
+
+```bash
+npm run eval          # search + index + graph (+ chat with FILDOS_EVAL_LLM), real models
+npm run eval:smoke    # the same suites on bag-of-words embeddings, no downloads (CI)
+npm run eval:search   # one suite: eval:search | eval:index | eval:graph | eval:chat
+```
+
+| Suite | Measures |
+|-------|----------|
+| Search | R@1, R@5, MRR per tag; page/moment accuracy; "nothing found" precision; latency; keyword vs. meaning vs. fused |
+| Index | Skip rules, extraction per type, second-pass completion, index size, seconds per unit by kind |
+| Graph | Expected-neighbour recall, cluster purity, build time |
+| Chat | `/find` recall, cited sources, tool calls checked on disk (opt-in: needs a downloaded chat model) |
+
+Any change to search, indexing, the graph or chat quotes before/after numbers in
+its PR. Result JSON goes to `eval/results/` and is gitignored, since numbers
+depend on the machine and the day. See `eval/README.md` for the environment
+variables.
 
 ## End-to-end (Playwright)
 
@@ -66,5 +97,5 @@ npm run build
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs **lint, typecheck + unit/integration, and e2e**
+`.github/workflows/ci.yml` runs **lint, typecheck + unit/integration, the eval smoke suites, and e2e**
 on **Ubuntu, macOS, and Windows**, on **Node 22** (required for `node:sqlite`).

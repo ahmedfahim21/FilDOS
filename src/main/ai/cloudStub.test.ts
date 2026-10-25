@@ -17,8 +17,8 @@ describe('CloudAiProvider (deferred stub)', () => {
     await expect(p.embed('m', ['x'])).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
   });
 
-  it('throws EUNSUPPORTED from embedImages', async () => {
-    await expect(p.embedImages('m', ['/x.png'])).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
+  it('throws EUNSUPPORTED from embedMedia', async () => {
+    await expect(p.embedMedia('m', 'image', ['/x.png'])).rejects.toMatchObject({ code: 'EUNSUPPORTED' });
   });
 
   it('throws EUNSUPPORTED from download', async () => {

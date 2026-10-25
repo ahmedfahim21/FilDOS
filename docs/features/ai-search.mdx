@@ -1,11 +1,12 @@
 ---
 title: Search by Meaning
-description: On-device semantic search — find files by what's inside them, not just their names.
+description: On-device semantic search — find files, pages and moments by what's inside them, not just their names.
 ---
 
-Ask for "receipts from tax season" or "photos from the Japan trip" and FilDOS
-finds files by what they contain. Text, code, PDFs, DOCX, and images are all
-indexed **on-device** — nothing is uploaded, and the index lives in a local
+Ask for "receipts from tax season", "photos from the Japan trip" or "the part
+of the lecture about kestrels". FilDOS finds them by what they contain. Text,
+code docs, PDFs, DOCX, pictures (HEIC included), audio and video are all
+indexed **on-device**. Nothing is uploaded, and the index lives in a local
 database.
 
 <Frame caption="Meaning and name search, fused into one ranked result list.">
@@ -14,19 +15,53 @@ database.
 
 ## How search works
 
-Hit `⌘ K` and type a natural-language query. FilDOS runs a **hybrid search** and
-returns a single fused list — never separate "semantic" and "name" sections:
+Hit `⌘ K` and type a natural-language query. FilDOS searches by meaning and by
+words at once, and returns **one ranked list**, never separate "semantic" and
+"name" sections:
 
-1. **Vector retrieval** finds chunks whose meaning matches your query.
-2. **BM25 keyword retrieval** finds exact term and filename matches.
-3. The two lanes are fused with **Reciprocal Rank Fusion** — filename evidence
-   anchors the rank, the semantic score is discounted against it, and a file
-   that scores in both lanes gets a bump.
-4. The **top candidates are reranked** by an on-device cross-encoder for the
-   final ordering, and the strongest hit is badged **Best**.
+1. Every indexed passage, picture, video frame and sound clip is scored against
+   your query. One model places all of them in the same space.
+2. A file counts as a match only if it stands out **clearly** from the rest by
+   meaning, or holds at least half your words. Typing an ID, an invoice number
+   or an error code searches by words alone.
+3. Filename matches anchor the ranking. A file that matches on both meaning and
+   words ranks higher, and naming a file kind ("a photo of…", "in a video")
+   favours it.
 
-Scope chips let you narrow to the current folder, or to **Folders / Docs /
-Images / Audio / Video / Code / Tag**, and filter by time.
+The top result gets a **Best** pill. Less certain hits fold under
+**Weaker matches**. If nothing really matches, you get **No matches** instead
+of the closest noise.
+
+Scope chips narrow the search to **This folder** or **Everywhere**, or to
+**Folders / Docs / Images / Audio / Video / Code / Tag**, and filter by time.
+Drop a file on the search box (or choose **Find similar**) to find files like
+it.
+
+## Hits know their place
+
+A result points at **where** it matched, not just which file:
+
+- **PDFs** show a **p. 12** pill, and the preview opens at that page with your
+  words highlighted.
+- **Audio and video** show a **0:25** pill, and the preview's player starts at
+  that moment.
+- **Text and documents** open scrolled to the first matching word, with every
+  match highlighted.
+- **Snippets** in the list highlight the words that matched in the passage the
+  hit points at.
+
+The same pills appear on the sources of an Ask AI `/find` answer. Clicking one
+opens the file right there.
+
+## The preview beside your results
+
+While results are showing, the search panel splits in two: results on the
+left, a live preview of the selected one on the right. The best match is
+selected first; hover a result or move with ↑ ↓ and the preview follows.
+**↵** opens the file and **⌘ ↵** shows it in its folder. The panel keeps one
+size whether it's waiting, searching, or previewing, so nothing jumps as
+results arrive. In a narrow window the preview steps aside and the list takes
+the full width.
 
 ## The indexing pipeline
 
@@ -36,65 +71,78 @@ Images / Audio / Video / Code / Tag**, and filter by time.
 
 <Steps>
   <Step title="Extract">
-    Text is pulled from plain text, code, Markdown, CSV, JSON, and similar files.
-    PDFs stream through a byte-range transport (book-size files extract with
-    bounded memory), and DOCX is parsed too. Files that can't be extracted still
-    get a filename-fallback chunk so name queries find them.
+    Text comes from plain text, Markdown and similar files, DOCX, and PDFs page
+    by page (book-size files stay in bounded memory). Extraction runs in a
+    separate, watched process: a file that takes too long or eats too much
+    memory is stopped without affecting the app. Audio and video are decoded by
+    the app's built-in Chromium, and HEIC photos by your operating system.
   </Step>
   <Step title="Chunk">
-    Long documents are split into ~512-token windows so context isn't lost at
-    boundaries.
+    Text is split into ~512-token windows that never cross a page. Video
+    becomes one frame per shot (a frame every 3 s), and sound becomes 30 s
+    clips.
   </Step>
   <Step title="Embed">
-    Each chunk is passed through the active model — running on WASM — to produce a
-    vector. Images are embedded with CLIP into the **same space** as text, so a
-    text query can match a photo.
+    **EmbeddingGemma 2** turns each piece into a vector, on your CPU. Text,
+    pictures, frames and sound share one space, so a text query can match a
+    photo or a moment in a recording.
   </Step>
   <Step title="Store">
-    Vectors are stored as Float32 BLOBs in SQLite and searched with brute-force
-    cosine similarity over an in-memory cache — plenty fast for a personal-scale
+    Vectors are stored in SQLite and searched with brute-force cosine
+    similarity over an in-memory cache. That's plenty fast for a personal-scale
     index.
   </Step>
 </Steps>
 
-## Choosing a model
+Long files are read in **two passes**. The first 50 pages of a PDF (or 40
+passages of a document) are indexed right away, so they're searchable within
+minutes. The rest is read once everything else is done.
 
-Open **Settings → AI & Search** to pick an embedding model and download it.
-Models are cached in `userData/models` and loaded once per session.
+## The model
 
-| Model | Dim | Best for |
-|-------|-----|----------|
-| MiniLM L6 v2 | 384 | Fast, general text |
-| BGE Small v1.5 | 384 | Strong retrieval quality |
-| GTE Small | 384 | General text and code |
-| Multilingual E5 | 384 | Non-English queries |
-| CLIP ViT-B/32 | 512 | Text **and** images in one space |
+FilDOS uses one embedding model, **EmbeddingGemma 2**, in three parts:
 
-An optional cross-encoder reranker further sharpens results; like the Canvas NER
-model, it's **opt-in** and never auto-downloaded.
+| Part | Downloaded | Used for |
+|------|------------|----------|
+| Text model | During setup | Every search, and all text |
+| Vision encoder | During setup | Pictures and video frames |
+| Audio encoder | With the first recording | Audio files and video soundtracks |
+
+**Settings → AI & Search** shows each part's download status. Models are cached
+in `userData/models`; the embedding worker unloads after two idle minutes and
+reloads on the next search.
 
 ## The background indexer
 
 The indexer crawls your configured roots (your home directory by default) in the
 background. It's designed to stay out of your way:
 
-- **Cost-classed queue** — removals and text first, images next, PDF/DOCX last —
-  so a fresh index is useful in minutes.
-- **Duty-cycled** around your activity: near full speed when you're away, gentler
-  while you're working, and easier on battery.
-- **Skips the noise** — dotfiles, system folders, `node_modules`, build outputs,
-  and caches. Checked-out **codebases** are indexed docs-only so source files
-  don't drown your results.
+- **Cost-classed queue.** Removals and text go first, pictures next, PDF/DOCX
+  after that, recordings last, so a fresh index is useful in minutes.
+- **Duty-cycled** around your activity: near full speed when you're away,
+  gentler while you're working, on battery, or when the machine runs hot.
+- **Index only at set hours.** Optionally restrict indexing to a time window.
+- **Estimates.** **Settings → Indexing** shows how long what's left will take,
+  in total and per folder. Estimates use your machine's measured speed, and an
+  ETA shows while indexing runs.
+- **Skips the noise:**
+  - dotfiles, system folders, `node_modules`, build output and caches
+  - dataset folders full of machine-named media
+  - checked-out **codebases**, which are indexed docs-only
+- **Never reads secrets.** `.env` files, keys, certificates and credential files
+  are skipped wherever they are.
 - **Keeps itself fresh** via a filesystem watcher plus a periodic reconcile.
 
-Progress lives in **Settings → Indexing**. You can pause, resume, or clear the
-index at any time.
+You can pause, resume, or clear the index at any time from **Settings →
+Indexing**. Close the last window and FilDOS can keep indexing from the menu
+bar or system tray (**Continue indexing in the background**).
 
 ## Keeping things private
 
 Use **Hide from AI** (a context-menu action, or **Settings → Privacy**) to
-exclude specific files, folders, or whole file extensions from indexing — the
-assistant and search never see what you don't want them to.
+exclude specific files or folders from indexing. To exclude whole file types,
+use **Skip file types** in **Settings → Indexing**. Search and the assistant
+never see what you've excluded.
 
 ## Next
 
@@ -103,6 +151,6 @@ assistant and search never see what you don't want them to.
     Turn search into a conversation with an on-device LLM.
   </Card>
   <Card title="AI Pipeline" icon="cpu" href="/engineering/ai-pipeline">
-    The engineering behind extraction, embeddings, and fusion.
+    The engineering behind extraction, embeddings, and ranking.
   </Card>
 </CardGroup>

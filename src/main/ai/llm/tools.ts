@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { basename, isAbsolute, join, normalize } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize } from 'node:path';
 import type { ChatToolCall, SemanticHit } from '@shared/types';
 import {
   createFolder,
@@ -44,6 +44,9 @@ export interface ChatToolDeps {
 export const READ_CAP = 4_000;
 /** Most entries returned by list_folder. */
 export const LIST_CAP = 50;
+/** Characters of each search_index hit's matched passage handed to the model. */
+export const SEARCH_PASSAGE_CHARS = 600;
+
 
 interface ToolOutcome {
   /** What the renderer shows and the DB stores. */
@@ -77,6 +80,19 @@ function friendly(err: unknown): string {
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const strArray = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+
+/**
+ * A file or folder name the model asked for, cleaned of what it copies from
+ * the sentence around it: surrounding quotes/backticks and trailing dots or
+ * spaces ("Rename it to packing.md." → "packing.md"). Windows rejects trailing
+ * dots anyway, and elsewhere they're never what the user meant.
+ */
+export function newName(value: unknown): string {
+  return (str(value) ?? '')
+    .trim()
+    .replace(/^["'`“‘]+|["'`”’]+$/g, '')
+    .replace(/[.\s]+$/, '');
+}
 
 /** "3 items" / the base name when there's exactly one. */
 function describe(paths: string[]): string {
@@ -130,6 +146,36 @@ function resolveToolPath(input: unknown, cwd: string | undefined, home: string):
   return out;
 }
 
+/**
+ * Resolve a path the model gave for something that should already exist. A
+ * relative path is tried against the open folder first; when it names a
+ * folder too ("Recipes/pasta.md", "Home/Travel/list.md") — the model often
+ * writes paths from a parent or from home — also against each ancestor of the
+ * open folder and then home, taking the first that exists. A bare name only
+ * ever means the open folder, so nothing is guessed from elsewhere.
+ */
+async function resolveExisting(input: unknown, cwd: string | undefined, home: string): Promise<string> {
+  const direct = resolveToolPath(input, cwd, home);
+  const raw = str(input)!;
+  if (isAbsolute(raw) || raw.startsWith('~') || !cwd || !/[\\/]/.test(raw)) return direct;
+  if (await exists(direct)) return direct;
+  const bases: string[] = [];
+  for (let dir = dirname(cwd); dir !== dirname(dir); dir = dirname(dir)) bases.push(dir);
+  bases.push(home);
+  for (const base of bases) {
+    const candidate = resolveToolPath(raw, base, home);
+    if (await exists(candidate)) return candidate;
+  }
+  return direct;
+}
+
+async function exists(path: string): Promise<boolean> {
+  return fs.access(path).then(
+    () => true,
+    () => false,
+  );
+}
+
 /** Run one named tool. Resolves (never rejects) with the outcome. */
 export async function executeChatTool(
   name: string,
@@ -151,14 +197,14 @@ async function run(
   cwd: string | undefined,
   deps: ChatToolDeps,
 ): Promise<ToolOutcome> {
-  const folderOf = (key: string) =>
-    params[key] == null ? resolveToolPath(cwd, undefined, deps.home()) : resolveToolPath(params[key], cwd, deps.home());
+  const folderOf = async (key: string) =>
+    params[key] == null ? resolveToolPath(cwd, undefined, deps.home()) : resolveExisting(params[key], cwd, deps.home());
 
   switch (name) {
     case 'create_file': {
-      const fileName = str(params.name);
+      const fileName = newName(params.name);
       if (!fileName) throw new ChatToolError('No file name given.');
-      const dir = folderOf('folder');
+      const dir = await folderOf('folder');
       const dest = await uniqueDestination(dir, basename(fileName));
       await fs.writeFile(dest, typeof params.content === 'string' ? params.content : '', {
         flag: 'wx',
@@ -170,11 +216,11 @@ async function run(
     }
 
     case 'create_folder': {
-      const folderName = str(params.name);
+      const folderName = newName(params.name);
       if (!folderName) throw new ChatToolError('No folder name given.');
       // basename() strips any path separators so a "../.." name can't escape
       // the parent folder (mirrors create_file's handling of `name`).
-      const entry = await createFolder(folderOf('folder'), basename(folderName));
+      const entry = await createFolder(await folderOf('folder'), basename(folderName));
       return {
         call: { name, summary: `Created folder "${entry.name}"`, ok: true, paths: [entry.path] },
         result: { ok: true, path: entry.path },
@@ -182,9 +228,9 @@ async function run(
     }
 
     case 'copy_files': {
-      const sources = strArray(params.paths).map((p) => resolveToolPath(p, cwd, deps.home()));
+      const sources = await Promise.all(strArray(params.paths).map((p) => resolveExisting(p, cwd, deps.home())));
       if (!sources.length) throw new ChatToolError('No files given to copy.');
-      const dest = resolveToolPath(params.destination, cwd, deps.home());
+      const dest = await resolveExisting(params.destination, cwd, deps.home());
       const copied = await copy(sources, dest);
       return {
         call: {
@@ -198,9 +244,9 @@ async function run(
     }
 
     case 'move_files': {
-      const sources = strArray(params.paths).map((p) => resolveToolPath(p, cwd, deps.home()));
+      const sources = await Promise.all(strArray(params.paths).map((p) => resolveExisting(p, cwd, deps.home())));
       if (!sources.length) throw new ChatToolError('No files given to move.');
-      const dest = resolveToolPath(params.destination, cwd, deps.home());
+      const dest = await resolveExisting(params.destination, cwd, deps.home());
       const moved = await move(sources, dest);
       moved.forEach((entry, i) => deps.remap(sources[i], entry.path));
       return {
@@ -215,12 +261,12 @@ async function run(
     }
 
     case 'rename_file': {
-      const from = resolveToolPath(params.path, cwd, deps.home());
-      const newName = str(params.new_name);
-      if (!newName) throw new ChatToolError('No new name given.');
+      const from = await resolveExisting(params.path, cwd, deps.home());
+      const target = newName(params.new_name);
+      if (!target) throw new ChatToolError('No new name given.');
       // Enforce the schema's "no path separators" promise so a rename can't
       // move the file elsewhere via `..` (mirrors create_file/create_folder).
-      const entry = await rename(from, basename(newName));
+      const entry = await rename(from, basename(target));
       deps.remap(from, entry.path);
       return {
         call: {
@@ -234,7 +280,7 @@ async function run(
     }
 
     case 'delete_files': {
-      const targets = strArray(params.paths).map((p) => resolveToolPath(p, cwd, deps.home()));
+      const targets = await Promise.all(strArray(params.paths).map((p) => resolveExisting(p, cwd, deps.home())));
       if (!targets.length) throw new ChatToolError('No files given to delete.');
       for (const p of targets) {
         await deps.trashItem(p);
@@ -247,7 +293,7 @@ async function run(
     }
 
     case 'list_folder': {
-      const dir = folderOf('path');
+      const dir = await folderOf('path');
       const entries = await listDir(dir);
       const visible = entries.filter((e) => !e.isHidden);
       return {
@@ -265,7 +311,7 @@ async function run(
     }
 
     case 'read_file': {
-      const target = resolveToolPath(params.path, cwd, deps.home());
+      const target = await resolveExisting(params.path, cwd, deps.home());
       await getInfo(target); // surfaces ENOENT with a friendly message
       const text = await deps.extract(target);
       if (text === null) return fail(name, `Couldn't read "${basename(target)}" — not a text file.`);
@@ -298,7 +344,9 @@ async function run(
           results: hits.map((h) => ({
             name: h.name,
             path: h.path,
-            snippet: h.snippet.replace(/\s+/g, ' ').slice(0, 200),
+            ...(h.segment === 'page' && h.loc ? { page: h.loc } : {}),
+            // The matched passage: what the model can quote and answer from.
+            passage: (h.passage || h.snippet).replace(/[«»]/g, '').replace(/\s+/g, ' ').trim().slice(0, SEARCH_PASSAGE_CHARS),
           })),
         },
       };

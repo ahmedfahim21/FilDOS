@@ -33,7 +33,7 @@ async function seedFile(path: string, angle: number, indexedAt = 1000, text = LO
     status: 'indexed',
   });
   await aiIndex.replaceChunks(path, [
-    { chunkIx: 0, text, embedding: encodeVector(unit(angle)), modelId: 'm1' },
+    { chunkIx: 0, text, embedding: encodeVector(unit(angle)), modelId: 'm1', kind: 'text' },
   ]);
 }
 
@@ -49,7 +49,10 @@ function fakeProvider(opts: { nerReady?: boolean } = {}) {
     async embed(_m, texts) {
       return texts.map(() => unit(0));
     },
-    async embedImages() {
+    async embedMedia() {
+      return [];
+    },
+    async embedDecoded() {
       return [];
     },
     async extractEntities(_m, texts): Promise<EntitySpan[][]> {
@@ -68,7 +71,6 @@ function makeBuilder(provider: AiProvider) {
   const builder = new GraphBuilder({
     provider: async () => provider,
     nerModel: 'ner-model',
-    imageModel: 'clip',
     emit: (p) => emits.push(`${p.state}:${p.phase ?? '-'}`),
     prefs: {
       get: async () => prefs,

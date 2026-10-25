@@ -26,14 +26,17 @@ export const MAX_ATTEMPTS = 3;
 
 /** Heavy documents: full parse plus hundreds of chunk embeddings per file. */
 const HEAVY_EXTENSIONS = new Set(['pdf', 'docx']);
-/** One CLIP embedding per file — cheap-ish, but behind plain text. */
+/** Audio/video: decoding plus a vector per shot and per 30 s of sound — last. */
+const MEDIA_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'mp4', 'm4v', 'mov', 'webm']);
+/** One picture embedding per file — cheap-ish, but behind plain text. */
 const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif',
 ]);
 
 /**
  * Cost class for queue ordering: cheap text/code and removals drain first so a
- * fresh index is useful within minutes; images next; book-size documents last.
+ * fresh index is useful within minutes; images next; then book-size documents;
+ * audio/video last.
  * (Extension sets mirror ai/index/extract.ts — the queue only needs the coarse
  * classes, not the full taxonomy.)
  */
@@ -41,6 +44,7 @@ function costClass(path: string, op: IndexOp): number {
   if (op === 'remove') return 0;
   const dot = path.lastIndexOf('.');
   const ext = dot >= 0 ? path.slice(dot + 1).toLowerCase() : '';
+  if (MEDIA_EXTENSIONS.has(ext)) return 3;
   if (HEAVY_EXTENSIONS.has(ext)) return 2;
   if (IMAGE_EXTENSIONS.has(ext)) return 1;
   return 0;
@@ -114,6 +118,15 @@ export async function countPending(): Promise<number> {
     .from(indexJobs)
     .where(eq(indexJobs.status, 'pending'));
   return n;
+}
+
+/** Paths of every pending upsert (for estimating the queued work). */
+export async function pendingPaths(): Promise<string[]> {
+  const rows = await db()
+    .select({ path: indexJobs.path })
+    .from(indexJobs)
+    .where(and(eq(indexJobs.status, 'pending'), eq(indexJobs.op, 'upsert')));
+  return rows.map((r) => r.path);
 }
 
 /** Drop the whole queue (used by "Clear index"). */

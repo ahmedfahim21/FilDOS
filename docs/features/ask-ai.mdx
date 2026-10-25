@@ -19,7 +19,7 @@ The composer understands three kinds of reference:
 |---------|--------------|
 | `@file` | Attach a file's contents to the conversation |
 | `#folder` | Bring a folder's listing into context |
-| `/command` | Run a built-in command — e.g. `/find` runs a semantic search and hands the hits to the model |
+| `/command` | Run a built-in command — e.g. `/find` runs a semantic search and hands the hits, with their page or moment, to the model |
 
 Quick-action tiles get you started: **Summarize this folder**, **Find a file**,
 **Explain a file**, and **Perform a file action**.
@@ -55,8 +55,10 @@ Manage everything in **Settings → Assistant**.
 ## Conversations are saved
 
 Every exchange — including the files you mentioned and the sources a `/find`
-pulled in — is persisted locally, so you can reopen a conversation from the
-history view and continue it later.
+pulled in — is persisted locally. A source that points at a PDF page or a
+moment in a recording keeps its **p. 12** / **0:25** pill, which opens the
+in-app preview. Reopen any conversation from the history view and continue it
+later.
 
 <Note>
   The assistant respects **Hide from AI**: anything you've excluded from indexing

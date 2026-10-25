@@ -4,6 +4,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -44,6 +45,8 @@ interface ContextMenuProps {
   onRename: () => void;
   onTrash: () => void;
   onInfo: () => void;
+  /** Show the item in Quick Look; omitted for remote items. */
+  onQuickLook?: () => void;
   /** Toggle the selection's AI-index exclusion; omitted when AI is off or remote. */
   onToggleIndexExclude?: () => void;
   /** True when the whole selection is already excluded (flips the label to Include). */
@@ -113,6 +116,12 @@ export function ContextMenu(props: ContextMenuProps) {
             <DropdownMenuItem onSelect={props.onOpen} disabled={!single}>
               <Icon name="open" /> Open
             </DropdownMenuItem>
+            {props.onQuickLook && (
+              <DropdownMenuItem onSelect={props.onQuickLook} disabled={!single}>
+                <Icon name="eye" /> Quick Look
+                <DropdownMenuShortcut>Space</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            )}
             {!remote && (
               <DropdownMenuItem onSelect={props.onReveal} disabled={!single}>
                 <Icon name="reveal" /> {revealLabel}

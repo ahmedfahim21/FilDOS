@@ -19,6 +19,9 @@
     "electron.vite.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
-  ]
+    "src/shared/**/*",
+    "eval/**/*",
+    "vitest.eval.config.ts"
+  ],
+  "exclude": ["eval/testbed-data", "eval/.media-cache", "eval/.models", "eval/.cache"]
 }

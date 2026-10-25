@@ -8,7 +8,8 @@
  * first partitioned with a few k-means iterations (k ≈ √n) and each file
  * scans only its own and nearest partitions — the classic cell-probe
  * approximation, >95% recall at a fraction of the work. Comparisons never
- * cross model spaces: text centroids pair with text, CLIP with CLIP.
+ * cross model ids (vectors of different models aren't comparable); with one
+ * multimodal model, pictures and documents link freely.
  */
 
 export interface FileCentroid {
@@ -27,22 +28,19 @@ export interface KnnEdge {
 export interface KnnOptions {
   /** Neighbours kept per file. */
   k?: number;
-  /** Minimum cosine for an edge, per model id (junk edges hurt the layout). */
-  minCosine?: (modelId: string) => number;
+  /** Minimum cosine for an edge (junk edges hurt the layout). */
+  minCosine?: number;
   /** Cooperative yield, called between work blocks. */
   pace?: () => Promise<void>;
 }
 
 export const DEFAULT_K = 5;
 /**
- * Default floors. bge text cosines sit high (~0.6 already means "related").
- * Image↔image CLIP cosines run higher still — near-duplicates exceed 0.9 and
- * loosely related photos ~0.7 — so the image lane needs a stricter floor or
- * every photo links to every photo.
+ * Default edge floor. EmbeddingGemma 2 puts text and pictures in one space:
+ * unrelated files sit near 0.5 and related ones above ~0.6, for any pair of
+ * modalities, so one floor serves all (tuned on the graph eval).
  */
-export function defaultMinCosine(modelId: string): number {
-  return modelId.includes('clip') ? 0.72 : 0.62;
-}
+export const MIN_COSINE = 0.6;
 
 /** Mean + L2-normalize the chunk vectors of each (path, modelId) group. */
 export function centroids(
@@ -142,7 +140,7 @@ export async function knnEdges(
   opts: KnnOptions & { onlyFor?: Set<string> } = {},
 ): Promise<KnnEdge[]> {
   const k = opts.k ?? DEFAULT_K;
-  const minCosine = opts.minCosine ?? defaultMinCosine;
+  const floor = opts.minCosine ?? MIN_COSINE;
   const edges = new Map<string, KnnEdge>();
 
   const byModel = new Map<string, FileCentroid[]>();
@@ -152,9 +150,8 @@ export async function knnEdges(
     byModel.set(p.modelId, group);
   }
 
-  for (const [modelId, group] of byModel) {
+  for (const group of byModel.values()) {
     if (group.length < 2) continue;
-    const floor = minCosine(modelId);
     const vecs = group.map((g) => g.vec);
     const queries: number[] = [];
     for (let i = 0; i < group.length; i++) {

@@ -21,7 +21,16 @@ npm run lint         # eslint (flat config, eslint.config.mjs)
 npm test             # vitest run — unit + integration tests (CI runs this on all 3 OSes)
 npm run test:watch   # vitest in watch mode
 npm run test:e2e     # build, then Playwright smoke test against the packaged app
+npm run eval         # AI quality evals (search/index/graph/chat) on a generated testbed — see eval/README.md
+npm run eval:smoke   # the same suites on bag-of-words embeddings, no downloads (CI)
 ```
+
+**Evals.** `eval/` measures the AI layer on a deterministic testbed
+(`eval/testbed/manifest.ts`) with production code: the real model runtimes run
+in-process (`modelRuntime.ts` / `llm/llmRuntime.ts`; the `*Worker.ts` files only
+bind them to `parentPort`). Any change to search, indexing, the graph or chat
+quotes before/after numbers from `npm run eval` in its PR description (result
+JSON in `eval/results/` is gitignored — machine- and day-specific).
 
 **Unit + integration (Vitest).** Tests live beside the code as `*.test.ts`,
 split per feature, reusing the vite aliases via `vitest.config.ts`: renderer
@@ -98,7 +107,14 @@ rather than hand-rolling.
   the renderer). The overlay sweeps the folder in view first when scope is
   "Everywhere" and renders **one fused result list** — filename evidence anchors
   the rank, semantic score is discounted against it, both-lane hits get a bump —
-  never separate "semantic vs name" sections. Helpers: `assertValidPath`,
+  never separate "semantic vs name" sections; semantic hits past the search's
+  `strong` count fold under "N weaker matches", snippets highlight «marked»
+  words, and PDF hits carry a "p. N" pill. With results the overlay is a
+  **split view** at one fixed size (no recents, nothing resizes as results
+  arrive): the list beside `FilePreview` of the active row (best match first,
+  following hover/arrows after a 120 ms rest), opened at the hit's page or
+  moment with the query's words lit in Mint; below 820 px the preview steps
+  aside. Row sublines show the folder via `lib/path#compactDir`. Helpers: `assertValidPath`,
   `assertValidName`, `uniqueDestination` (" copy" suffixing).
 - `fs/handlers.ts` — registers every `ipcMain.handle`; `wrap()` + `toAppError()`.
 - `fs/watch.ts` — single non-recursive `fs.watch` on the focused dir, debounced,
@@ -115,57 +131,141 @@ The foundation of the AI phase. It **mirrors the cloud provider seam**: an
 (register/get + `activeAiProvider()` from `prefs.ai.activeProvider`), and two
 providers — `providers/embedded.ts` (on-device) and `providers/cloud.ts` (a
 deferred stub that throws `EUNSUPPORTED`). Handlers in `ai/handlers.ts`
-(`ai:status` / `ai:download` / `ai:embed` / `ai:embedImages`, wrapped in
-`Result<T>`) resolve the active model id (`prefs.ai.modelId`) and dispatch to the
-active provider; `Events.aiModelProgress` streams download progress per model.
+(`ai:status` / `ai:download` / `ai:cancelDownload`, wrapped in `Result<T>`)
+default to the embedding model and dispatch to the active provider;
+`Events.aiModelProgress` streams download progress per model.
 
-`src/shared/aiModels.ts` is the **model catalog** (shared by worker + Settings):
-several `feature-extraction` text/code models (MiniLM, BGE, GTE, multilingual
-E5; 384-d) plus a `clip` image model (CLIP ViT-B/32, 512-d) that embeds **both**
-text and image files into one space. Each entry has a `kind` the worker switches
-on. Adding a model = one catalog entry (verify it loads with `dtype: 'q8'` and
-record its dim); no other code changes for feature-extraction models.
+`src/shared/aiModels.ts` is the **model catalog** (shared by runtime + Settings).
+One embedding model indexes everything: **EmbeddingGemma 2**
+(`onnx-community/embeddinggemma-2-ONNX`, `kind: 'multimodal'`, 768-d) puts
+text and pictures in **one space**, so a single vector lane ranks every file
+and the graph links pictures to documents. Its text model and vision encoder
+are separate components (`components`), and the NER entry rides along. Rules from the model card are enforced in code:
+- task prefixes live only in `@shared/embeddingPrompts.ts` (search query /
+  question / `title: <file name> | text:` passages; none on pictures) — changing
+  them bumps `PROMPTS_VERSION`;
+- **never float16** (`ModelDtype` is `'q8' | 'fp32'`; the model's activations
+  overflow fp16 and come back NaN/degraded silently), and `ai/vectors.ts`
+  throws on any NaN/Inf/zero vector;
+- Matryoshka truncation goes through `truncateNormalize` (truncate *then*
+  renormalize; dims 768/512/256 only).
+`indexFingerprint()` (model|dtype|dim|prompts) is stored in
+`prefs.index.fingerprint`; a mismatch empties and rebuilds the index
+(`ensureFingerprint` in `index/handlers.ts`), and `retiredModels.ts` deletes
+superseded model folders at startup.
 
-Embeddings run **on-device** via `@huggingface/transformers` on the **WASM**
-backend — zero native deps, matching the `node:sqlite` philosophy.
-`modelWorker.ts` runs in an Electron `utilityProcess` (so load/inference never
-block the main process), memoizes one loaded model per id, and is a **second
-main entry** in `electron.vite.config.ts`; `transformers` is ESM-only so the
-worker `import()`s it dynamically. onnxruntime-web's `.wasm` files are copied
-beside the worker (`out/main`) by the inline `copyOnnxWasm` plugin, and the
-worker points `wasmPaths` at its own `__dirname` to stay offline. Models cache to
+Embeddings run **on-device** via `@huggingface/transformers` on
+**onnxruntime-node** (native CPU — in Node transformers.js has no WASM
+backend; packaging unpacks `onnxruntime-node`). `modelRuntime.ts` (bound by
+`modelWorker.ts`) runs in an Electron `utilityProcess` (so load/inference never
+block the main process) and is a **second main entry** in
+`electron.vite.config.ts`; `transformers` is ESM-only so it's `import()`ed
+dynamically. Text requests load the text model alone; the vision encoder is
+added the first time a picture needs embedding (pictures get a vision budget:
+140 soft tokens, 280 for screenshots). Vectors cross the port as
+`Float32Array`s. The vision encoder can be pointed at a GPU device with
+`FILDOS_EMBED_DEVICE` and timed with the runtime's `deviceCheck` (CoreML on an
+M-series Mac is slower than CPU and can't run the text model), so production
+stays on CPU. Models cache to
 `userData/models` (the main process hands the worker that path via
 `process.env.FILDOS_MODELS_DIR`, since a utilityProcess can't call
 `app.getPath`). The renderer drives it from Settings (`state/ai.tsx` context +
-`components/SettingsView.tsx`, with a per-model picker and live status).
+`components/SettingsView.tsx`, a status card per managed model).
 
 **Indexer (`src/main/ai/index/`).** The background pipeline that turns files into
 searchable vectors. `extract.ts` (text/code/data by extension; binary + size-cap
-skip) → `chunk.ts` (~512-token char-approx windows) → the active provider's
+skip; in the app it runs in the **extraction utilityProcess** — `extractWorker.ts`,
+a fourth main entry — behind `extractClient.ts`'s watchdog: 2 min per read
+kills the worker (ETIMEDOUT), a 1 GB heap cap, reads in flight retried once on
+a fresh worker after a crash so only the culprit fails, idle exit after 1 min;
+indexer, chat and Find similar take it as an injected `Extractor`, tests and
+evals use `inProcessExtractor`. pdfjs treats any Electron process but main as a
+browser, so the worker loads it with `process.type` presented as `'browser'`) → `chunk.ts` (~512-token char-approx windows) → the active provider's
 `embed()` → `db/vectorStore.sqlite.ts` (Float32 BLOBs; brute-force cosine over
 an **in-memory vector cache** — vectors only, no texts — warmed on first search
 and kept coherent by upsert/remove/remap/clear, so queries never re-read every
 BLOB; all chunk-row deletions must route through `vectorStore.remove`, not
 `aiIndex.remove` directly. No ANN/vector DB: dot products over a personal-scale
-index are tens of ms; the cache was the fix). `search.ts` fuses vector + BM25
-(RRF), reranks only the top 16 candidates at 600 chars each (the cross-encoder
-runs on WASM — more would take seconds), and gates the CLIP image lane on the
-model already being downloaded.
-PDFs parse through a **byte-range file transport** (no whole-file buffering —
-book-size PDFs up to 512 MB extract with bounded memory, capped at 300 K chars:
-a book's search identity is its front matter, and every 2 KB chunk is an
-inference). The queue is **cost-classed** (`index_jobs.priority`: removals +
+index are tens of ms; the cache was the fix). **Ranking** (`search.ts`, query
+analysis in `query.ts`): every chunk is scored (`vectorStore.scan`) and
+z-normalized per modality on the query's own scale (later-pass chunks don't
+set it; the scale is index-wide even for a folder-scoped search). A file
+qualifies on meaning at z ≥ 2 **and** cosine ≥ the model's `minMatch`, or on
+words when it holds ≥ half the query's terms (BM25 via MiniSearch, prefixes
+only for terms no file holds as typed); score = z + 2·coverage^1.5 (+1 for a
+named file kind). Lookups (codes/IDs) qualify by words only. So an
+unanswerable query returns **nothing**, and `SearchResult.strong` counts the
+clear matches. No reranker (the eval showed nothing left for it to fix; its
+model is retired). Hits point at their segment: `segment`, PDF `loc` (page),
+a marked `snippet` and a `passage` (what /find and `search_index` hand the
+model). Chat retrieval embeds with the question prefix (`role: 'question'`). Data/config files (csv, json,
+yaml, log, sql…) and mostly-numeric text are **keyword-only** (chunks with a
+null embedding: exact lookup, no vector); pictures' keyword entry is their
+humanized name.
+PDFs parse page by page through a **byte-range file transport** (no
+whole-file buffering — book-size PDFs up to 512 MB extract with bounded
+memory); chunks never span pages and carry their page (`file_chunks.kind/loc/
+loc_end/pass`). Long files get **two passes**: the first 50 pages of a PDF
+(a short one whole) or 40 passages of a document, then — once the queue is
+empty — the **later pass** reads the rest in steps (30 pages / 40 passages),
+appending pass-2 chunks and recording progress in `index_state.info`
+(status 'partial' until done); new jobs interrupt it and go first. The queue is **cost-classed** (`index_jobs.priority`: removals +
 text first, images next, pdf/docx last) so a fresh index is useful in minutes,
 and the pipeline is **duty-cycled** via an injected `pace()` (powerMonitor:
-~full speed when the user is away, ~half while active, gentler on battery).
+~full speed when the user is away, ~half while active, gentler on battery,
+much gentler at serious/critical thermal state — `restFor` is the pure rule).
+"Index only at set hours" (`prefs.index.hours`, `index/hours.ts`) holds the
+indexer at a `gate` between batches, re-checking each minute and reporting
+`IndexProgress.waitingUntil`. **Footprint:** the embedding worker exits after
+2 min without a request (`WORKER_IDLE_MS`, it re-forks lazily) and the vector
+cache drops after 10 min without a search (`CACHE_IDLE_MS`). **Estimates**
+(`index/estimate.ts`): a file becomes units of model work (text chunks — PDF
+pages read from the file's catalog —, pictures, frames, audio windows) from
+metadata only; units cost seconds measured on this machine as it indexes
+(`recordCost` → `prefs.index.costs`, recent-weighted) with seed costs scaled
+until a kind has enough. `Indexer.estimate()` walks with the crawl's exact
+rules (shared `walkRoot`) → Settings → Indexing "Time to index" by folder
+(`index:estimate`); a running drain reports `etaSeconds`, scaled by how fast
+the run has actually gone.
 Files whose content still can't be extracted (corrupt/scanned docs) are
 never dropped from the index: they get a single **filename-fallback chunk**
 (humanized basename) so name queries still find them through both lanes —
-that's `INDEX_VERSION` 2, and `isStale` migrates v1 rows selectively (only
-'skipped' ones) instead of re-embedding the world.
+`INDEX_VERSION` 3 (EmbeddingGemma 2) re-runs everything; the fingerprint wipe
+makes that a clean rebuild.
+**Audio and video** (`src/main/media/`): decoded by Electron's own Chromium —
+no ffmpeg to ship. `decoder.ts` runs `decoderPage.ts` in a hidden, sandboxed
+`WebContentsView` (not a window, so it never affects app lifecycle) in its own
+session; its `fildos-decode://decoder/` origin serves the page and only files
+the main process issued a one-time token for. Frames come from seeking a muted
+<video> and `createImageBitmap` (a hidden page never paints video, so drawing
+the element repeats the first frame); sound from `decodeAudioData` on a 16 kHz
+OfflineAudioContext. The view closes after a minute idle. `signals.ts` (pure,
+shared with the eval's ffmpeg decoder) owns the rules: a frame every 3 s (≤ 40),
+one per shot (`keepShots`), 30 s audio windows overlapping 5 s, ≤ 1 h per file,
+frames at 70 vision tokens. The indexer stores a keyword-only name chunk plus
+`frame`/`audio` chunks with `loc`/`loc_end` in seconds (audio is its own
+modality on the score scale); the audio encoder downloads with the first
+recording (`lazy` component). Media queue last (`costClass` 3); hits get a
+"0:25" pill; the search split view and chat's `PlacePreview` play from there.
+**HEIC/HEIF** (HEVC — neither the runtime's image reader nor Chromium decodes
+it; `needsOsDecode`) goes through the OS instead: `osImage.ts` reads the
+primary picture's size from the container (`heif.ts`, since the thumbnailer
+stretches to the box it's given) and asks `nativeImage.createThumbnailFromPath`
+(QuickLook / Windows shell) for ≤ 1024 px, then the pixels embed via
+`embedDecoded` at the photo budget. Linux has no decoder: such pictures keep a
+name chunk, as skipped.
+**Worker crash rule:** inside Electron, ONNX Runtime SIGTRAPs on large or
+reshaped batches unless the session runs with `enableCpuMemArena: false` and
+`enableMemPattern: false`, and every call stays under `MAX_CALL_TOKENS`
+(`tokenGroups`) — keep both when touching `modelRuntime.ts`.
 `indexer.ts` is the orchestrator: it crawls the configured roots (default the
 home dir; `ignore.ts` skips dotfiles, system trees (Library/AppData/Windows/…),
-`node_modules`/caches/bundles + the user's "Hide from AI" list), compares
+`node_modules`/caches/bundles — these segment rules apply **below the crawl
+root**, so a root under `tmp` or a dot-folder still indexes — plus files that
+hold secrets anywhere (`isSecretFile`: .env, keys, certificates, credential
+files), folders tagged with `CACHEDIR.TAG`, **dataset** folders (≥200
+machine-named media files; never a camera roll; reported in
+`IndexProgress.datasets`), and the user's "Hide from AI" list), compares
 `fs.stat` to `index_state` so unchanged files are no-ops, and drains the
 persistent `index_jobs` queue as a two-stage pipeline — `prepare` (stat/hash/
 extract/chunk I/O) runs one file ahead of `commit` (embed + persist), yielding
@@ -176,8 +276,8 @@ dir with a marker like `.git`/`package.json`/`Cargo.toml`, see
 codebase (dist/out/build/target/…, `isCodebaseBuildDir`) is never descended, and
 a crawl root itself is never treated as a codebase. Users can also exclude whole
 **file extensions** (`prefs.index.excludeExtensions`; "Skip file types" chips in
-Settings → Indexing — setting it kicks a reconcile that prunes existing entries). The embed worker runs multi-threaded WASM
-(`numThreads` capped at half the cores) at low OS priority (`setPriority` in
+Settings → Indexing — setting it kicks a reconcile that prunes existing entries). The embed worker runs
+inference on half the cores (`intraOpNumThreads`, max 4) at low OS priority (`setPriority` in
 `providers/embedded.ts`) so indexing doesn't fight foreground work. `watcher.ts`
 keeps it fresh — a recursive `fs.watch` per root (mac/Windows; Linux falls back)
 plus a periodic reconcile timer. `index/handlers.ts` owns the singleton indexer
@@ -206,7 +306,7 @@ them like `file_chunks`. `builder.ts` (`GraphBuilder`, deps injected like
 `Indexer`) is **lazy + incremental**: nothing runs until `graph:get`, a prefs
 watermark (`prefs.graph`) marks staleness, rebuilds touch only changed files,
 and the whole thing runs under the indexer's duty-cycle `pace`. The NER model
-(`Xenova/bert-base-NER`) is **opt-in like the reranker** — never
+(`Xenova/bert-base-NER`) is **opt-in** — never
 auto-downloaded; the graph works without it. `snapshot.ts` fuses everything
 into a render-ready `GraphSnapshot` (`@shared/graphTypes`): Louvain communities
 (graphology, seeded rng) → `clusterId`, node cap 4000 by degree.
@@ -227,7 +327,7 @@ Settings → Searching → "Canvas": NER download + Rebuild.
 files via a fully on-device LLM. The engine is **node-llama-cpp** (llama.cpp
 with prebuilt platform binaries — Metal on Apple Silicon; the one deliberate
 exception to the zero-native-deps rule, because WASM generation is unusably
-slow). `llmWorker.ts` is a third main entry in `electron.vite.config.ts`,
+slow). `llmWorker.ts` (binding `llmRuntime.ts`) is a third main entry in `electron.vite.config.ts`,
 running in its own `utilityProcess`: it downloads GGUF weights from the catalog
 in `src/shared/llmModels.ts` into `userData/models/llm/<id>/` (via
 `FILDOS_LLM_DIR`), keeps **one model resident** (switching disposes the old
@@ -237,7 +337,18 @@ one), runs **one chat at a time**, and streams tokens back as unsolicited
 mentions (`listDir`) and `/`commands — `/find` runs `searchIndex()` (exported
 from `index/handlers.ts`) first and hands the hits to the model + UI;
 `handlers.ts` owns `llm:*`/`chat:*`/`chats:*` channels and streams
-`Events.chatStream` / `Events.llmModelProgress`. **Every exchange is persisted**
+`Events.chatStream` / `Events.llmModelProgress`. **Context fitting**
+(`llm/fitTurn.ts`): `buildChat` returns the attached `material` apart from the
+`question`; the worker measures system + tool definitions + question with the
+model's own chat template (`chatWrapper.generateContextState`), then fits the
+window llama.cpp actually allocated (`context.contextSize` — `{ max }` can give
+less): answer reserve + the 10% context-shift reserve llama.cpp keeps free +
+room for tool results (≤ half of what's left) are fixed, material is trimmed by
+tokens, earlier turns fill the rest newest-first, and each tool result is
+shrunk to its share (`capToolResult`). Overflowing the window otherwise makes
+llama.cpp fail ("context shift strategy did not return a history that fits")
+or silently cut the prompt; a turn whose bare question can't fit fails with
+`ECONTEXT` naming Settings → Assistant. **Every exchange is persisted**
 to `db/chats.ts` (`chat_sessions` + `chat_messages`; session minted lazily on
 first send — `chatSend` returns the sessionId; mentions and /find sources are
 stored as JSON snapshots) so conversations can be reopened and continued from
@@ -282,6 +393,19 @@ Trash, creations/copies never overwrite. Calls stream to the renderer as
 (model library) / Privacy (Hide from AI).
 
 ### The database layer (`src/main/db/`)
+
+**Media protocol** (`src/main/media/protocol.ts`): `fildos-media://file/<path>`
+lets the renderer read the bytes of **indexed** PDFs and audio/video (page
+previews, playing from a moment) — nothing else: non-indexed paths are 403, relative ones 400.
+Quick Look adds `fildos-media://preview/<token>`: `fs:preview` (`fs/preview.ts`)
+grants a one-time token for the one file the user opened in it (latest 32
+kept; unknown tokens 403). Both protocols (and `fildos-decode://`) answer
+through `media/fileResponse.ts`, which honours byte ranges (206 +
+Content-Range, Accept-Ranges, 416): Electron's `net.fetch` of a file:// URL
+returns a plain 200 without them, and Chromium won't seek such a source — a
+recording would only ever play from 0:00. It's the one
+narrow widening of the "renderer never touches the disk" rule; CSP allows it in
+`connect-src`/`media-src`.
 
 Everything that isn't the filesystem itself lives in SQLite at
 `userData/fildos.db`. The engine is Node's **built-in `node:sqlite`** (zero
@@ -344,6 +468,21 @@ State via React context (no Redux):
   Back/Forward arrows traverse them alongside folders, and `nav.page` selects
   which renders. `App.tsx` owns selection, the global keymap (inert while a page
   is shown), context-menu/dialog state, and DnD glue (incl. drop-on-tag).
+- **Quick Look** (`components/QuickLook.tsx`): Space (or the context menu) on a
+  local file. `fs:preview` returns its kind: image/pdf/video/audio as a grant
+  URL, text/code inline (first 128 KB, binary sniffed by NUL/invalid UTF-8),
+  DOCX via the extraction worker, HEIC/TIFF decoded by the OS
+  (`osThumbnail`), folders as an item count. One fixed stage for every kind;
+  ↑↓ step the selection (`stepQuickLook` in `App.tsx`), Space/Esc close.
+  The stage is `components/FilePreview.tsx`, shared with the search split view
+  and chat's `PlacePreview`: it fetches `fs:preview`, fits pictures/video,
+  renders PDF pages fitted to the stage (`PdfViewer` + `Pager`), plays media
+  (`MediaPlayer`, optional autoplay), and marks `words` in text
+  (`lib/marks#markWords`), scrolling to the first. The renderer's pdfjs is the **legacy build**: pdfjs 6's
+  modern build needs `Uint8Array.prototype.toHex`, missing from Electron 37's
+  Chromium. Its key handler stops propagation and the App keymap ignores
+  `defaultPrevented` keys — a state change mid-keydown re-registers the App
+  listener, which would otherwise reopen it.
 
 First-run onboarding (`components/onboarding/`): main.tsx mounts `Onboarding`
 instead of `App` when `needsOnboarding(prefs)` (steps.ts — fresh profiles only;
@@ -352,8 +491,8 @@ setup: theme applies live, the AI opt-in kicks the embedding-model downloads
 behind the remaining steps, a dedicated assistant step makes the chat-model
 pick mandatory (the `llm.specs()` + `recommendLlmModel` fit preselects itself;
 the full `LLM_MODELS` catalog is searchable with family logos; persisted to
-`prefs.ai.llmModelId`), an optional-models step queues the reranker and the
-Canvas NER model, and finishing writes
+`prefs.ai.llmModelId`), an optional-models step queues the Canvas NER model,
+and finishing writes
 `prefs.ai` + starts indexing. All downloads run in the main-process workers,
 so step changes and the onboarding→app handoff never cancel one; extras chain
 behind the core text model so indexing unblocks first. A macOS-only step

@@ -43,6 +43,7 @@ const fsapi: FsApi = {
   folderSize: (path) => ipcRenderer.invoke(Channels.folderSize, path),
   search: (rootPath, query) => ipcRenderer.invoke(Channels.search, rootPath, query),
   thumbnail: (path, size) => ipcRenderer.invoke(Channels.thumbnail, path, size),
+  preview: (path) => ipcRenderer.invoke(Channels.preview, path),
   drives: () => ipcRenderer.invoke(Channels.drives),
   ejectDrive: (path) => ipcRenderer.invoke(Channels.ejectDrive, path),
   openPrivacySettings: (pane) => ipcRenderer.invoke(Channels.openPrivacySettings, pane),
@@ -115,8 +116,6 @@ const aiApi: AiApi = {
   status: (modelId) => ipcRenderer.invoke(Channels.aiStatus, modelId),
   download: (modelId) => ipcRenderer.invoke(Channels.aiDownload, modelId),
   cancelDownload: (modelId) => ipcRenderer.invoke(Channels.aiCancelDownload, modelId),
-  embed: (texts) => ipcRenderer.invoke(Channels.aiEmbed, texts),
-  embedImages: (paths) => ipcRenderer.invoke(Channels.aiEmbedImages, paths),
   onModelProgress: (cb: (status: AiModelStatus) => void) => {
     const listener = (_e: IpcRendererEvent, status: AiModelStatus) => cb(status);
     ipcRenderer.on(Events.aiModelProgress, listener);
@@ -138,6 +137,8 @@ const indexApi: IndexApi = {
   setExcludeExtensions: (exts) => ipcRenderer.invoke(Channels.indexSetExcludeExtensions, exts),
   setInterval: (minutes) => ipcRenderer.invoke(Channels.indexSetInterval, minutes),
   setAmbient: (enabled) => ipcRenderer.invoke(Channels.indexSetAmbient, enabled),
+  setHours: (hours) => ipcRenderer.invoke(Channels.indexSetHours, hours),
+  estimate: () => ipcRenderer.invoke(Channels.indexEstimate),
   search: (query, opts) => ipcRenderer.invoke(Channels.indexSearch, query, opts),
   searchFile: (path, opts) => ipcRenderer.invoke(Channels.indexSearchFile, path, opts),
   onProgress: (cb: (progress: IndexProgress) => void) => {
