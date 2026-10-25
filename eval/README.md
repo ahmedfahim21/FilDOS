@@ -64,10 +64,14 @@ The indexer's built-in rules check every path segment, so the testbed must not s
   - `/find` and research questions: was the right file retrieved, was it cited, does the answer hold the fact
   - file actions run on a scratch copy of the testbed: did the expected tool run, and is the disk in the expected state afterwards
     (read-only cases must change nothing)
-
 - **Devices** (`devices.eval.ts`, opt-in): EmbeddingGemma 2's vision encoder on the CPU and on the platform GPU device (CoreML,
   DirectML, CUDA), one picture per call: ms per picture and the worst cosine agreement with the CPU. A GPU counts as usable only at
   agreement ≥ 0.999. Production stays on the CPU until this shows a usable, faster GPU.
+
+- **Reference vectors** (`reference.eval.ts`): fixed texts and pictures must embed to the vectors stored in
+  `reference/vectors.json` (cosine ≥ 0.999). Run it after any `@huggingface/transformers` or `onnxruntime-node` bump; if it
+  fails, stored indexes no longer match new queries: change an input of `indexFingerprint` (so indexes rebuild) and rewrite the
+  references with `FILDOS_WRITE_REFERENCE=1`.
 
 Indexing with real models is cached per provider, models and testbed in `eval/.cache`. Search, graph and chat reuse that index;
 the index suite always rebuilds.

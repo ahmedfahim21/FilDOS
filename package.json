@@ -35,6 +35,7 @@
     "eval:graph": "vitest run --config vitest.eval.config.ts eval/graph.eval.ts",
     "eval:chat": "vitest run --config vitest.eval.config.ts eval/chat.eval.ts",
     "eval:devices": "vitest run --config vitest.eval.config.ts eval/devices.eval.ts",
+    "eval:reference": "vitest run --config vitest.eval.config.ts eval/reference.eval.ts",
     "test:e2e": "electron-vite build && playwright test",
     "prepare": "node scripts/install-hooks.mjs",
     "db:generate": "drizzle-kit generate"
