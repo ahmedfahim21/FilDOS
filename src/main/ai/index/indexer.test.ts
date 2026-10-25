@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { IndexProgress } from '@shared/types';
 import type { AiProvider } from '../providers/types';
 import * as aiIndex from '../../db/aiIndex';
@@ -86,6 +86,31 @@ function fakeProvider(boom?: string) {
     },
   };
   return { provider, calls: () => calls, seen, media, decoded, decodedBudgets };
+}
+
+/**
+ * Extraction that fails the way a corrupt document does — the fallback tests
+ * are about the indexer, not pdfjs (real parsing of broken files is covered in
+ * extract.test.ts), and a cold pdfjs load can outlast a slow CI runner's timeout.
+ */
+const unreadable: Extractor = {
+  text: async () => null,
+  pdfPages: async () => {
+    throw new Error('Invalid PDF structure.');
+  },
+};
+
+/** An indexer over the temp dir that reads files through `extract`. */
+function indexerWith(provider: AiProvider, extract: Extractor) {
+  return new Indexer({
+    provider: async () => provider,
+    model: 'm1',
+    config: async () => ({ roots: [tmp()], excludes: [] }),
+    vectorStore: new SqliteVectorStore(),
+    emit: () => {},
+    ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    extract,
+  });
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
@@ -361,12 +386,11 @@ describe('Indexer.start — guards', () => {
 
 describe('Indexer — filename fallback', () => {
   it('indexes the humanized filename when a document’s content can’t be extracted', async () => {
-    // Garbage bytes with a .pdf extension: extractText yields null (parse fails).
+    // A .pdf whose parse fails.
     await write('Modern_Angular_Also_covers_signals.pdf', 'not really a pdf');
 
     const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider);
-    await indexer.start();
+    await indexerWith(provider, unreadable).start();
 
     const path = join(tmp(), 'Modern_Angular_Also_covers_signals.pdf');
     expect((await aiIndex.getState(path))?.status).toBe('skipped');
@@ -502,8 +526,7 @@ describe('Indexer — places and the later pass', () => {
   it('indexes an unreadable PDF by name, as skipped', async () => {
     await write('Broken_Report.pdf', 'not a pdf');
     const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider);
-    await indexer.start();
+    await indexerWith(provider, unreadable).start();
     const rows = await db().select().from(fileChunks);
     expect(rows.map((r) => [r.kind, r.text])).toEqual([['name', 'Broken Report pdf']]);
     expect((await aiIndex.getState(join(tmp(), 'Broken_Report.pdf')))?.status).toBe('skipped');
@@ -590,37 +613,29 @@ describe('Indexer — audio and video', () => {
 
 describe('Indexer — gate (set hours)', () => {
   it('waits while the gate holds it back, reporting when it resumes', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
-    try {
-      await write('a.txt', 'hello');
-      const { provider } = fakeProvider();
-      const waits = [90_000, 0];
-      const seen: (number | undefined)[] = [];
-      const indexer = new Indexer({
-        provider: async () => provider,
-        model: 'm1',
-        config: async () => ({ roots: [tmp()], excludes: [] }),
-        vectorStore: new SqliteVectorStore(),
-        emit: (p) => seen.push(p.waitingUntil),
-        ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
-        gate: async () => waits.shift() ?? 0,
-      });
-      let done = false;
-      const run = indexer.start().then(() => {
-        done = true;
-      });
-      // Real file I/O runs between fake-timer steps; advance a minute at a time until it finishes.
-      for (let i = 0; i < 10 && !done; i++) {
-        await new Promise((r) => setImmediate(r));
-        await vi.advanceTimersByTimeAsync(60_000);
-      }
-      await run;
-      expect(seen.some((w) => w !== undefined)).toBe(true);
-      expect(seen.at(-1)).toBeUndefined();
-      expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
-    } finally {
-      vi.useRealTimers();
-    }
+    // Real timers and a short hold: fake timers raced the real file I/O, and a
+    // timed-out run left them installed for the tests after it.
+    await write('a.txt', 'hello');
+    const { provider } = fakeProvider();
+    const waits = [40, 0];
+    const seen: (number | undefined)[] = [];
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: (p) => seen.push(p.waitingUntil),
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      gate: async () => waits.shift() ?? 0,
+    });
+    const started = Date.now();
+    await indexer.start();
+    expect(Date.now() - started).toBeGreaterThanOrEqual(35);
+    const held = seen.find((w) => w !== undefined);
+    expect(held).toBeGreaterThanOrEqual(started + 40);
+    expect(seen.at(-1)).toBeUndefined();
+    expect(waits).toEqual([]); // asked again after the hold
+    expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.status).toBe('indexed');
   });
 });
 
@@ -807,3 +822,29 @@ describe('Indexer — extraction through the injected extractor', () => {
     expect((await aiIndex.getState(join(tmp(), 'notes.md')))?.status).toBe('indexed');
   });
 });
+
+describe('Indexer — cache folders', () => {
+  it('skips a folder tagged with CACHEDIR.TAG', async () => {
+    await fs.mkdir(join(tmp(), 'cache'));
+    await fs.writeFile(join(tmp(), 'cache', 'CACHEDIR.TAG'), 'Signature: 8a477f597d28d172789f06886806bc55\n');
+    await fs.writeFile(join(tmp(), 'cache', 'blob.txt'), 'cached words');
+    await write('kept.txt', 'my notes');
+    const { indexer } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'cache', 'blob.txt'))).toBeNull();
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+  });
+
+  it('crawls on past an unreadable CACHEDIR.TAG instead of ending the crawl', async () => {
+    // A directory named CACHEDIR.TAG: opening it as a file fails.
+    await fs.mkdir(join(tmp(), 'odd', 'CACHEDIR.TAG'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'odd', 'inside.txt'), 'still my notes');
+    await write('kept.txt', 'my notes');
+    const { indexer, progress } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect((await aiIndex.getState(join(tmp(), 'odd', 'inside.txt')))?.status).toBe('indexed');
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+    expect(progress()?.state).toBe('idle');
+  });
+});
+
