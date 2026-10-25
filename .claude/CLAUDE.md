@@ -202,7 +202,21 @@ appending pass-2 chunks and recording progress in `index_state.info`
 (status 'partial' until done); new jobs interrupt it and go first. The queue is **cost-classed** (`index_jobs.priority`: removals +
 text first, images next, pdf/docx last) so a fresh index is useful in minutes,
 and the pipeline is **duty-cycled** via an injected `pace()` (powerMonitor:
-~full speed when the user is away, ~half while active, gentler on battery).
+~full speed when the user is away, ~half while active, gentler on battery,
+much gentler at serious/critical thermal state — `restFor` is the pure rule).
+"Index only at set hours" (`prefs.index.hours`, `index/hours.ts`) holds the
+indexer at a `gate` between batches, re-checking each minute and reporting
+`IndexProgress.waitingUntil`. **Footprint:** the embedding worker exits after
+2 min without a request (`WORKER_IDLE_MS`, it re-forks lazily) and the vector
+cache drops after 10 min without a search (`CACHE_IDLE_MS`). **Estimates**
+(`index/estimate.ts`): a file becomes units of model work (text chunks — PDF
+pages read from the file's catalog —, pictures, frames, audio windows) from
+metadata only; units cost seconds measured on this machine as it indexes
+(`recordCost` → `prefs.index.costs`, recent-weighted) with seed costs scaled
+until a kind has enough. `Indexer.estimate()` walks with the crawl's exact
+rules (shared `walkRoot`) → Settings → Indexing "Time to index" by folder
+(`index:estimate`); a running drain reports `etaSeconds`, scaled by how fast
+the run has actually gone.
 Files whose content still can't be extracted (corrupt/scanned docs) are
 never dropped from the index: they get a single **filename-fallback chunk**
 (humanized basename) so name queries still find them through both lanes —
