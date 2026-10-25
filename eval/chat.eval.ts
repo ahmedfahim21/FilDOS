@@ -21,7 +21,7 @@
 import { promises as fs } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import type { ChatSendPayload, ChatToolCall } from '@shared/types';
 import { extractText } from '../src/main/ai/index/extract';
@@ -85,12 +85,34 @@ afterAll(() => {
   if (MODEL) closeTestbed();
 });
 
-/** A fresh scratch copy of the testbed's Home folder for one tool case. */
+/** A fresh scratch copy of the testbed for one case: tools never touch the shared testbed. */
 async function freshWorkspace(): Promise<string> {
   if (workspace) await fs.rm(workspace, { recursive: true, force: true });
   workspace = await fs.mkdtemp(join(tmpdir(), 'fildos-chat-eval-'));
-  await fs.cp(ix.abs('Home'), join(workspace, 'Home'), { recursive: true });
+  for (const top of ['Home', 'Work', 'projects']) {
+    await fs.cp(ix.abs(top), join(workspace, top), { recursive: true });
+  }
   return workspace;
+}
+
+/** Path-valued tool params (see `@shared/chatTools`). */
+const PATH_PARAMS = ['path', 'paths', 'destination', 'folder'];
+
+/**
+ * The first absolute path in a tool call's params that falls outside `ws` (or
+ * is `ws` itself), or null. Relative paths resolve inside the case's cwd/home,
+ * which both live in `ws`.
+ */
+function escapingPath(params: Record<string, unknown>, ws: string): string | null {
+  for (const key of PATH_PARAMS) {
+    const v = params[key];
+    for (const p of Array.isArray(v) ? v : [v]) {
+      if (typeof p !== 'string' || !isAbsolute(p)) continue;
+      const rel = relative(ws, resolve(p));
+      if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return p;
+    }
+  }
+  return null;
 }
 
 async function snapshotTree(dir: string): Promise<string[]> {
@@ -102,15 +124,18 @@ async function snapshotTree(dir: string): Promise<string[]> {
 }
 
 async function runCase(c: ChatCase): Promise<CaseResult> {
-  const ws = c.kind === 'tool' ? await freshWorkspace() : ix.root;
+  const ws = await freshWorkspace();
   const inWs = (rel: string) => join(ws, ...rel.split('/'));
   const cwd = c.cwd ? inWs(c.cwd) : undefined;
+  // The index covers the shared testbed; hits are mapped into this case's copy.
+  const searchWs = async (q: string, k: number) =>
+    (await search(ix, q, k)).map((h) => ({ ...h, path: inWs(ix.rel(h.path)) }));
   const toDeps: ChatToolDeps = {
     trashItem: (path) => fs.rm(path, { recursive: true }),
     remap: () => {},
     dropIndex: async () => {},
     extract: extractText,
-    search: (q, k) => search(ix, q, k),
+    search: searchWs,
     home: () => ws,
   };
   const payload: ChatSendPayload = {
@@ -121,14 +146,18 @@ async function runCase(c: ChatCase): Promise<CaseResult> {
     command: c.kind === 'find' ? 'find' : undefined,
     cwd,
   };
-  const built = await buildChat(payload, {
-    extract: extractText,
-    list: listDir,
-    search: (q, k) => search(ix, q, k),
-  });
+  const built = await buildChat(payload, { extract: extractText, list: listDir, search: searchWs });
   const calls: (ChatToolCall & { params: unknown })[] = [];
   onToolCall = (callId, name, params) => {
-    void executeChatTool(name, (params ?? {}) as Record<string, unknown>, cwd, toDeps).then(({ call, result }) => {
+    const p = (params ?? {}) as Record<string, unknown>;
+    const escape = escapingPath(p, ws);
+    if (escape) {
+      const message = `Path outside the eval workspace: ${escape}`;
+      calls.push({ name, summary: message, ok: false, params });
+      resolveTool(callId, { ok: false, error: message });
+      return;
+    }
+    void executeChatTool(name, p, cwd, toDeps).then(({ call, result }) => {
       calls.push({ ...call, params });
       resolveTool(callId, result);
     });
