@@ -14,6 +14,7 @@ import { isUnder } from './ignore';
 import type { IndexState } from '@shared/types';
 import { useTempDir } from '../../fs/fixtures';
 import { INDEX_VERSION, isStale } from './indexer';
+import { MiniSearchKeywordStore } from './keywordStore';
 
 // ---------------------------------------------------------------------------
 // isStale — truth table
@@ -41,12 +42,10 @@ describe('isStale', () => {
   it('stale when size changed', () =>
     expect(isStale(BASE, { mtimeMs: 1000, size: 9999 }, 'm1')).toBe(true));
   it('stale when modelId changed', () => expect(isStale(BASE, STAT, 'm2')).toBe(true));
-  it('fresh on v1 rows with content chunks (v2 only changed skipped files)', () =>
-    expect(isStale({ ...BASE, indexVersion: 1 }, STAT, 'm1')).toBe(false));
-  it('stale on v1 rows that were skipped (they gain a filename chunk in v2)', () =>
-    expect(isStale({ ...BASE, indexVersion: 1, status: 'skipped' }, STAT, 'm1')).toBe(true));
-  it('stale on any older indexVersion', () =>
-    expect(isStale({ ...BASE, indexVersion: 0 }, STAT, 'm1')).toBe(true));
+  it.each([0, 1, 2])('stale on older indexVersion %i, whatever its status', (v) => {
+    expect(isStale({ ...BASE, indexVersion: v }, STAT, 'm1')).toBe(true);
+    expect(isStale({ ...BASE, indexVersion: v, status: 'skipped' }, STAT, 'm1')).toBe(true);
+  });
   it('fresh when all fields match', () => expect(isStale(BASE, STAT, 'm1')).toBe(false));
   it('fresh even when prior status is skipped', () =>
     expect(isStale({ ...BASE, status: 'skipped' }, STAT, 'm1')).toBe(false));
@@ -57,6 +56,8 @@ const tmp = useTempDir();
 /** A provider that embeds deterministically and can be told to fail on a marker. */
 function fakeProvider(boom?: string) {
   let calls = 0;
+  const seen: { texts: string[]; role?: string; titles?: string[] }[] = [];
+  const media: { paths: string[]; budget?: number }[] = [];
   const provider: AiProvider = {
     id: 'fake',
     capabilities: { embed: true, generate: false, images: false },
@@ -64,23 +65,25 @@ function fakeProvider(boom?: string) {
       return { state: 'ready', modelId, dim: 3 };
     },
     async download() {},
-    async embed(_modelId, texts) {
+    async embed(_modelId, texts, role, titles) {
       calls++;
+      seen.push({ texts, role, titles });
       if (boom && texts.some((t) => t.includes(boom))) throw new Error('boom');
       return texts.map((t) => Float32Array.from([t.length, 1, 0]));
     },
-    async embedImages(_modelId, paths) {
+    async embedMedia(_modelId, _kind, paths, opts) {
+      media.push({ paths, budget: opts?.budget });
       return paths.map(() => Float32Array.from([0, 0, 1]));
     },
   };
-  return { provider, calls: () => calls };
+  return { provider, calls: () => calls, seen, media };
 }
 
 /** Build an indexer over the temp dir with the given excludes + provider. */
 function makeIndexer(
   provider: AiProvider,
   excludes: string[] = [],
-  textModel = 'm1',
+  model = 'm1',
   countTokens?: (modelId: string, texts: string[]) => Promise<number[]>,
   excludeExtensions: string[] = [],
 ) {
@@ -88,8 +91,7 @@ function makeIndexer(
   let emits = 0;
   const indexer = new Indexer({
     provider: async () => provider,
-    textModel,
-    imageModel: 'clip',
+    model,
     config: async () => ({ roots: [tmp()], excludes, excludeExtensions }),
     vectorStore: new SqliteVectorStore(),
     emit: (p) => {
@@ -184,19 +186,78 @@ describe('Indexer.start', () => {
   });
 });
 
-describe('Indexer — multimodal routing', () => {
-  it('indexes text and image files with their respective models', async () => {
+describe('Indexer — one model for text and pictures', () => {
+  it('embeds text as titled passages and pictures as media, both with the one model', async () => {
     await write('a.txt', 'hello world');
     await fs.writeFile(join(tmp(), 'pic.png'), Buffer.from([1, 2, 3, 4]));
-    const { provider } = fakeProvider();
-    const { indexer } = makeIndexer(provider); // textModel 'm1', imageModel 'clip'
+    await fs.writeFile(join(tmp(), 'Screenshot 2026-10-01 at 14.22.10.png'), Buffer.from([1, 2, 3, 4]));
+    const { provider, seen, media } = fakeProvider();
+    const { indexer } = makeIndexer(provider);
 
     await indexer.start();
 
     expect((await aiIndex.getState(join(tmp(), 'a.txt')))?.modelId).toBe('m1');
+    expect(seen).toEqual([{ texts: ['hello world'], role: 'passage', titles: ['a.txt'] }]);
     const img = await aiIndex.getState(join(tmp(), 'pic.png'));
-    expect(img?.status).toBe('indexed');
-    expect(img?.modelId).toBe('clip'); // routed to the image model
+    expect(img).toMatchObject({ status: 'indexed', modelId: 'm1', indexVersion: INDEX_VERSION });
+    // Screenshots get the larger vision budget (small text, UI detail).
+    expect(media).toEqual(
+      expect.arrayContaining([
+        { paths: [join(tmp(), 'pic.png')], budget: 140 },
+        { paths: [join(tmp(), 'Screenshot 2026-10-01 at 14.22.10.png')], budget: 280 },
+      ]),
+    );
+    expect(media).toHaveLength(2);
+  });
+
+  it('gives pictures a keyword entry: their humanized name', async () => {
+    await fs.writeFile(join(tmp(), 'beach_trip-2026.png'), Buffer.from([1, 2, 3]));
+    const { provider } = fakeProvider();
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    });
+    await indexer.start();
+
+    const rows = await db().select().from(fileChunks);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ chunkIx: 0, text: 'beach trip 2026 png', modelId: 'm1' });
+    expect(keywordStore.search('beach').map((m) => m.path)).toEqual([join(tmp(), 'beach_trip-2026.png')]);
+  });
+});
+
+describe('Indexer — keyword-only content', () => {
+  it('stores data files and mostly-numeric text without vectors, still keyword-searchable', async () => {
+    await write('orders.csv', 'order_id,amount\nORD-48151623,1250.00\nORD-48151624,320.50');
+    await write('readings.txt', Array.from({ length: 40 }, (_, i) => `${i} ${i * 3} ${i * 7}`).join('\n'));
+    await write('note.txt', 'A short note about the garden and the roses in June.');
+    const { provider, seen } = fakeProvider();
+    const keywordStore = new MiniSearchKeywordStore();
+    const indexer = new Indexer({
+      provider: async () => provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      keywordStore,
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+    });
+    await indexer.start();
+
+    const rows = await db().select().from(fileChunks);
+    const byName = (n: string) => rows.filter((r) => r.path === join(tmp(), n));
+    expect(byName('orders.csv').every((r) => r.embedding === null)).toBe(true);
+    expect(byName('readings.txt').every((r) => r.embedding === null)).toBe(true);
+    expect(byName('note.txt').every((r) => r.embedding !== null)).toBe(true);
+    // Only the note reached the model.
+    expect(seen.flatMap((s) => s.titles)).toEqual(['note.txt']);
+    expect(keywordStore.search('ORD-48151623').map((m) => m.path)).toContain(join(tmp(), 'orders.csv'));
   });
 });
 
@@ -276,8 +337,7 @@ describe('Indexer.start — guards', () => {
     const seen: IndexProgress[] = [];
     const indexer = new Indexer({
       provider: async () => null,
-      textModel: 'm1',
-      imageModel: 'clip',
+      model: 'm1',
       config: async () => ({ roots: [tmp()], excludes: [] }),
       vectorStore: new SqliteVectorStore(),
       emit: (p) => seen.push(p),

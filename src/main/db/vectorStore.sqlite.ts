@@ -52,18 +52,14 @@ export class SqliteVectorStore implements VectorStore {
       chunks.map((c) => ({
         chunkIx: c.chunkIx,
         text: c.text,
-        embedding: encodeVector(c.embedding),
+        embedding: c.embedding ? encodeVector(c.embedding) : null,
         modelId: c.modelId,
       })),
     );
     if (this.cache) {
-      if (chunks.length === 0) this.cache.delete(path);
-      else {
-        this.cache.set(
-          path,
-          chunks.map((c) => ({ chunkIx: c.chunkIx, modelId: c.modelId, vec: c.embedding })),
-        );
-      }
+      const vectors = chunks.flatMap((c) => (c.embedding ? [{ chunkIx: c.chunkIx, modelId: c.modelId, vec: c.embedding }] : []));
+      if (vectors.length === 0) this.cache.delete(path);
+      else this.cache.set(path, vectors);
     }
   }
 

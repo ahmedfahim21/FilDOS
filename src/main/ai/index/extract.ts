@@ -7,7 +7,7 @@ import { assertValidPath } from '../../fs/service';
  * Pull text out of a file for indexing. Plain-text formats (code, markup,
  * config, data) are read directly; PDFs are parsed with pdfjs and Word .docx
  * with mammoth. Other binaries (images, video, archives, legacy Office) are
- * skipped here — images are embedded separately by a CLIP model in the indexer.
+ * skipped here — pictures are embedded as media by the indexer.
  * Anything unreadable yields null rather than throwing, so a crawl never dies on
  * one bad file (mirrors service.search's resilience).
  */
@@ -43,7 +43,7 @@ const PDF_PARSE_TIMEOUT_MS = 90_000;
 export const TEXT_EXTENSIONS = new Set([
   // documents & data
   'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'log', 'csv', 'tsv', 'json', 'jsonc',
-  'ndjson', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'properties',
+  'ndjson', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'properties',
   // web & markup
   'html', 'htm', 'css', 'scss', 'sass', 'less', 'svg', 'vue', 'svelte',
   // source code
@@ -53,10 +53,39 @@ export const TEXT_EXTENSIONS = new Set([
   'sql', 'graphql', 'gql', 'proto',
 ]);
 
+/**
+ * Data and config formats: indexed for exact keyword lookup (an order number
+ * in a CSV, a key in a config) but never embedded — rows of values mean
+ * nothing to an embedding model, and they'd crowd real documents out of
+ * meaning search.
+ */
+export const DATA_EXTENSIONS = new Set([
+  'csv', 'tsv', 'json', 'jsonc', 'ndjson', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
+  'properties', 'log', 'sql',
+]);
+
+export function isDataFile(path: string): boolean {
+  return DATA_EXTENSIONS.has(extname(path).slice(1).toLowerCase());
+}
+
+/** Below this many tokens a text is too short to judge as "mostly numbers". */
+const NUMERIC_MIN_TOKENS = 20;
+
+/**
+ * True when most of a text's tokens are numbers (a table of readings, a data
+ * dump saved as .txt): keyword-searchable, but not worth a vector.
+ */
+export function isMostlyNumeric(text: string): boolean {
+  const tokens = text.split(/[\s,;:|()[\]{}"']+/).filter(Boolean);
+  if (tokens.length < NUMERIC_MIN_TOKENS) return false;
+  const numeric = tokens.filter((t) => /^[-+]?[\d.,/%]+$/.test(t)).length;
+  return numeric / tokens.length >= 0.5;
+}
+
 /** Rich document formats parsed by a dedicated extractor. */
 export const DOC_EXTENSIONS = new Set(['pdf', 'docx']);
 
-/** Image formats — indexed by a CLIP model (not text-extracted). */
+/** Image formats — embedded as pictures (not text-extracted). */
 export const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif',
 ]);
@@ -69,7 +98,7 @@ export function isExtractable(path: string): boolean {
   return TEXT_EXTENSIONS.has(ext) || DOC_EXTENSIONS.has(ext);
 }
 
-/** True when a file is an image (embeddable by a CLIP model). */
+/** True when a file is an image (embedded as a picture). */
 export function isImage(path: string): boolean {
   return IMAGE_EXTENSIONS.has(extOf(path));
 }

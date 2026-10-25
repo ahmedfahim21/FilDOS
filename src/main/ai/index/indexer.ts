@@ -8,9 +8,18 @@ import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractText, isExtractable, isImage } from './extract';
+import { extractText, isDataFile, isExtractable, isImage, isMostlyNumeric } from './extract';
 import { chunk, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
-import { hasCodebaseMarker, isCodebaseBuildDir, isCodebaseDoc, isIgnored, isUnder } from './ignore';
+import {
+  hasCodebaseMarker,
+  isCacheDirTag,
+  isCodebaseBuildDir,
+  isCodebaseDoc,
+  isIgnored,
+  isUnder,
+  looksLikeDataset,
+  visionBudget,
+} from './ignore';
 
 /**
  * The background indexer: crawl the configured roots, extract + chunk text,
@@ -42,8 +51,11 @@ const EMBED_BATCH = 16;
  *
  * v2: files whose content can't be extracted get a filename-fallback chunk
  * instead of vanishing from the index entirely.
+ * v3: EmbeddingGemma 2 (one space for text and pictures, titled passages);
+ * pictures get a keyword entry; mostly-numeric text is keyword-only. The
+ * index fingerprint wipes older indexes, so no migration path is kept.
  */
-export const INDEX_VERSION = 2;
+export const INDEX_VERSION = 3;
 
 /** How many bytes to sample from the start and end of a large file for the hash. */
 const HASH_SAMPLE = 65_536; // 64 KB
@@ -97,13 +109,7 @@ export function isStale(
   modelId: string,
 ): boolean {
   if (!prev || prev.status === 'error') return true;
-  if (prev.indexVersion !== INDEX_VERSION) {
-    // v1 → v2 only added filename-fallback chunks for files whose content
-    // couldn't be extracted ('skipped'); files with real content chunks are
-    // untouched by it, so spare them the full re-embed. Any other version gap
-    // re-runs everything.
-    return prev.indexVersion !== 1 || prev.status === 'skipped';
-  }
+  if (prev.indexVersion !== INDEX_VERSION) return true;
   return prev.mtime !== stat.mtimeMs || prev.size !== stat.size || prev.modelId !== modelId;
 }
 
@@ -111,17 +117,15 @@ export function isStale(
 type Prep =
   | { kind: 'remove' } // drop from the index: deleted, excluded, or no longer indexable
   | { kind: 'done' } // nothing to embed: fresh, or a metadata-only touch already recorded
-  | { kind: 'image'; modelId: string; stat: { mtimeMs: number; size: number } }
-  | { kind: 'text'; modelId: string; chunks: { chunkIx: number; text: string }[]; state: IndexState }
+  | { kind: 'image'; stat: { mtimeMs: number; size: number } }
+  | { kind: 'text'; chunks: { chunkIx: number; text: string }[]; keywordOnly: boolean; state: IndexState }
   | { kind: 'error'; error: unknown };
 
 export interface IndexerDeps {
   /** The active embedding provider, or null when none is configured. */
   provider: () => Promise<AiProvider | null>;
-  /** Model id for text/document content. */
-  textModel: string;
-  /** Model id for images (CLIP). */
-  imageModel: string;
+  /** The embedding model: one space for text and pictures. */
+  model: string;
   /** Current roots + exclusions (paths and, optionally, file extensions). */
   config: () => Promise<{ roots: string[]; excludes: string[]; excludeExtensions?: string[] }>;
   /** Where embedded chunks are persisted. */
@@ -139,8 +143,8 @@ export interface IndexerDeps {
    * so tests that don't care about keyword search don't need to supply it.
    */
   keywordStore?: KeywordStore;
-  /** Whether to skip a path (defaults to the built-in ignore rules). */
-  ignore?: (path: string, excludes: readonly string[]) => boolean;
+  /** Whether to skip a path (defaults to the built-in ignore rules, scoped below `root`). */
+  ignore?: (path: string, excludes: readonly string[], root?: string) => boolean;
   /**
    * Rest between units of embedding work. Called with how long the unit took;
    * the production wiring (index/handlers.ts) duty-cycles on user activity and
@@ -163,21 +167,19 @@ export class Indexer {
   private excludes: string[] = [];
   private excludeExts = new Set<string>();
   private roots: string[] = [];
+  /** Dataset-like folders the current crawl skipped (reported in progress). */
+  private datasets: string[] = [];
   /** Per-run cache: does this directory contain a codebase marker? */
   private readonly codebaseDirs = new Map<string, boolean>();
   /** Models confirmed downloaded during the current run (avoids repeat calls). */
   private readonly ensured = new Set<string>();
   private lastEmit = 0;
-  private readonly ignore: (path: string, excludes: readonly string[]) => boolean;
+  private readonly ignore: (path: string, excludes: readonly string[], root?: string) => boolean;
 
   constructor(private readonly deps: IndexerDeps) {
     this.ignore = deps.ignore ?? isIgnored;
   }
 
-  /** The model that should embed a given file: CLIP for images, else the text model. */
-  private modelFor(path: string): string {
-    return isImage(path) ? this.deps.imageModel : this.deps.textModel;
-  }
 
   /** Current progress snapshot. */
   status(): IndexProgress {
@@ -189,6 +191,7 @@ export class Indexer {
       errors: this.errors,
       currentFile: this.currentFile,
       message: this.message,
+      datasets: this.datasets.length ? [...this.datasets] : undefined,
     };
   }
 
@@ -221,6 +224,7 @@ export class Indexer {
     this.excludeExts = new Set(excludeExtensions ?? []);
     this.roots = roots;
     this.ensured.clear();
+    this.datasets = [];
     this.resetCounters();
     if (!silent) {
       this.state = 'scanning';
@@ -346,10 +350,11 @@ export class Indexer {
       for (const dirent of dirents) {
         if (this.paused) return;
         const full = join(dir, dirent.name);
-        if (dirent.isSymbolicLink() || this.ignore(full, excludes)) continue;
+        if (dirent.isSymbolicLink() || this.ignore(full, excludes, root)) continue;
         if (dirent.isDirectory()) {
           // Build output inside a codebase holds only generated copies of docs.
           if (codebase && isCodebaseBuildDir(dirent.name)) continue;
+          if (await this.isCacheOrDataset(full)) continue;
           await walk(full, depth + 1, codebase);
           continue;
         }
@@ -363,7 +368,7 @@ export class Indexer {
         } catch {
           continue;
         }
-        if (isStale(states.get(full), stat, this.modelFor(full))) {
+        if (isStale(states.get(full), stat, this.deps.model)) {
           changed.push(full);
           await flush();
         }
@@ -448,28 +453,27 @@ export class Indexer {
       } catch {
         return { kind: 'remove' }; // vanished since enqueue
       }
-      if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes)) {
+      const root = this.roots.find((r) => isUnder(path, r));
+      if (!stat.isFile() || !this.indexable(path) || this.ignore(path, this.excludes, root)) {
         return { kind: 'remove' }; // no longer indexable
       }
       // The crawl already skips non-doc files in codebases, but jobs can arrive
       // from an older session — re-check against the file's ancestors.
       if (!isCodebaseDoc(path) && (await this.inCodebase(path))) return { kind: 'remove' };
 
-      const modelId = this.modelFor(path);
+      const modelId = this.deps.model;
       const prev = await aiIndex.getState(path);
       if (!isStale(prev, stat, modelId)) return { kind: 'done' };
 
-      // Images: one CLIP embedding per file, labelled by its name (the snippet).
-      // No content hash — CLIP re-embed is cheap and the basename snippet can't
-      // change without the file moving.
-      if (isImage(path)) return { kind: 'image', modelId, stat };
+      // Pictures: one embedding per file, keyword-searchable by name. No
+      // content hash — the name can't change without the file moving.
+      if (isImage(path)) return { kind: 'image', stat };
 
       // For text files, compute a content hash and skip re-embedding when only
       // metadata changed (mtime bumped by git/sync/backup, bytes unchanged).
-      let contentHash: string | null = null;
-      try { contentHash = await computeContentHash(path, stat); } catch { /* ignore */ }
+      // A file that can't be read for hashing errors the job like any read.
+      const contentHash = await computeContentHash(path, stat);
       if (
-        contentHash !== null &&
         prev?.status !== 'error' &&
         prev?.indexVersion === INDEX_VERSION &&
         prev?.modelId === modelId &&
@@ -489,17 +493,13 @@ export class Indexer {
       // model's 512-token limit without this adjustment.
       let windowChars = WINDOW;
       let overlapChars = OVERLAP;
-      if (text !== null && this.deps.countTokens) {
+      if (text && this.deps.countTokens) {
         const sample = text.slice(0, Math.min(text.length, 1000));
-        try {
-          const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
-          if (sampleTokens > 0) {
-            const charsPerToken = sample.length / sampleTokens;
-            windowChars = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256));
-            overlapChars = Math.floor(windowChars / 8);
-          }
-        } catch {
-          // Fall through to char-approx defaults.
+        const [sampleTokens] = await this.deps.countTokens(modelId, [sample]);
+        if (sampleTokens > 0) {
+          const charsPerToken = sample.length / sampleTokens;
+          windowChars = Math.min(WINDOW, Math.max(Math.floor(TARGET_TOKENS * charsPerToken * 0.85), 256));
+          overlapChars = Math.floor(windowChars / 8);
         }
       }
       let chunks: { chunkIx: number; text: string }[] =
@@ -512,8 +512,10 @@ export class Indexer {
       }
       return {
         kind: 'text',
-        modelId,
         chunks,
+        // Data files and text that's mostly numbers (an export, a table of
+        // readings) mean nothing to an embedding but can be looked up exactly.
+        keywordOnly: text !== null && (isDataFile(path) || isMostlyNumeric(text)),
         state: this.stateFor(path, stat, modelId, text === null ? 'skipped' : 'indexed', contentHash),
       };
     } catch (error) {
@@ -534,17 +536,17 @@ export class Indexer {
       return;
     }
 
-    await this.ensureModel(provider, prep.modelId);
+    const modelId = this.deps.model;
+    await this.ensureModel(provider, modelId);
 
     if (prep.kind === 'image') {
       const t0 = Date.now();
-      const [embedding] = await provider.embedImages(prep.modelId, [path]);
+      const [embedding] = await provider.embedMedia(modelId, 'image', [path], { budget: visionBudget(path) });
       await this.deps.pace?.(Date.now() - t0);
-      await aiIndex.upsertState(this.stateFor(path, prep.stat, prep.modelId, embedding ? 'indexed' : 'skipped'));
-      await this.deps.vectorStore.upsert(
-        path,
-        embedding ? [{ chunkIx: 0, text: basename(path), embedding, modelId: prep.modelId }] : [],
-      );
+      await aiIndex.upsertState(this.stateFor(path, prep.stat, modelId, 'indexed'));
+      const text = nameChunkText(path);
+      await this.deps.vectorStore.upsert(path, [{ chunkIx: 0, text, embedding, modelId }]);
+      this.deps.keywordStore?.upsert(path, [{ chunkIx: 0, text }]);
       return;
     }
 
@@ -554,21 +556,55 @@ export class Indexer {
       this.deps.keywordStore?.remove([path]);
       return;
     }
-    const vectors: Float32Array[] = [];
+    const vectors: (Float32Array | null)[] = [];
+    const title = basename(path);
     for (let i = 0; i < prep.chunks.length; i += EMBED_BATCH) {
       const batch = prep.chunks.slice(i, i + EMBED_BATCH);
+      if (prep.keywordOnly) {
+        vectors.push(...batch.map(() => null));
+        continue;
+      }
       const t0 = Date.now();
-      vectors.push(...(await provider.embed(prep.modelId, batch.map((c) => c.text), 'passage')));
+      vectors.push(...(await provider.embed(modelId, batch.map((c) => c.text), 'passage', batch.map(() => title))));
       await this.deps.pace?.(Date.now() - t0);
     }
     await this.deps.vectorStore.upsert(
       path,
-      prep.chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId: prep.modelId })),
+      prep.chunks.map((c, i) => ({ chunkIx: c.chunkIx, text: c.text, embedding: vectors[i], modelId })),
     );
     this.deps.keywordStore?.upsert(
       path,
       prep.chunks.map((c) => ({ chunkIx: c.chunkIx, text: c.text })),
     );
+  }
+
+  /**
+   * A folder the crawl never descends into: a cache tagged with CACHEDIR.TAG,
+   * or a dataset (hundreds of machine-named media files). Datasets are
+   * reported in progress so Settings can say what was left out.
+   */
+  private async isCacheOrDataset(dir: string): Promise<boolean> {
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return false; // unreadable — the walk skips it the same way
+    }
+    if (names.includes('CACHEDIR.TAG')) {
+      const fh = await fs.open(join(dir, 'CACHEDIR.TAG'), 'r');
+      try {
+        const buf = Buffer.alloc(64);
+        const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+        if (isCacheDirTag(buf.subarray(0, bytesRead).toString('latin1'))) return true;
+      } finally {
+        await fh.close();
+      }
+    }
+    if (looksLikeDataset(names, (n) => (isImage(n) ? 'image' : null))) {
+      if (!this.datasets.includes(dir)) this.datasets.push(dir);
+      return true;
+    }
+    return false;
   }
 
   /** Cached "does this directory contain a codebase marker?" lookup (per run). */
@@ -602,7 +638,7 @@ export class Indexer {
   }
 
   /**
-   * A file is indexable if its text can be extracted or it's an image (CLIP),
+   * A file is indexable if its text can be extracted or it's an image,
    * and its extension isn't on the user's "don't index these types" list.
    */
   private indexable(path: string): boolean {

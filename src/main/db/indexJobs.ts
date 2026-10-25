@@ -26,7 +26,7 @@ export const MAX_ATTEMPTS = 3;
 
 /** Heavy documents: full parse plus hundreds of chunk embeddings per file. */
 const HEAVY_EXTENSIONS = new Set(['pdf', 'docx']);
-/** One CLIP embedding per file — cheap-ish, but behind plain text. */
+/** One picture embedding per file — cheap-ish, but behind plain text. */
 const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'avif',
 ]);
