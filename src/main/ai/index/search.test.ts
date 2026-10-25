@@ -102,6 +102,25 @@ describe('semanticSearch', () => {
     expect(hits.map((h) => h.path)).toEqual([inDocs]);
   });
 
+  it('still answers, in fused order, when the reranker fails', async () => {
+    const a = join(tmp(), 'a.txt');
+    const b = join(tmp(), 'b.txt');
+    await indexFile(a, [1, 0, 0], 'closest');
+    await indexFile(b, [0.6, 0.8, 0], 'further');
+    const plain = await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'q');
+
+    const failing: AiProvider = {
+      ...fakeProvider([1, 0, 0]),
+      async rerank() {
+        throw new Error('reranker worker restarted');
+      },
+    };
+    const hits = await semanticSearch(failing, 'm1', store, 'q', { rerankerModelId: 'rr' });
+
+    expect(hits.map((h) => h.path)).toEqual([a, b]);
+    expect(hits).toEqual(plain);
+  });
+
   it('returns empty for a blank query or an empty index', async () => {
     expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, '   ')).toEqual([]);
     expect(await semanticSearch(fakeProvider([1, 0, 0]), 'm1', store, 'anything')).toEqual([]);

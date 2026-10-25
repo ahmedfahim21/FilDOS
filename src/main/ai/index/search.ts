@@ -169,20 +169,26 @@ export async function semanticSearch(
 
   // Cross-encoder reranking of the top-N. Only when the model is already
   // downloaded (the query path never triggers a download).
+  // It only reorders: when it fails (worker restart, corrupt model, out of
+  // memory) the search still answers, in fused order, and the failure is logged.
   if (opts.rerankerModelId && provider.rerank && hits.length > 0) {
-    const st = await provider.status(opts.rerankerModelId);
-    if (st.state === 'ready') {
-      const toRerank = hits.slice(0, RERANK_N);
-      const scores = await provider.rerank(
-        opts.rerankerModelId,
-        q,
-        toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
-      );
-      const reranked = toRerank
-        .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
-        .sort(([, a], [, b]) => b - a)
-        .map(([h]) => h);
-      hits = [...reranked, ...hits.slice(RERANK_N)];
+    try {
+      const st = await provider.status(opts.rerankerModelId);
+      if (st.state === 'ready') {
+        const toRerank = hits.slice(0, RERANK_N);
+        const scores = await provider.rerank(
+          opts.rerankerModelId,
+          q,
+          toRerank.map((h) => h.text.slice(0, RERANK_CHARS)),
+        );
+        const reranked = toRerank
+          .map((h, i): [Scored, number] => [h, scores[i] ?? 0])
+          .sort(([, a], [, b]) => b - a)
+          .map(([h]) => h);
+        hits = [...reranked, ...hits.slice(RERANK_N)];
+      }
+    } catch (err) {
+      console.error('[fildos] reranking failed; returning results in fused order:', err);
     }
   }
 
