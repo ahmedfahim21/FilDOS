@@ -46,7 +46,8 @@ take on faith.
   </Card>
   <Card title="Search by Meaning" icon="sparkles" href="/features/ai-search">
     Ask for "receipts from tax season" or "photos from the Japan trip." Text,
-    code, PDFs, DOCX, and images (via CLIP) are all indexed on-device.
+    PDFs, DOCX, pictures, audio and video are indexed on-device, and hits point
+    at the page or moment.
   </Card>
   <Card title="Ask AI" icon="message-circle" href="/features/ask-ai">
     Chat with your files through an on-device LLM that can mention files,
@@ -65,12 +66,12 @@ take on faith.
 ## Design principles
 
 **Offline-first.** Every feature works without a network connection. AI
-embeddings, the reranker, the knowledge graph, and the assistant chat all run
+embeddings, search, the knowledge graph, and the assistant chat all run
 on-device — no API keys, no telemetry.
 
 **Fast by default.** The file list is virtualised, thumbnails are cached, the
 background indexer is duty-cycled around your activity, and search fuses
-keyword and vector retrieval so results feel instant.
+keyword and meaning retrieval so results feel instant.
 
 **Secure by construction.** The renderer runs in a sandboxed `contextIsolation`
 environment. It never touches the disk directly — every operation goes through a
@@ -89,7 +90,7 @@ uncaught exceptions.
 | Renderer | React 18, TypeScript, Tailwind v4, Radix |
 | Build | electron-vite, Vite |
 | Database | `node:sqlite` (built-in) + Drizzle ORM |
-| AI embeddings & reranking | `@huggingface/transformers` on WASM |
+| AI embeddings | EmbeddingGemma 2 via `@huggingface/transformers` on onnxruntime-node |
 | Assistant chat | `node-llama-cpp` (Metal / prebuilt binaries) |
 | Knowledge graph | `@cosmos.gl/graph` (GPU / WebGL) |
 | Cloud storage | `opendal` |

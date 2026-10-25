@@ -3,6 +3,43 @@ title: Changelog
 description: What's new in FilDOS.
 ---
 
+<Update label="Unreleased" description="EmbeddingGemma 2 search">
+
+## Search that knows where, and when to say nothing
+
+### One model for everything
+
+- Text, pictures, audio and video are searched together with EmbeddingGemma 2,
+  on your device. The old per-type models are gone; existing indexes rebuild
+  automatically.
+- iPhone HEIC photos are indexed (macOS and Windows).
+
+### Hits know their place
+
+- PDF results open at the matching page, with your words highlighted.
+- Audio and video results play from the matching moment.
+- Snippets highlight the words that matched.
+
+### Better results
+
+- A query with no real answer now returns nothing, instead of the nearest noise.
+- Weaker hits fold under "Weaker matches".
+- Codes and IDs search by exact words.
+- Long PDFs and documents become searchable within minutes; the rest is read
+  in a second pass.
+
+### Lighter and safer indexing
+
+- Secrets (`.env`, keys, certificates, credentials), caches and dataset folders
+  are never indexed. Data files are searchable by exact words only.
+- Models and caches unload when idle. Indexing slows down when the machine runs
+  hot, and can be limited to set hours.
+- File reading runs in its own watched process, so a malformed file can't stall
+  the app.
+- Settings → Indexing estimates how long indexing will take and shows an ETA.
+
+</Update>
+
 <Update label="0.1.0-beta" description="2026-07-10">
 
 ## FilDOS 0.1.0-beta
