@@ -13,6 +13,7 @@ import { updateTrayStatus } from '../../tray';
 import { pace } from '../pace';
 import { clearGraph } from '../graph/handlers';
 import { Indexer } from './indexer';
+import { mergeIndexPrefs } from './indexPrefs';
 import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
@@ -49,7 +50,7 @@ async function indexConfig(): Promise<IndexConfig> {
 }
 
 async function patchConfig(patch: Partial<IndexConfig>): Promise<void> {
-  await setPrefs({ index: { ...(await indexConfig()), ...patch } });
+  await setPrefs({ index: mergeIndexPrefs((await getPrefs()).index, await indexConfig(), patch) });
 }
 
 /**
