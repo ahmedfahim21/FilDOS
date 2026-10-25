@@ -28,6 +28,7 @@ import type { AiProvider } from '../../src/main/ai/providers/types';
 import { buildTestbed, manifestHash } from '../testbed/build';
 import { DOCX_FILES, PDF_FILES, TEXT_FILES } from '../testbed/manifest';
 import { BowProvider, buildVocab, RuntimeProvider } from './providers';
+import { decodeWithFfmpeg } from './ffmpegDecoder';
 
 const EVAL_DIR = resolve(__dirname, '..');
 const CACHE_DIR = join(EVAL_DIR, '.cache');
@@ -79,7 +80,8 @@ function makeProvider(kind: ProviderKind): { provider: AiProvider; model: string
 
 function cacheFile(kind: ProviderKind): string {
   const models = kind === 'bow' ? 'bow' : indexFingerprint(PROMPTS_VERSION).replace(/[^\w.+-]/g, '_');
-  return join(CACHE_DIR, `${kind}-${models}-v${INDEX_VERSION}-${manifestHash()}.db`);
+  // `media`: audio/video are indexed (they add rows without an INDEX_VERSION change).
+  return join(CACHE_DIR, `${kind}-${models}-v${INDEX_VERSION}-media-${manifestHash()}.db`);
 }
 
 /** Load every stored chunk into the keyword store, as startup does in production. */
@@ -146,6 +148,7 @@ export async function indexTestbed(
     countTokens: provider.countTokens
       ? (modelId, texts) => provider.countTokens!(modelId, texts)
       : undefined,
+    decodeMedia: decodeWithFfmpeg,
   });
   const started = performance.now();
   await indexer.start();

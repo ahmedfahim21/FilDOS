@@ -12,6 +12,10 @@ npm run eval:smoke    # same suites on bag-of-words embeddings: no model downloa
 npm run eval:search   # one suite: eval:search | eval:index | eval:graph | eval:chat | eval:devices
 ```
 
+Audio and video are decoded with `ffmpeg`/`ffprobe` from your PATH (the app itself uses Electron's Chromium, which vitest
+can't run): the same frame times, frame size and audio format, but a different decoder, so audio/video numbers are close to the
+app's rather than identical.
+
 Environment:
 
 | Variable | Default | Meaning |

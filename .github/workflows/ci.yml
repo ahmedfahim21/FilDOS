@@ -38,6 +38,9 @@ jobs:
         with:
           path: eval/.media-cache
           key: eval-media-${{ hashFiles('eval/testbed/manifest.ts') }}
+      # The eval decodes the testbed's audio/video with ffmpeg (the app uses Chromium).
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Eval (smoke)
         run: npm run eval:smoke
 

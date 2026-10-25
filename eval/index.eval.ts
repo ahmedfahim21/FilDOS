@@ -11,6 +11,7 @@
  */
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { rawDb } from '../src/main/db';
+import type { DecodedInput } from '@shared/types';
 import type { AiProvider } from '../src/main/ai/providers/types';
 import { closeTestbed, indexTestbed, type Indexed } from './lib/harness';
 import { pct, table, writeResults } from './lib/report';
@@ -22,14 +23,16 @@ interface Timing {
   units: number;
 }
 
-const timings: Record<'text' | 'image', Timing> = {
+const timings: Record<'text' | 'image' | 'frame' | 'audio', Timing> = {
   text: { calls: 0, seconds: 0, units: 0 },
   image: { calls: 0, seconds: 0, units: 0 },
+  frame: { calls: 0, seconds: 0, units: 0 },
+  audio: { calls: 0, seconds: 0, units: 0 },
 };
 
 /** Wrap the provider so every model call is timed by kind. */
 function timed(p: AiProvider): AiProvider {
-  const time = async <T>(kind: 'text' | 'image', units: number, run: () => Promise<T>): Promise<T> => {
+  const time = async <T>(kind: keyof typeof timings, units: number, run: () => Promise<T>): Promise<T> => {
     const started = performance.now();
     try {
       return await run();
@@ -44,6 +47,8 @@ function timed(p: AiProvider): AiProvider {
       time('text', texts.length, () => p.embed(modelId, texts, role, titles)),
     embedMedia: (modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }) =>
       time('image', paths.length, () => p.embedMedia(modelId, kind, paths, opts)),
+    embedDecoded: (modelId: string, inputs: DecodedInput[]) =>
+      time(inputs[0]?.kind ?? 'frame', inputs.length, () => p.embedDecoded(modelId, inputs)),
   });
 }
 
@@ -158,6 +163,8 @@ describe('index eval', () => {
           ['wall time', `${ix.indexSeconds.toFixed(1)} s`],
           ['text: model seconds / chunks', `${timings.text.seconds.toFixed(1)} s / ${timings.text.units} → ${(perUnit(timings.text) * 1000).toFixed(0)} ms per chunk`],
           ['image: model seconds / images', `${timings.image.seconds.toFixed(1)} s / ${timings.image.units} → ${(perUnit(timings.image) * 1000).toFixed(0)} ms per image`],
+          ['video: model seconds / frames', `${timings.frame.seconds.toFixed(1)} s / ${timings.frame.units} → ${(perUnit(timings.frame) * 1000).toFixed(0)} ms per frame`],
+          ['audio: model seconds / 30 s windows', `${timings.audio.seconds.toFixed(1)} s / ${timings.audio.units} → ${(perUnit(timings.audio) * 1000).toFixed(0)} ms per window`],
           ['chunks / vectors', `${totals.chunks} / ${totals.vectors}`],
           ['vector bytes', `${((totals.vectorBytes ?? 0) / 1024).toFixed(0)} KB`],
           ['database size', `${((pageCount * pageSize) / 1024).toFixed(0)} KB`],

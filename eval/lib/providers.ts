@@ -6,7 +6,7 @@
  *    shared vocabulary): no download, deterministic — the CI smoke mode that
  *    keeps the pipeline wiring honest without measuring model quality.
  */
-import type { AiModelStatus } from '@shared/types';
+import type { AiModelStatus, DecodedInput } from '@shared/types';
 import type { EmbedRole } from '@shared/aiModels';
 import type { EntitySpan } from '@shared/graphTypes';
 import type { AiProvider } from '../../src/main/ai/providers/types';
@@ -63,6 +63,11 @@ export class BowProvider implements AiProvider {
     return texts.map((t) => tfVec(t, this.vocab));
   }
 
+  /** Media have no words either: a fixed unit vector each. */
+  async embedDecoded(_modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
+    return this.embedMedia(_modelId, 'image', inputs.map(() => ''));
+  }
+
   /** Pictures have no words: a BoW space can't place them, so they get a fixed unit vector. */
   async embedMedia(_modelId: string, _kind: 'image', paths: string[]): Promise<Float32Array[]> {
     return paths.map(() => {
@@ -92,6 +97,10 @@ export class RuntimeProvider implements AiProvider {
 
   embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]> {
     return handle({ type: 'embedMedia', modelId, kind, paths, budget: opts?.budget }) as Promise<Float32Array[]>;
+  }
+
+  embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
+    return handle({ type: 'embedDecoded', modelId, inputs }) as Promise<Float32Array[]>;
   }
 
   countTokens(modelId: string, texts: string[]): Promise<number[]> {
