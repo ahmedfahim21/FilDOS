@@ -297,8 +297,12 @@ export async function startIndexBackground(): Promise<void> {
   if (!(await indexConfig()).enabled) return;
   const wiped = await ensureFingerprint();
   // Rebuild BM25 from DB before arming the watcher so keyword search is
-  // available immediately on the first query after startup.
-  await rebuildKeywordIndex();
+  // available immediately on the first query after startup. A failure must not
+  // keep the watcher and the leftover jobs from starting: it's logged, and
+  // search runs on meaning alone until the next launch.
+  await rebuildKeywordIndex().catch((err: unknown) =>
+    console.error('[fildos] keyword index rebuild failed; searching by meaning only this session:', err),
+  );
   await watcher.start();
   if (wiped) {
     void indexer.reconcile();
