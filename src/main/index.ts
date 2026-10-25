@@ -21,6 +21,7 @@ import {
 import { registerGraphHandlers, stopGraphBackground } from './ai/graph/handlers';
 import { registerLlmHandlers } from './ai/llm/handlers';
 import { closeDb, initDb } from './db';
+import { handleMediaProtocol, registerMediaScheme } from './media/protocol';
 import { getPrefs, setPrefs } from './prefs';
 import { destroyTray, showTray } from './tray';
 
@@ -78,6 +79,9 @@ async function createWindow(): Promise<void> {
   }
 }
 
+// Privileged schemes must be registered before the app is ready.
+registerMediaScheme();
+
 app.whenReady().then(() => {
   initDb(join(app.getPath('userData'), 'fildos.db'));
   // Cloud credentials are encrypted with the OS keyring (safeStorage). Warn once
@@ -104,6 +108,7 @@ app.whenReady().then(() => {
   process.env.FILDOS_LLM_DIR = join(app.getPath('userData'), 'models', 'llm');
   registerAiProvider('embedded', new EmbeddedAiProvider());
   registerAiProvider('cloud', new CloudAiProvider());
+  handleMediaProtocol();
   registerFsHandlers();
   registerCloudHandlers();
   registerAiHandlers();

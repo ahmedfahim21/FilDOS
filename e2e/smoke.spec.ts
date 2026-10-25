@@ -76,3 +76,13 @@ test('opens the Recents page (SQLite round-trip)', async () => {
   await expect(page.getByTestId('page-view')).toBeHidden();
   await expect(page.getByTestId('statusbar')).toBeVisible();
 });
+
+test('serves the media protocol only for indexed documents', async () => {
+  // The renderer can reach fildos-media:// (scheme registered, CSP allows it),
+  // and the main process refuses anything that isn't an indexed PDF.
+  const status = (path: string) =>
+    page.evaluate(async (p) => (await fetch(`fildos-media://file/${encodeURIComponent(p)}`)).status, path);
+  expect(await status(join(__dirname, 'not-indexed.pdf'))).toBe(403);
+  expect(await status(join(__dirname, 'smoke.spec.ts'))).toBe(403);
+  expect(await status('relative/path.pdf')).toBe(400);
+});
