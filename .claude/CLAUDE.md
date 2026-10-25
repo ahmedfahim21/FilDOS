@@ -208,6 +208,21 @@ never dropped from the index: they get a single **filename-fallback chunk**
 (humanized basename) so name queries still find them through both lanes —
 `INDEX_VERSION` 3 (EmbeddingGemma 2) re-runs everything; the fingerprint wipe
 makes that a clean rebuild.
+**Audio and video** (`src/main/media/`): decoded by Electron's own Chromium —
+no ffmpeg to ship. `decoder.ts` runs `decoderPage.ts` in a hidden, sandboxed
+`WebContentsView` (not a window, so it never affects app lifecycle) in its own
+session; its `fildos-decode://decoder/` origin serves the page and only files
+the main process issued a one-time token for. Frames come from seeking a muted
+<video> and `createImageBitmap` (a hidden page never paints video, so drawing
+the element repeats the first frame); sound from `decodeAudioData` on a 16 kHz
+OfflineAudioContext. The view closes after a minute idle. `signals.ts` (pure,
+shared with the eval's ffmpeg decoder) owns the rules: a frame every 3 s (≤ 40),
+one per shot (`keepShots`), 30 s audio windows overlapping 5 s, ≤ 1 h per file,
+frames at 70 vision tokens. The indexer stores a keyword-only name chunk plus
+`frame`/`audio` chunks with `loc`/`loc_end` in seconds (audio is its own
+modality on the score scale); the audio encoder downloads with the first
+recording (`lazy` component). Media queue last (`costClass` 3); hits get a
+"0:25" pill that plays in `MediaPreview` (through `fildos-media://`).
 `indexer.ts` is the orchestrator: it crawls the configured roots (default the
 home dir; `ignore.ts` skips dotfiles, system trees (Library/AppData/Windows/…),
 `node_modules`/caches/bundles — these segment rules apply **below the crawl
@@ -334,8 +349,8 @@ Trash, creations/copies never overwrite. Calls stream to the renderer as
 ### The database layer (`src/main/db/`)
 
 **Media protocol** (`src/main/media/protocol.ts`): `fildos-media://file/<path>`
-lets the renderer read the bytes of **indexed** PDFs (for page previews) —
-nothing else: non-indexed paths are 403, relative ones 400. It's the one
+lets the renderer read the bytes of **indexed** PDFs and audio/video (page
+previews, playing from a moment) — nothing else: non-indexed paths are 403, relative ones 400. It's the one
 narrow widening of the "renderer never touches the disk" rule; CSP allows it in
 `connect-src`/`media-src`.
 
