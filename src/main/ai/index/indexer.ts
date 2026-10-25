@@ -579,6 +579,31 @@ export class Indexer {
   }
 
   /**
+   * Whether `tag` carries the CACHEDIR.TAG signature. An unreadable tag (no
+   * permission, a dangling link, a directory by that name) isn't a cache mark:
+   * it's logged and the folder is crawled — one odd file must not end the crawl.
+   */
+  private async hasCacheDirTag(tag: string): Promise<boolean> {
+    let fh: Awaited<ReturnType<typeof fs.open>>;
+    try {
+      fh = await fs.open(tag, 'r');
+    } catch (err) {
+      console.warn('[fildos] unreadable CACHEDIR.TAG, crawling the folder:', tag, String(err));
+      return false;
+    }
+    try {
+      const buf = Buffer.alloc(64);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+      return isCacheDirTag(buf.subarray(0, bytesRead).toString('latin1'));
+    } catch (err) {
+      console.warn('[fildos] unreadable CACHEDIR.TAG, crawling the folder:', tag, String(err));
+      return false;
+    } finally {
+      await fh.close();
+    }
+  }
+
+  /**
    * A folder the crawl never descends into: a cache tagged with CACHEDIR.TAG,
    * or a dataset (hundreds of machine-named media files). Datasets are
    * reported in progress so Settings can say what was left out.
@@ -590,16 +615,7 @@ export class Indexer {
     } catch {
       return false; // unreadable — the walk skips it the same way
     }
-    if (names.includes('CACHEDIR.TAG')) {
-      const fh = await fs.open(join(dir, 'CACHEDIR.TAG'), 'r');
-      try {
-        const buf = Buffer.alloc(64);
-        const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-        if (isCacheDirTag(buf.subarray(0, bytesRead).toString('latin1'))) return true;
-      } finally {
-        await fh.close();
-      }
-    }
+    if (names.includes('CACHEDIR.TAG') && (await this.hasCacheDirTag(join(dir, 'CACHEDIR.TAG')))) return true;
     if (looksLikeDataset(names, (n) => (isImage(n) ? 'image' : null))) {
       if (!this.datasets.includes(dir)) this.datasets.push(dir);
       return true;

@@ -452,3 +452,29 @@ describe('Indexer — excluded extensions', () => {
     expect(await aiIndex.getState(join(tmp(), 'a.txt'))).toBeNull();
   });
 });
+
+describe('Indexer — cache folders', () => {
+  it('skips a folder tagged with CACHEDIR.TAG', async () => {
+    await fs.mkdir(join(tmp(), 'cache'));
+    await fs.writeFile(join(tmp(), 'cache', 'CACHEDIR.TAG'), 'Signature: 8a477f597d28d172789f06886806bc55\n');
+    await fs.writeFile(join(tmp(), 'cache', 'blob.txt'), 'cached words');
+    await write('kept.txt', 'my notes');
+    const { indexer } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect(await aiIndex.getState(join(tmp(), 'cache', 'blob.txt'))).toBeNull();
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+  });
+
+  it('crawls on past an unreadable CACHEDIR.TAG instead of ending the crawl', async () => {
+    // A directory named CACHEDIR.TAG: opening it as a file fails.
+    await fs.mkdir(join(tmp(), 'odd', 'CACHEDIR.TAG'), { recursive: true });
+    await fs.writeFile(join(tmp(), 'odd', 'inside.txt'), 'still my notes');
+    await write('kept.txt', 'my notes');
+    const { indexer, progress } = makeIndexer(fakeProvider().provider);
+    await indexer.start();
+    expect((await aiIndex.getState(join(tmp(), 'odd', 'inside.txt')))?.status).toBe('indexed');
+    expect((await aiIndex.getState(join(tmp(), 'kept.txt')))?.status).toBe('indexed');
+    expect(progress()?.state).toBe('idle');
+  });
+});
+
