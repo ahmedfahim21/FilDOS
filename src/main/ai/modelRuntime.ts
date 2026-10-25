@@ -35,7 +35,7 @@ import { getModelDef, type AiModelDef, type EmbedRole, type ModelDtype } from '@
 import { promptedText } from '@shared/embeddingPrompts';
 import { mergeBioSpans, type BioToken } from './graph/ner';
 import { rowsOf } from './vectors';
-import { FRAME_BUDGET } from '../media/signals';
+import { AUDIO_RATE, FRAME_BUDGET } from '../media/signals';
 import { PHOTO_BUDGET } from './index/ignore';
 
 /** Read on use, so an in-process host can set the env before the first call. */
@@ -223,8 +223,10 @@ async function loadMultimodal(def: AiModelDef, encoders: Set<Encoder>, device: E
     // No CPU memory arena: it grows in doubling chunks, and inside Electron
     // (whose allocator refuses oversized single allocations) that crashed the
     // worker with SIGTRAP on long batches; without it memory peaks ~4× lower
-    // (≈0.6 vs 2.6 GB for 16 × 700 tokens) at the same speed.
-    session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1, enableCpuMemArena: false },
+    // (≈0.6 vs 2.6 GB for 16 × 700 tokens) at the same speed. No memory
+    // pattern either: it replays the first run's buffer plan, and a call
+    // shaped differently from a large one before it crashed the same way.
+    session_options: { intraOpNumThreads: threads(), interOpNumThreads: 1, enableCpuMemArena: false, enableMemPattern: false },
     progress_callback: onProgress,
   })) as unknown as Callable & Disposable;
   const processor = (await t.AutoProcessor.from_pretrained(def.id, { progress_callback: onProgress })) as unknown as Processor;
@@ -367,17 +369,34 @@ async function embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Fl
     const frames = inputs as Extract<DecodedInput, { kind: 'frame' }>[];
     const m = await multimodal(modelId, ['vision']);
     const images = frames.map((f) => new t.RawImage(new Uint8ClampedArray(f.rgba), f.width, f.height, 4).rgb());
+    // Each frame is at most FRAME_BUDGET soft tokens plus its begin/end markers.
+    const groups = tokenGroups(images.map(() => FRAME_BUDGET + 2), MAX_CALL_TOKENS);
     return using(m, async () => {
       m.processor.image_processor.max_soft_tokens = FRAME_BUDGET;
-      return sentenceEmbeddings(m, await m.processor(null, images.map((img) => [img])), frames.length, def.dim);
+      const out: Float32Array[] = [];
+      for (const [start, end] of groups) {
+        const part = images.slice(start, end).map((img) => [img]);
+        out.push(...(await sentenceEmbeddings(m, await m.processor(null, part), end - start, def.dim)));
+      }
+      return out;
     });
   }
   const windows = inputs as Extract<DecodedInput, { kind: 'audio' }>[];
   const m = await multimodal(modelId, ['audio']);
-  // A flat list of clips is one sample per clip.
-  return using(m, async () =>
-    sentenceEmbeddings(m, await m.processor(null, null, windows.map((w) => w.samples)), windows.length, def.dim),
+  // The audio encoder yields 25 soft tokens per second of sound.
+  const groups = tokenGroups(
+    windows.map((w) => Math.ceil((w.samples.length / AUDIO_RATE) * 25) + 2),
+    MAX_CALL_TOKENS,
   );
+  return using(m, async () => {
+    const out: Float32Array[] = [];
+    for (const [start, end] of groups) {
+      // A flat list of clips is one sample per clip.
+      const clips = windows.slice(start, end).map((w) => w.samples);
+      out.push(...(await sentenceEmbeddings(m, await m.processor(null, null, clips), end - start, def.dim)));
+    }
+    return out;
+  });
 }
 
 /** Token counts from the model's own tokenizer — no inference. */
