@@ -35,6 +35,7 @@ import { getModelDef, type AiModelDef, type EmbedRole, type ModelDtype } from '@
 import { promptedText } from '@shared/embeddingPrompts';
 import { mergeBioSpans, type BioToken } from './graph/ner';
 import { rowsOf } from './vectors';
+import { PHOTO_BUDGET } from './index/ignore';
 
 /** Read on use, so an in-process host can set the env before the first call. */
 function cacheDir(): string {
@@ -354,13 +355,17 @@ async function deviceCheck(modelId: string, devices: EmbedDevice[], images: stri
   const def = defOf(modelId);
   const t = await lib();
   const raw = await Promise.all(images.map((p) => t.RawImage.read(p)));
+  // One picture per call, as indexing embeds them (and some GPU providers
+  // can't take a large batch).
   const run = async (device: EmbedDevice) => {
     const m = await loadMultimodal(def, true, device);
     try {
-      const inputs = await m.processor(null, raw.map((img) => [img]));
-      await m.model(inputs); // warm-up: first runs compile kernels
+      m.processor.image_processor.max_soft_tokens = PHOTO_BUDGET;
+      const inputs = await Promise.all(raw.map((img) => m.processor(null, [[img]])));
+      await m.model(inputs[0]); // warm-up: first runs compile kernels
       const started = performance.now();
-      const vecs = await sentenceEmbeddings(m, inputs, raw.length, def.dim);
+      const vecs: Float32Array[] = [];
+      for (const input of inputs) vecs.push(...(await sentenceEmbeddings(m, input, 1, def.dim)));
       return { vecs, msPerImage: (performance.now() - started) / raw.length };
     } finally {
       await m.model.dispose();
