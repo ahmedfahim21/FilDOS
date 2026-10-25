@@ -12,14 +12,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticHit } from '@shared/types';
 import { semanticSearch } from '../src/main/ai/index/search';
-import {
-  addBowVocabulary,
-  closeTestbed,
-  indexTestbed,
-  rerankerReady,
-  search,
-  type Indexed,
-} from './lib/harness';
+import { addBowVocabulary, closeTestbed, indexTestbed, search, type Indexed } from './lib/harness';
 import {
   firstRank,
   parseExpectation,
@@ -49,6 +42,8 @@ interface Outcome {
   rank: number | null;
   placeOk: boolean | null;
   hits: number;
+  /** Clear matches (above the weaker-matches fold). */
+  strong: number;
   ms: number;
   top: string[];
 }
@@ -63,7 +58,7 @@ beforeAll(async () => {
 afterAll(() => closeTestbed());
 
 /** Files for one query under one lane, best first. */
-async function run(lane: Lane, q: string): Promise<{ paths: string[]; hits: SemanticHit[] }> {
+async function run(lane: Lane, q: string): Promise<{ paths: string[]; hits: SemanticHit[]; strong: number }> {
   if (lane === 'keyword') {
     const seen = new Set<string>();
     const paths: string[] = [];
@@ -73,13 +68,13 @@ async function run(lane: Lane, q: string): Promise<{ paths: string[]; hits: Sema
         paths.push(ix.rel(m.path));
       }
     }
-    return { paths: paths.slice(0, K), hits: [] };
+    return { paths: paths.slice(0, K), hits: [], strong: Math.min(K, paths.length) };
   }
-  const hits =
+  const result =
     lane === 'meaning'
       ? await semanticSearch(ix.provider, ix.model, ix.vectorStore, q, { k: K })
       : await search(ix, q, K);
-  return { paths: hits.map((h) => ix.rel(h.path)), hits };
+  return { paths: result.hits.map((h) => ix.rel(h.path)), hits: result.hits, strong: result.strong };
 }
 
 async function evaluate(lane: Lane): Promise<Outcome[]> {
@@ -87,7 +82,7 @@ async function evaluate(lane: Lane): Promise<Outcome[]> {
   for (const query of QUERIES) {
     const expected: Expectation[] = query.expect.map(parseExpectation);
     const started = performance.now();
-    const { paths, hits } = await run(lane, query.q);
+    const { paths, hits, strong } = await run(lane, query.q);
     const ms = performance.now() - started;
     const rank = expected.length ? firstRank(paths, expected) : null;
     let placeOk: boolean | null = null;
@@ -95,7 +90,7 @@ async function evaluate(lane: Lane): Promise<Outcome[]> {
     if (pinned && rank !== null && hits.length) {
       placeOk = placeMatches(pinned, hits[rank - 1] as SemanticHit & HitPlace);
     }
-    out.push({ q: query.q, tag: query.tag, rank, placeOk, hits: paths.length, ms, top: paths.slice(0, 3) });
+    out.push({ q: query.q, tag: query.tag, rank, placeOk, hits: paths.length, strong, ms, top: paths.slice(0, 3) });
   }
   return out;
 }
@@ -110,6 +105,9 @@ function summarize(rows: Outcome[]) {
     r1: answerable.filter((r) => r.rank === 1).length / n,
     r5: answerable.filter((r) => r.rank !== null && r.rank <= 5).length / n,
     mrr: answerable.reduce((s, r) => s + (r.rank ? 1 / r.rank : 0), 0) / n,
+    /** The answer is among the clear matches (above the fold). */
+    strongRecall: answerable.filter((r) => r.rank !== null && r.rank <= r.strong).length / n,
+    meanStrong: answerable.reduce((s, r) => s + r.strong, 0) / n,
     placeAccuracy: placed.length ? placed.filter((r) => r.placeOk).length / placed.length : null,
     nothingFound: none.length ? none.filter((r) => r.hits === 0).length / none.length : null,
     p50ms: percentile(rows.map((r) => r.ms), 50),
@@ -131,21 +129,21 @@ describe('search eval', () => {
     });
     const overall = lanes.map((lane) => {
       const s = summarize(results[lane]);
-      return [lane, pct(s.r1), pct(s.r5), s.mrr.toFixed(3), s.placeAccuracy === null ? '-' : pct(s.placeAccuracy),
-        s.nothingFound === null ? '-' : pct(s.nothingFound), s.p50ms.toFixed(0), s.p95ms.toFixed(0)];
+      return [lane, pct(s.r1), pct(s.r5), s.mrr.toFixed(3), pct(s.strongRecall), s.meanStrong.toFixed(1),
+        s.placeAccuracy === null ? '-' : pct(s.placeAccuracy), s.nothingFound === null ? '-' : pct(s.nothingFound),
+        s.p50ms.toFixed(0), s.p95ms.toFixed(0)];
     });
     const misses = results.fused
       .filter((r) => (r.tag === 'none' ? r.hits > 0 : r.rank !== 1))
       .map((r) => `  [${r.tag}] "${r.q}" → rank ${r.rank ?? '-'}; top: ${r.top.join(' | ') || '(nothing)'}`);
 
-    console.log(`\nSearch eval — provider ${ix.kind}, reranker ${(await rerankerReady(ix)) ? 'on' : 'off'}`);
-    console.log(table(['lane', 'R@1', 'R@5', 'MRR', 'place', 'nothing', 'p50ms', 'p95ms'], overall));
+    console.log(`\nSearch eval — provider ${ix.kind}`);
+    console.log(table(['lane', 'R@1', 'R@5', 'MRR', 'strong', 'n strong', 'place', 'nothing', 'p50ms', 'p95ms'], overall));
     console.log('\nFused, by tag');
     console.log(table(['tag', 'n', 'R@1', 'R@5', 'place', 'nothing'], byTag));
     if (misses.length) console.log(`\nFused misses (not first, or results for an unanswerable query):\n${misses.join('\n')}`);
 
     const file = await writeResults('search', ix.kind, {
-      reranker: await rerankerReady(ix),
       lanes: Object.fromEntries(lanes.map((l) => [l, summarize(results[l])])),
       byTag: Object.fromEntries(tags.map((t) => [t, summarize(results.fused.filter((r) => r.tag === t))])),
       queries: results.fused,

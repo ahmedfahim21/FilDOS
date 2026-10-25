@@ -14,13 +14,13 @@
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
-import { EMBED_MODEL_ID, indexFingerprint, RERANKER_MODEL_ID } from '@shared/aiModels';
+import { EMBED_MODEL_ID, indexFingerprint } from '@shared/aiModels';
 import { PROMPTS_VERSION } from '@shared/embeddingPrompts';
-import type { IndexProgress, SemanticHit } from '@shared/types';
+import type { IndexProgress, SearchResult } from '@shared/types';
 import { closeDb, initDb, rawDb } from '../../src/main/db';
 import * as aiIndex from '../../src/main/db/aiIndex';
 import { SqliteVectorStore } from '../../src/main/db/vectorStore.sqlite';
-import { Indexer } from '../../src/main/ai/index/indexer';
+import { Indexer, INDEX_VERSION } from '../../src/main/ai/index/indexer';
 import { MiniSearchKeywordStore } from '../../src/main/ai/index/keywordStore';
 import { semanticSearch } from '../../src/main/ai/index/search';
 import type { AiProvider } from '../../src/main/ai/providers/types';
@@ -78,7 +78,7 @@ function makeProvider(kind: ProviderKind): { provider: AiProvider; model: string
 
 function cacheFile(kind: ProviderKind): string {
   const models = kind === 'bow' ? 'bow' : indexFingerprint(PROMPTS_VERSION).replace(/[^\w.+-]/g, '_');
-  return join(CACHE_DIR, `${kind}-${models}-${manifestHash()}.db`);
+  return join(CACHE_DIR, `${kind}-${models}-v${INDEX_VERSION}-${manifestHash()}.db`);
 }
 
 /** Load every stored chunk into the keyword store, as startup does in production. */
@@ -157,18 +157,7 @@ export function closeTestbed(): void {
   closeDb();
 }
 
-/** Whether the opt-in reranker is downloaded (search only uses it then, as in production). */
-export async function rerankerReady(ix: Indexed): Promise<boolean> {
-  if (ix.kind === 'bow') return false;
-  return (await ix.provider.status(RERANKER_MODEL_ID)).state === 'ready';
-}
-
 /** Search exactly as `searchIndex` does in production. */
-export function search(ix: Indexed, query: string, k: number, role: 'query' | 'question' = 'query'): Promise<SemanticHit[]> {
-  return semanticSearch(ix.provider, ix.model, ix.vectorStore, query, {
-    role,
-    k,
-    keywordStore: ix.keywordStore,
-    rerankerModelId: ix.kind === 'real' ? RERANKER_MODEL_ID : undefined,
-  });
+export function search(ix: Indexed, query: string, k: number, role: 'query' | 'question' = 'query'): Promise<SearchResult> {
+  return semanticSearch(ix.provider, ix.model, ix.vectorStore, query, { role, k, keywordStore: ix.keywordStore });
 }
