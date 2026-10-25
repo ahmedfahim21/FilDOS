@@ -27,8 +27,7 @@ import { listDir } from '../../fs/service';
 import * as chats from '../../db/chats';
 import { remapPaths } from '../../db';
 import * as aiIndex from '../../db/aiIndex';
-import { extractText } from '../index/extract';
-import { searchIndex } from '../index/handlers';
+import { extractor, searchIndex } from '../index/handlers';
 import { assembleSystem, buildChat, type ChatContextDeps } from './context';
 import { executeChatTool, type ChatToolDeps } from './tools';
 import { LlmManager } from './manager';
@@ -59,7 +58,7 @@ const manager = new LlmManager();
 
 /** Real deps for the context builder (tests inject fakes via buildChat directly). */
 const contextDeps: ChatContextDeps = {
-  extract: extractText,
+  extract: (path) => extractor.text(path),
   list: listDir,
   search: async (query, k) => (await searchIndex(query, { k, role: 'question' })).hits,
 };
@@ -73,7 +72,7 @@ const toolDeps: ChatToolDeps = {
     const under = (await aiIndex.statesUnder(path)).map((s) => s.path);
     if (under.length) await aiIndex.remove(under);
   },
-  extract: extractText,
+  extract: (path) => extractor.text(path),
   search: async (query, k) => (await searchIndex(query, { k, role: 'question' })).hits,
   home: homedir,
 };

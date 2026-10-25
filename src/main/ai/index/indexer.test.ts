@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IndexProgress } from '@shared/types';
 import type { AiProvider } from '../providers/types';
@@ -9,6 +9,7 @@ import { closeDb, db, initDb } from '../../db';
 import { fileChunks } from '../../db/schema';
 import { SqliteVectorStore } from '../../db/vectorStore.sqlite';
 import { Indexer } from './indexer';
+import type { Extractor } from './extractClient';
 import { isIgnored, isUnder, PHOTO_BUDGET } from './ignore';
 
 import type { IndexState } from '@shared/types';
@@ -768,3 +769,41 @@ describe('Indexer — pictures only the OS decodes (HEIC)', () => {
   });
 });
 
+
+describe('Indexer — extraction through the injected extractor', () => {
+  it('reads text and PDF pages only through `extract`, and a failed read falls back as before', async () => {
+    await write('notes.md', 'never read from disk directly');
+    await write('Report.pdf', 'not really a pdf');
+    const asked: string[] = [];
+    const extract: Extractor = {
+      async text(path) {
+        asked.push(`text ${basename(path)}`);
+        return 'remote extracted words';
+      },
+      async pdfPages(path, from, to) {
+        asked.push(`pdf ${basename(path)} ${from}-${to}`);
+        throw Object.assign(new Error('Reading this file took over 120 s; it was stopped.'), { code: 'ETIMEDOUT' });
+      },
+    };
+    const indexer = new Indexer({
+      provider: async () => fakeProvider().provider,
+      model: 'm1',
+      config: async () => ({ roots: [tmp()], excludes: [] }),
+      vectorStore: new SqliteVectorStore(),
+      emit: () => {},
+      ignore: (p, ex) => ex.some((base) => isUnder(p, base)),
+      extract,
+    });
+
+    await indexer.start();
+
+    expect(asked.sort()).toEqual([`pdf Report.pdf 1-${FIRST_PASS_PAGES}`, 'text notes.md']);
+    const rows = (await db().select().from(fileChunks)).map((r) => [basename(r.path), r.kind, r.text]).sort();
+    expect(rows).toEqual([
+      ['Report.pdf', 'name', 'Report pdf'],
+      ['notes.md', 'text', 'remote extracted words'],
+    ]);
+    expect((await aiIndex.getState(join(tmp(), 'Report.pdf')))?.status).toBe('skipped');
+    expect((await aiIndex.getState(join(tmp(), 'notes.md')))?.status).toBe('indexed');
+  });
+});

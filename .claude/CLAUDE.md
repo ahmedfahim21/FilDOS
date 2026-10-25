@@ -170,7 +170,13 @@ stays on CPU. Models cache to
 
 **Indexer (`src/main/ai/index/`).** The background pipeline that turns files into
 searchable vectors. `extract.ts` (text/code/data by extension; binary + size-cap
-skip) → `chunk.ts` (~512-token char-approx windows) → the active provider's
+skip; in the app it runs in the **extraction utilityProcess** — `extractWorker.ts`,
+a fourth main entry — behind `extractClient.ts`'s watchdog: 2 min per read
+kills the worker (ETIMEDOUT), a 1 GB heap cap, reads in flight retried once on
+a fresh worker after a crash so only the culprit fails, idle exit after 1 min;
+indexer, chat and Find similar take it as an injected `Extractor`, tests and
+evals use `inProcessExtractor`. pdfjs treats any Electron process but main as a
+browser, so the worker loads it with `process.type` presented as `'browser'`) → `chunk.ts` (~512-token char-approx windows) → the active provider's
 `embed()` → `db/vectorStore.sqlite.ts` (Float32 BLOBs; brute-force cosine over
 an **in-memory vector cache** — vectors only, no texts — warmed on first search
 and kept coherent by upsert/remove/remap/clear, so queries never re-read every

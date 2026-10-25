@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { homedir } from 'node:os';
+import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
+import { homedir, setPriority } from 'node:os';
+import { join } from 'node:path';
 import { Channels, Events } from '@shared/channels';
 import type { AppError, IndexConfig, IndexEstimate, IndexProgress, Result, SearchResult, SemanticHit } from '@shared/types';
 import { EMBED_MODEL_ID, indexFingerprint } from '@shared/aiModels';
@@ -20,6 +21,7 @@ import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
 import { MediaDecoder } from '../../media/decoder';
+import { ExtractClient, type ExtractWorker } from './extractClient';
 import { canDecodeWithOs, decodeImageWithOs } from '../../media/osImage';
 
 /**
@@ -70,6 +72,29 @@ async function effectiveExcludes(): Promise<string[]> {
 
 const vectorStore = new SqliteVectorStore();
 const mediaDecoder = new MediaDecoder();
+
+/** Heap cap for the extraction worker: a parse past it kills the worker, not the app. */
+const EXTRACT_HEAP_MB = 1024;
+
+/**
+ * File text is read in its own utilityProcess (pdfjs/mammoth parse untrusted
+ * files), behind `ExtractClient`'s time limit and restart. Shared with chat.
+ */
+export const extractor = new ExtractClient(() => {
+  const worker = utilityProcess.fork(join(__dirname, 'extractWorker.js'), [], {
+    serviceName: 'fildos-extract',
+    execArgv: [`--max-old-space-size=${EXTRACT_HEAP_MB}`],
+  });
+  // Background work: below normal priority, like the embedding worker.
+  worker.on('spawn', () => {
+    try {
+      if (worker.pid) setPriority(worker.pid, 10);
+    } catch (err) {
+      console.info('[fildos] could not lower the extraction worker priority:', String(err));
+    }
+  });
+  return worker as unknown as ExtractWorker;
+});
 
 /**
  * What indexing costs on this machine, per kind of work, persisted in
@@ -123,6 +148,7 @@ const indexer = new Indexer({
   recordCost: (kind, seconds, units) => costs.record(kind, seconds, units),
   costs: () => costs.current(),
   decodeImage: canDecodeWithOs ? decodeImageWithOs : undefined,
+  extract: extractor,
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));
@@ -304,7 +330,7 @@ export function registerIndexHandlers(): void {
         }
         const p = assertValidPath(path);
         const rootPath = opts?.rootPath ? assertValidPath(opts.rootPath) : undefined;
-        return similarByFile(provider, EMBED_MODEL_ID, vectorStore, p, { rootPath, k: opts?.k });
+        return similarByFile(provider, EMBED_MODEL_ID, vectorStore, p, { rootPath, k: opts?.k, extract: extractor });
       }),
   );
 }
@@ -360,4 +386,5 @@ export function stopIndexBackground(): void {
   watcher.stop();
   indexer.pause();
   mediaDecoder.close();
+  extractor.close();
 }

@@ -5,7 +5,8 @@ import * as aiIndex from '../../db/aiIndex';
 import type { AiProvider } from '../providers/types';
 import type { ScoredChunk, VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractText, isImage } from './extract';
+import { isImage } from './extract';
+import { inProcessExtractor, type Extractor } from './extractClient';
 import { isUnder, visionBudget } from './ignore';
 import { chunk } from './chunk';
 import { fileKinds, isLookup, kindHints, queryTerms } from './query';
@@ -252,7 +253,7 @@ export async function similarByFile(
   modelId: string,
   vectorStore: VectorStore,
   filePath: string,
-  opts: { rootPath?: string; k?: number } = {},
+  opts: { rootPath?: string; k?: number; extract?: Extractor } = {},
 ): Promise<SemanticHit[]> {
   const k = opts.k ?? DEFAULT_K;
   const fetchK = Math.max(k * OVERFETCH, 50);
@@ -261,7 +262,7 @@ export async function similarByFile(
   if (isImage(filePath)) {
     [vec] = await provider.embedMedia(modelId, 'image', [filePath], { budget: visionBudget(filePath) });
   } else {
-    const text = await extractText(filePath);
+    const text = await (opts.extract ?? inProcessExtractor).text(filePath);
     if (!text) {
       throw Object.assign(
         new Error('This file type can’t be read for similarity search.'),

@@ -17,7 +17,8 @@ import * as jobs from '../../db/indexJobs';
 import type { IndexJob } from '../../db/indexJobs';
 import type { VectorStore } from './vectorStore';
 import type { KeywordStore } from './keywordStore';
-import { extractPdfPages, extractText, isDataFile, isExtractable, isImage, isMedia, isMostlyNumeric, needsOsDecode } from './extract';
+import { inProcessExtractor, type Extractor } from './extractClient';
+import { isDataFile, isExtractable, isImage, isMedia, isMostlyNumeric, needsOsDecode } from './extract';
 import { audioWindows, keepShots, type DecodedImage, type DecodedMedia } from '../../media/signals';
 import { chunk, chunkPages, OVERLAP, TARGET_TOKENS, WINDOW } from './chunk';
 import {
@@ -95,9 +96,9 @@ interface Piece {
  * A PDF's page count, reading only its tail and catalog (no page is parsed);
  * null when it can't be opened (it'd be indexed by name only).
  */
-async function pdfPageCount(path: string): Promise<number | null> {
+async function pdfPageCount(extract: Extractor, path: string): Promise<number | null> {
   try {
-    return (await extractPdfPages(path, 1, 0))?.total ?? null;
+    return (await extract.pdfPages(path, 1, 0))?.total ?? null;
   } catch (err) {
     console.info('[fildos] estimate: PDF unreadable, counting its name only:', path, String(err));
     return null;
@@ -220,6 +221,8 @@ export interface IndexerDeps {
    * indexed by name only.
    */
   decodeImage?: (path: string) => Promise<DecodedImage>;
+  /** Reads file text. The app's runs in a watched utilityProcess (`extractClient.ts`); default in-process. */
+  extract?: Extractor;
 }
 
 export class Indexer {
@@ -248,6 +251,10 @@ export class Indexer {
   private readonly ensured = new Set<string>();
   private lastEmit = 0;
   private readonly ignore: (path: string, excludes: readonly string[], root?: string) => boolean;
+
+  private get extract(): Extractor {
+    return this.deps.extract ?? inProcessExtractor;
+  }
 
   constructor(private readonly deps: IndexerDeps) {
     this.ignore = deps.ignore ?? isIgnored;
@@ -500,7 +507,7 @@ export class Indexer {
         excludes,
         async (full, stat) => {
           if (!isStale(states.get(full), stat, this.deps.model)) return;
-          const pages = extname(full).toLowerCase() === '.pdf' ? await pdfPageCount(full) : undefined;
+          const pages = extname(full).toLowerCase() === '.pdf' ? await pdfPageCount(this.extract, full) : undefined;
           const cost = secondsFor(unitsFor(full, stat.size, pages), costs);
           const rel = relative(root, full);
           const top = rel.includes(sep) ? join(root, rel.split(sep)[0]) : root;
@@ -685,7 +692,7 @@ export class Indexer {
 
       if (extname(path).toLowerCase() === '.pdf') return await this.preparePdf(path, stat, contentHash);
 
-      const text = await extractText(path);
+      const text = await this.extract.text(path);
       const { window, overlap } = await this.windowFor(text);
       const all = text === null ? [] : chunk(text, window, overlap);
       // Long documents: the first passages now, the rest in the later pass.
@@ -729,7 +736,7 @@ export class Indexer {
   /** PDFs: page-located chunks of the first pages; a long one stays 'partial' for the later pass. */
   private async preparePdf(path: string, stat: { mtimeMs: number; size: number }, contentHash: string): Promise<Prep> {
     const modelId = this.deps.model;
-    const doc = await extractPdfPages(path, 1, FIRST_PASS_PAGES).catch((err: unknown) => {
+    const doc = await this.extract.pdfPages(path, 1, FIRST_PASS_PAGES).catch((err: unknown) => {
       // Corrupt or encrypted: still findable by name (below).
       console.warn('[fildos] PDF unreadable, indexing its name:', path, err instanceof Error ? err.message : err);
       return null;
@@ -821,7 +828,7 @@ export class Indexer {
     if (info.pages) {
       const from = (info.pagesRead ?? 0) + 1;
       const to = Math.min(info.pages, from + PASS_PAGES - 1);
-      const doc = await extractPdfPages(path, from, to).catch((err: unknown) => {
+      const doc = await this.extract.pdfPages(path, from, to).catch((err: unknown) => {
         console.warn('[fildos] PDF unreadable past page', from - 1, path, err instanceof Error ? err.message : err);
         return null;
       });
@@ -836,7 +843,7 @@ export class Indexer {
       }));
       next = { ...info, pagesRead: to, nextChunkIx: (info.nextChunkIx ?? 0) + pieces.length };
     } else {
-      const text = await extractText(path);
+      const text = await this.extract.text(path);
       if (text === null) return this.finishPartial(st);
       const { window, overlap } = await this.windowFor(text);
       const read = info.chunksRead ?? 0;

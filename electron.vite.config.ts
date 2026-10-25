@@ -31,11 +31,12 @@ export default defineConfig({
     define: cloudCredentialDefine,
     build: {
       rollupOptions: {
-        // Two main entries: the app and the standalone AI utilityProcess worker.
+        // Main entries: the app and its utilityProcess workers (embedding, chat, extraction).
         input: {
           index: resolve('src/main/index.ts'),
           modelWorker: resolve('src/main/ai/modelWorker.ts'),
           llmWorker: resolve('src/main/ai/llm/llmWorker.ts'),
+          extractWorker: resolve('src/main/ai/index/extractWorker.ts'),
         },
       },
     },
