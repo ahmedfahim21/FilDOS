@@ -69,9 +69,13 @@ export class EmbeddedAiProvider implements AiProvider {
       }
     });
     worker.on('message', (msg: WorkerReply) => this.onMessage(msg));
-    worker.on('exit', () => {
+    worker.on('exit', (code) => {
       this.worker = null;
-      for (const p of this.pending.values()) p.reject(new Error('The AI worker stopped.'));
+      // 0 after an idle shutdown or a cancel; anything else is a crash worth tracing.
+      if (code !== 0 || this.pending.size) {
+        console.error(`[fildos] AI worker exited (code ${code}) with ${this.pending.size} request(s) pending`);
+      }
+      for (const p of this.pending.values()) p.reject(new Error(`The AI worker stopped (exit code ${code}).`));
       this.pending.clear();
     });
     this.worker = worker;
