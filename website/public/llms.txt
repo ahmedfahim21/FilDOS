@@ -1,39 +1,29 @@
-# FilDOS - AI-Native Decentralized Storage
+# FilDOS
 
-## Overview
-FilDOS is a secure, AI-native, meaning-first decentralized drive built on Filecoin. It enables users to store, search, and share files by meaning rather than cryptic identifiers like CIDs.
+> FilDOS is an open-source (MIT), AI-native file browser for your PC, released for macOS and Linux. It searches documents, photos, audio and video by meaning, entirely on-device — no accounts, no cloud processing, no telemetry.
 
-## Project Description
-FilDOS combines the power of blockchain technology with AI-driven semantic search to create a truly human-centric storage experience. The platform is built on the Filecoin network, providing decentralized, secure, and permanent storage solutions.
+## What it does
 
-## Key Features
-- **AI-Native Storage**: Intelligent data organization powered by AI and semantic search
-- **Meaning-First Approach**: Search and retrieve files by their content and meaning, not just filenames
-- **Decentralized Architecture**: Built on Filecoin for secure, distributed storage
-- **Semantic Search**: Advanced search capabilities using embeddings and AI
-- **User-Friendly Interface**: Human-centric design that simplifies blockchain storage
+- **Search by meaning**: one on-device embedding model (EmbeddingGemma 2) places text, pictures, video frames and sound in one space, so "receipts from tax season" or "the part of the lecture about kestrels" finds the right file. Filename and exact-word matches (codes, IDs) are fused into the same ranked list.
+- **Hits know their place**: a PDF result opens at the matching page with the words highlighted; an audio or video result plays from the matching moment. A query with no real answer returns nothing.
+- **Search with a preview**: results show beside a live preview of the selected file.
+- **Quick Look**: press Space on any file to preview pictures, PDF pages, recordings, text, code and documents in place.
+- **Ask AI**: chat with your files through a local LLM (llama.cpp; Llama, Qwen, Gemma, Phi, Mistral, DeepSeek, or any GGUF). Mention files and folders, run `/find`, and let it create, copy, move or rename files — deletes go to the OS Trash.
+- **Canvas**: a knowledge graph of how your files connect, by meaning, people and places, tags and time.
+- **A real file manager**: list, grid, gallery and column views, tags, recents, undo, drag and drop, Google Drive and Dropbox side by side with local folders.
+- **Private by default**: secrets (.env, keys, certificates, credentials) are never indexed, and any file, folder or file type can be hidden from AI.
 
-## Technology Stack
-- Next.js 15
-- React 19
-- TypeScript
-- Tailwind CSS
-- Filecoin
-- Web3 Integration
+## Technology
 
-## Use Cases
-- Secure document storage with AI-powered retrieval
-- NFT-based folder organization and sharing
-- Privacy-first cloud storage alternative
-- Decentralized file sharing with semantic search
-- Enterprise-grade blockchain storage solutions
+- Electron, React, TypeScript
+- On-device embeddings: EmbeddingGemma 2 on ONNX Runtime
+- On-device chat: node-llama-cpp
+- Storage: SQLite (built into Node), Drizzle ORM
 
 ## Links
-- Website: https://fildos.cloud
 
-## Organization
-Developer: ArqosLabs
-Focus: Decentralized storage, AI integration, Web3 infrastructure
-
-## Contact
-For inquiries and collaboration, visit our website at https://fildos.cloud
+- [Website](https://fildos.ahmedfahim.dev)
+- [Documentation](https://docs-fildos.ahmedfahim.dev)
+- [Changelog](https://docs-fildos.ahmedfahim.dev/changelog)
+- [Source code](https://github.com/ahmedfahim21/FilDOS)
+- [Releases](https://github.com/ahmedfahim21/FilDOS/releases)

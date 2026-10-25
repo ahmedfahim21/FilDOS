@@ -3,9 +3,12 @@ title: Changelog
 description: What's new in FilDOS.
 ---
 
-<Update label="Unreleased" description="EmbeddingGemma 2 search">
+<Update label="0.2.0-beta" description="2026-10-25">
 
-## Search that knows where, and when to say nothing
+## FilDOS 0.2.0-beta
+
+Search that knows where a match is, and says nothing when there isn't one —
+across documents, pictures, audio and video, still entirely on your device.
 
 ### One model for everything
 
@@ -49,6 +52,15 @@ description: What's new in FilDOS.
 - File reading runs in its own watched process, so a malformed file can't stall
   the app.
 - Settings → Indexing estimates how long indexing will take and shows an ETA.
+
+### Fixes
+
+- Chat no longer fails ("context shift strategy…") when a message, its
+  attached files or a long conversation outgrow the model's context window:
+  the turn is fitted to the window, oldest turns first.
+- Audio and video previews seek: they start at the moment a search matched,
+  and the seek bar works.
+- Previews fit small windows instead of being cut off.
 
 </Update>
 

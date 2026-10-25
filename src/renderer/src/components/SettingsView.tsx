@@ -33,9 +33,9 @@ const THEMES: { value: Theme; label: string; icon: 'monitor' | 'sun' | 'moon' }[
 
 /** External resource links surfaced in General → About. */
 const LEGAL_LINKS: { label: string; description: string; href: string }[] = [
-  { label: 'Terms & Conditions', description: 'The agreement for using FilDOS', href: 'https://fildos.cloud/terms' },
-  { label: 'Privacy Policy', description: 'How your data stays on your device', href: 'https://fildos.cloud/privacy' },
-  { label: 'Changelog', description: "What's new in each release", href: 'https://docs.fildos.cloud/changelog' },
+  { label: 'Terms & Conditions', description: 'The agreement for using FilDOS', href: 'https://fildos.ahmedfahim.dev/terms' },
+  { label: 'Privacy Policy', description: 'How your data stays on your device', href: 'https://fildos.ahmedfahim.dev/privacy' },
+  { label: 'Changelog', description: "What's new in each release", href: 'https://docs-fildos.ahmedfahim.dev/changelog' },
 ];
 
 /** The Settings pages. Model management gets its own tab — it's the biggest. */

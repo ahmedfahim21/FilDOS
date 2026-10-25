@@ -3,7 +3,7 @@ import { DiscordIcon, GithubIcon, XIcon } from "../icons";
 import { FlowField } from "./flow-field";
 
 const GITHUB_URL = "https://github.com/ahmedfahim21/FilDOS";
-const DOCS_URL = "https://docs.fildos.cloud";
+const DOCS_URL = "https://docs-fildos.ahmedfahim.dev";
 // TODO: replace with the real invite once the server is live.
 const DISCORD_URL = "https://discord.gg/xyWw7WSyVe";
 

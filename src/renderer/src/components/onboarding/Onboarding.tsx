@@ -793,7 +793,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   <span>
                     I agree to the{' '}
                     <a
-                      href="https://fildos.cloud/terms"
+                      href="https://fildos.ahmedfahim.dev/terms"
                       target="_blank"
                       rel="noreferrer"
                       className="text-foreground underline underline-offset-2"
@@ -802,7 +802,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                     </a>{' '}
                     and{' '}
                     <a
-                      href="https://fildos.cloud/privacy"
+                      href="https://fildos.ahmedfahim.dev/privacy"
                       target="_blank"
                       rel="noreferrer"
                       className="text-foreground underline underline-offset-2"
