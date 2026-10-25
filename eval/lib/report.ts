@@ -1,7 +1,7 @@
 /**
  * Metrics and result files shared by the eval suites. Each suite prints a
- * table and writes `eval/results/<date>-<label>-<suite>.json`, so PRs can
- * commit before/after numbers. `FILDOS_EVAL_LABEL` names the run (default
+ * table and writes `eval/results/<date>-<label>-<suite>.json` (gitignored),
+ * so a before/after comparison is a diff of two local files. `FILDOS_EVAL_LABEL` names the run (default
  * "local"); the provider kind is part of the file name too.
  */
 import { promises as fs } from 'node:fs';

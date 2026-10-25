@@ -8,7 +8,8 @@
  * Models download into `FILDOS_MODELS_DIR` (default `eval/.models`).
  *
  * Indexing the testbed with real models takes minutes, so the indexed DB is
- * cached under `eval/.cache`, keyed by provider + models + testbed. Suites that
+ * cached under `eval/.cache`, keyed by provider + models + testbed (BoW runs are
+ * never cached: their vocabulary differs per suite). Suites that
  * measure indexing itself pass `fresh: true` (and `wrap` to time the provider).
  */
 import { promises as fs } from 'node:fs';
@@ -120,7 +121,10 @@ export async function indexTestbed(
     rel: (abs: string) => relative(root, abs).split(sep).join('/'),
   };
 
-  const hasCache = !opts.fresh && (await fs.stat(cached).then(() => true, () => false));
+  // BoW vectors depend on a vocabulary that differs per suite (search adds its
+  // query words), so a BoW index is never cached: each run builds its own.
+  const cacheable = kind !== 'bow';
+  const hasCache = cacheable && !opts.fresh && (await fs.stat(cached).then(() => true, () => false));
   if (hasCache) {
     await fs.copyFile(cached, dbFile);
     initDb(dbFile);
@@ -147,9 +151,11 @@ export async function indexTestbed(
   await indexer.start();
   const indexSeconds = (performance.now() - started) / 1000;
 
-  await fs.mkdir(CACHE_DIR, { recursive: true });
-  await fs.rm(cached, { force: true });
-  rawDb().exec(`VACUUM INTO '${cached.replace(/'/g, "''")}'`);
+  if (cacheable) {
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.rm(cached, { force: true });
+    rawDb().exec(`VACUUM INTO '${cached.replace(/'/g, "''")}'`);
+  }
   return { ...base, indexSeconds, fromCache: false, progress };
 }
 

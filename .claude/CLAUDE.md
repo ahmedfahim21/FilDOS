@@ -29,8 +29,8 @@ npm run eval:smoke   # the same suites on bag-of-words embeddings, no downloads 
 (`eval/testbed/manifest.ts`) with production code: the real model runtimes run
 in-process (`modelRuntime.ts` / `llm/llmRuntime.ts`; the `*Worker.ts` files only
 bind them to `parentPort`). Any change to search, indexing, the graph or chat
-reports before/after numbers from `npm run eval` and commits the result JSON
-under `eval/results/`.
+quotes before/after numbers from `npm run eval` in its PR description (result
+JSON in `eval/results/` is gitignored — machine- and day-specific).
 
 **Unit + integration (Vitest).** Tests live beside the code as `*.test.ts`,
 split per feature, reusing the vite aliases via `vitest.config.ts`: renderer
