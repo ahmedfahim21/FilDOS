@@ -14,6 +14,9 @@ export interface Frame {
   rgba: Uint8Array;
 }
 
+/** A still picture as RGBA pixels. */
+export type DecodedImage = Omit<Frame, 't'>;
+
 /** A media file, decoded. `audio` is mono at AUDIO_RATE; null when there's no (decodable) soundtrack. */
 export interface DecodedMedia {
   duration: number;

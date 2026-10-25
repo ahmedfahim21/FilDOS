@@ -33,8 +33,9 @@ export interface AiProvider {
   /** Embed media files by path, one vector each, into the same space as text.
    * `budget` is the vision soft-token budget per picture (70–1120). */
   embedMedia(modelId: string, kind: 'image', paths: string[], opts?: { budget?: number }): Promise<Float32Array[]>;
-  /** Embed decoded media (video frames, audio windows) — one kind per call — one vector each. */
-  embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]>;
+  /** Embed decoded media (video frames, decoded pictures, audio windows) — one kind
+   * per call — one vector each. `budget` overrides the frame vision budget. */
+  embedDecoded(modelId: string, inputs: DecodedInput[], opts?: { budget?: number }): Promise<Float32Array[]>;
   /**
    * Count tokens for each text using the model's own tokenizer. One IPC call,
    * no inference — used by the indexer to calibrate chunk window size so dense

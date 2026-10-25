@@ -90,6 +90,14 @@ export const IMAGE_EXTENSIONS = new Set([
 
 const extOf = (path: string) => extname(path).slice(1).toLowerCase();
 
+/** HEIC/HEIF: HEVC-coded, which the model runtime's image decoder can't read — the OS decodes them. */
+const OS_DECODED_IMAGES = new Set(['heic', 'heif']);
+
+/** True for a picture only the operating system's image codecs can decode. */
+export function needsOsDecode(path: string): boolean {
+  return OS_DECODED_IMAGES.has(extOf(path));
+}
+
 /** True when a file's text can be extracted (plain text or a parsed document). */
 export function isExtractable(path: string): boolean {
   const ext = extOf(path);

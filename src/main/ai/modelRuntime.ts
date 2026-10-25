@@ -103,7 +103,7 @@ export type RuntimeRequest =
   | { type: 'download'; modelId: string }
   | { type: 'embed'; modelId: string; texts: string[]; role?: EmbedRole; titles?: string[] }
   | { type: 'embedMedia'; modelId: string; kind: 'image'; paths: string[]; budget?: number }
-  | { type: 'embedDecoded'; modelId: string; inputs: DecodedInput[] }
+  | { type: 'embedDecoded'; modelId: string; inputs: DecodedInput[]; budget?: number }
   | { type: 'countTokens'; modelId: string; texts: string[] }
   | { type: 'extractEntities'; modelId: string; texts: string[] }
   | { type: 'deviceCheck'; modelId: string; devices: EmbedDevice[]; images: string[] };
@@ -355,11 +355,11 @@ async function embedImages(modelId: string, paths: string[], budget?: number): P
 }
 
 /**
- * Embed already-decoded media: video frames (RGBA, at the frame vision budget)
- * and mono 16 kHz audio windows, one vector each, in input order. The audio
+ * Embed already-decoded media: RGBA pictures (video frames at the frame vision
+ * budget unless `budget` says otherwise) and mono 16 kHz audio windows, one vector each, in input order. The audio
  * encoder loads (and downloads, the first time) only when a window arrives.
  */
-async function embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Float32Array[]> {
+async function embedDecoded(modelId: string, inputs: DecodedInput[], budget = FRAME_BUDGET): Promise<Float32Array[]> {
   if (!inputs.length) return [];
   const kinds = new Set(inputs.map((i) => i.kind));
   if (kinds.size > 1) fail('EINVAL', 'One embedDecoded call takes one kind of input.');
@@ -369,10 +369,10 @@ async function embedDecoded(modelId: string, inputs: DecodedInput[]): Promise<Fl
     const frames = inputs as Extract<DecodedInput, { kind: 'frame' }>[];
     const m = await multimodal(modelId, ['vision']);
     const images = frames.map((f) => new t.RawImage(new Uint8ClampedArray(f.rgba), f.width, f.height, 4).rgb());
-    // Each frame is at most FRAME_BUDGET soft tokens plus its begin/end markers.
-    const groups = tokenGroups(images.map(() => FRAME_BUDGET + 2), MAX_CALL_TOKENS);
+    // Each picture is at most `budget` soft tokens plus its begin/end markers.
+    const groups = tokenGroups(images.map(() => budget + 2), MAX_CALL_TOKENS);
     return using(m, async () => {
-      m.processor.image_processor.max_soft_tokens = FRAME_BUDGET;
+      m.processor.image_processor.max_soft_tokens = budget;
       const out: Float32Array[] = [];
       for (const [start, end] of groups) {
         const part = images.slice(start, end).map((img) => [img]);
@@ -472,7 +472,7 @@ export async function handle(req: RuntimeRequest): Promise<unknown> {
     case 'embedMedia':
       return embedImages(req.modelId, req.paths, req.budget);
     case 'embedDecoded':
-      return embedDecoded(req.modelId, req.inputs);
+      return embedDecoded(req.modelId, req.inputs, req.budget);
     case 'countTokens':
       return countTokens(req.modelId, req.texts);
     case 'extractEntities':

@@ -18,6 +18,7 @@ import { IndexWatcher } from './watcher';
 import { MiniSearchKeywordStore } from './keywordStore';
 import { semanticSearch, similarByFile } from './search';
 import { MediaDecoder } from '../../media/decoder';
+import { canDecodeWithOs, decodeImageWithOs } from '../../media/osImage';
 
 /**
  * IPC surface + lifecycle for the background indexer. Owns the single `Indexer`
@@ -88,6 +89,7 @@ const indexer = new Indexer({
   emit: broadcast,
   pace,
   decodeMedia: (path) => mediaDecoder.decode(path),
+  decodeImage: canDecodeWithOs ? decodeImageWithOs : undefined,
   countTokens: async (modelId, texts) => {
     const p = await activeAiProvider();
     return p?.countTokens ? p.countTokens(modelId, texts) : texts.map((t) => Math.ceil(t.length / 4));

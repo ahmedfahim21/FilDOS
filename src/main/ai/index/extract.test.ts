@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../fs/fixtures';
-import { extractText, isDataFile, isExtractable, isImage, isMostlyNumeric, MAX_BYTES } from './extract';
+import { extractText, isDataFile, isExtractable, isImage, isMostlyNumeric, MAX_BYTES, needsOsDecode } from './extract';
 
 describe('isExtractable', () => {
   it('accepts text/code/data and parsed documents (pdf/docx)', () => {
@@ -23,6 +23,13 @@ describe('isImage', () => {
     for (const p of ['/a/notes.md', '/a/report.docx', '/a/clip.mp4']) {
       expect(isImage(p)).toBe(false);
     }
+  });
+});
+
+describe('needsOsDecode', () => {
+  it('is true for HEIC/HEIF pictures only', () => {
+    for (const p of ['/a/IMG_6921.HEIC', '/a/b.heic', '/a/c.heif']) expect(needsOsDecode(p)).toBe(true);
+    for (const p of ['/a/photo.jpg', '/a/x.avif', '/a/heic.png', '/a/notes.md']) expect(needsOsDecode(p)).toBe(false);
   });
 });
 
