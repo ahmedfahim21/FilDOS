@@ -1,0 +1,54 @@
+{
+  "queries": [
+    { "q": "how hot should the oven be for sourdough", "expect": ["Home/Recipes/sourdough.md"], "tag": "text" },
+    { "q": "quick tomato spaghetti dinner", "expect": ["Home/Recipes/weeknight-pasta.md"], "tag": "text" },
+    { "q": "what to pack for a trip", "expect": ["Home/Travel/packing-list.md"], "tag": "text" },
+    { "q": "five day plan for Lisbon", "expect": ["Home/Travel/lisbon-itinerary.md"], "tag": "text" },
+    { "q": "self assessment tax deadline", "expect": ["Home/Finance/tax-notes.md"], "tag": "text" },
+    { "q": "how often should the corgi be brushed", "expect": ["Home/Pets/corgi-care.md"], "tag": "text" },
+    { "q": "Docker Kubernetes deployment rolling update", "expect": ["projects/webapp/docs/deployment.md"], "tag": "text" },
+    { "q": "session cookie Safari SameSite bug fix", "expect": ["Work/notes/bug-report-432.txt"], "tag": "text" },
+    { "q": "slow query performance index database latency", "expect": ["Work/notes/performance-analysis.txt"], "tag": "text" },
+    { "q": "SQL injection security vulnerability", "expect": ["Work/notes/security-review.txt"], "tag": "text" },
+    { "q": "hybrid vector keyword search design", "expect": ["projects/webapp/docs/search-design.md"], "tag": "text" },
+    { "q": "Prometheus Grafana metrics monitoring", "expect": ["projects/webapp/docs/observability.md"], "tag": "text" },
+    { "q": "household budget savings goals", "expect": ["Home/Finance/Budget 2026.docx"], "tag": "text" },
+
+    { "q": "red lentil soup recipe", "expect": ["Home/Recipes/ডাল.txt"], "tag": "multilingual" },
+    { "q": "cold Spanish tomato soup", "expect": ["Home/Recipes/gazpacho-receta.txt"], "tag": "multilingual" },
+    { "q": "vaccinations and litter box for cats", "expect": ["Home/Pets/ملاحظات-القطط.txt"], "tag": "multilingual" },
+
+    { "q": "the clause about pets in the lease", "expect": ["Home/Documents/lease-harbour-lane.pdf@p7"], "tag": "pdf-page" },
+    { "q": "how much is the security deposit", "expect": ["Home/Documents/lease-harbour-lane.pdf@p4"], "tag": "pdf-page" },
+    { "q": "tawny owl identification", "expect": ["Home/Books/field-guide-birds.pdf@p5"], "tag": "pdf-page" },
+    { "q": "kingfisher diving into a stream", "expect": ["Home/Books/field-guide-birds.pdf@p120"], "tag": "long-pdf" },
+    { "q": "where snowy owls go in winter", "expect": ["Home/Books/field-guide-birds.pdf@p190"], "tag": "long-pdf" },
+
+    { "q": "a corgi", "expect": ["Home/Pictures/corgi.jpg", "Home/Pictures/corgi copy.jpg"], "tag": "image" },
+    { "q": "cats sleeping on a couch", "expect": ["Home/Pictures/cats.jpg"], "tag": "image" },
+    { "q": "striped big cat", "expect": ["Home/Pictures/tiger.jpg"], "tag": "image" },
+    { "q": "a butterfly on a flower", "expect": ["Home/Pictures/butterfly.jpg"], "tag": "image" },
+    { "q": "giraffes on the savanna", "expect": ["Home/Pictures/IMG_2041.jpg"], "tag": "image" },
+    { "q": "turquoise mountain lake", "expect": ["Home/Travel/photos/lake.png"], "tag": "image" },
+    { "q": "busy city street with skyscrapers", "expect": ["Home/Travel/photos/new-york.jpg"], "tag": "image" },
+    { "q": "loaf of bread", "expect": ["Home/Recipes/bread.png"], "tag": "image" },
+    { "q": "a shop receipt", "expect": ["Home/Finance/receipt.png"], "tag": "image" },
+    { "q": "screenshot of an invoice table", "expect": ["Home/Desktop/Screenshot 2026-10-01 at 14.22.10.png"], "tag": "screenshot" },
+
+    { "q": "ORD-48151623", "expect": ["Home/Finance/orders-export.csv"], "tag": "lookup" },
+    { "q": "ERR_K7Q2LM", "expect": ["Work/bug-report-ERR.txt"], "tag": "lookup" },
+    { "q": "INV-20431", "expect": ["Home/Finance/invoice-march.txt"], "tag": "lookup" },
+    { "q": "budget 2026", "expect": ["Home/Finance/Budget 2026.docx"], "tag": "filename" },
+
+    { "q": "president speech about serving your country", "expect": ["Home/Music/speech-kennedy.wav@t0-30"], "tag": "audio" },
+    { "q": "a dog barking", "expect": ["Home/Music/dog-recording.wav"], "tag": "audio" },
+    { "q": "solo piano music", "expect": ["Home/Music/piano.wav"], "tag": "audio" },
+    { "q": "sea turtle swimming in the ocean", "expect": ["Home/Movies/clip-0412.mp4"], "tag": "video" },
+    { "q": "judge in a courtroom", "expect": ["Home/Movies/courtroom.mp4"], "tag": "video" },
+
+    { "q": "quantum chromodynamics lattice simulation", "expect": [], "tag": "none" },
+    { "q": "wedding seating chart", "expect": [], "tag": "none" },
+    { "q": "mortgage refinancing rates", "expect": [], "tag": "none" },
+    { "q": "XQZ-99817734", "expect": [], "tag": "none" }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "kind": "find",
+      "prompt": "what temperature should I bake the sourdough at",
+      "expectSource": "Home/Recipes/sourdough.md",
+      "answerAny": ["250", "230"]
+    },
+    {
+      "kind": "find",
+      "prompt": "am I allowed to keep a dog in my flat",
+      "expectSource": "Home/Documents/lease-harbour-lane.pdf",
+      "answerAny": ["consent", "written"]
+    },
+    {
+      "kind": "find",
+      "prompt": "when is my tax return due",
+      "expectSource": "Home/Finance/tax-notes.md",
+      "answerAny": ["31 January", "January 31"]
+    },
+    {
+      "kind": "find",
+      "prompt": "how much do I owe Northwind Design",
+      "expectSource": "Home/Finance/invoice-march.txt",
+      "answerAny": ["2,340", "2340"]
+    },
+    {
+      "kind": "find",
+      "prompt": "what causes the ERR_K7Q2LM checkout failure",
+      "expectSource": "Work/bug-report-ERR.txt",
+      "answerAny": ["time", "retry", "session"]
+    },
+    {
+      "kind": "ask",
+      "prompt": "Which of my files says when the corgi gets his vaccinations, and when is it?",
+      "expectTool": "search_index",
+      "expectSource": "Home/Pets/corgi-care.md",
+      "answerAny": ["March"]
+    },
+    {
+      "kind": "tool",
+      "cwd": "Home/Travel",
+      "prompt": "Create a folder called archive here and copy lisbon-itinerary.md into it.",
+      "expectTool": "copy_files",
+      "exists": ["Home/Travel/archive/lisbon-itinerary.md", "Home/Travel/lisbon-itinerary.md"]
+    },
+    {
+      "kind": "tool",
+      "cwd": "Home/Travel",
+      "prompt": "Rename packing-list.md to packing.md.",
+      "expectTool": "rename_file",
+      "exists": ["Home/Travel/packing.md"],
+      "absent": ["Home/Travel/packing-list.md"]
+    },
+    {
+      "kind": "tool",
+      "cwd": "Home/Finance",
+      "prompt": "List the files in this folder.",
+      "expectTool": "list_folder",
+      "answerAny": ["tax-notes", "invoice-march"]
+    },
+    {
+      "kind": "tool",
+      "cwd": "Home/Recipes",
+      "prompt": "What does weeknight-pasta.md say to add to the sauce?",
+      "expectTool": "read_file",
+      "answerAny": ["garlic", "chilli", "basil", "tomato"],
+      "readOnly": true
+    }
+  ]
+}

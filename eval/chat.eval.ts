@@ -1,0 +1,210 @@
+/**
+ * Chat eval: the Assistant end to end — context building, the real on-device
+ * LLM (`llmRuntime.ts`, in-process) and the file tools — over the testbed.
+ *
+ * Opt-in: needs a chat model. Set `FILDOS_EVAL_LLM` to an `LLM_MODELS` id
+ * (e.g. qwen3-4b); weights load from `FILDOS_LLM_DIR` (default
+ * `eval/.models/llm`) and download there if missing.
+ *
+ * Cases (`queries/chat.json`):
+ *  - find: `/find <question>` — did retrieval surface the expected file,
+ *    did the answer cite it, does the answer hold the expected fact
+ *  - ask:  a plain question the model must research with `search_index`
+ *  - tool: a file action in a scratch copy of the testbed — the expected tool
+ *    ran and the disk ends in the expected state (read-only cases must change
+ *    nothing)
+ */
+import { promises as fs } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join, relative, resolve, sep } from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import type { ChatSendPayload, ChatToolCall } from '@shared/types';
+import { extractText } from '../src/main/ai/index/extract';
+import { assembleSystem, buildChat } from '../src/main/ai/llm/context';
+import { executeChatTool, type ChatToolDeps } from '../src/main/ai/llm/tools';
+import { handle, resolveTool, setPost } from '../src/main/ai/llm/llmRuntime';
+import { listDir } from '../src/main/fs/service';
+import { closeTestbed, indexTestbed, search, type Indexed } from './lib/harness';
+import { pct, table, writeResults } from './lib/report';
+
+interface ChatCase {
+  kind: 'find' | 'ask' | 'tool';
+  prompt: string;
+  cwd?: string;
+  expectSource?: string;
+  expectTool?: string;
+  answerAny?: string[];
+  exists?: string[];
+  absent?: string[];
+  readOnly?: boolean;
+}
+
+interface CaseResult {
+  prompt: string;
+  kind: ChatCase['kind'];
+  retrieved: boolean | null;
+  cited: boolean | null;
+  answered: boolean | null;
+  tool: boolean | null;
+  disk: boolean | null;
+  tools: string[];
+  seconds: number;
+  answer: string;
+}
+
+const CASES: ChatCase[] = JSON.parse(readFileSync(join(__dirname, 'queries', 'chat.json'), 'utf8')).cases;
+const MODEL = process.env.FILDOS_EVAL_LLM;
+const MUTATING = new Set(['create_file', 'create_folder', 'copy_files', 'move_files', 'rename_file', 'delete_files']);
+
+let ix: Indexed;
+let workspace: string;
+let seq = 0;
+
+/** Tool calls of the request in flight, executed against the scratch workspace. */
+let onToolCall: ((callId: string, name: string, params: unknown) => void) | null = null;
+
+beforeAll(async () => {
+  if (!MODEL) return;
+  process.env.FILDOS_LLM_DIR ??= resolve(__dirname, '.models', 'llm');
+  ix = await indexTestbed();
+  setPost((msg) => {
+    const m = msg as { type?: string; callId?: string; name?: string; params?: unknown };
+    if (m.type === 'toolCall' && onToolCall) onToolCall(m.callId!, m.name!, m.params);
+  });
+  await handle({ id: 0, type: 'download', modelId: MODEL });
+}, 3_600_000);
+
+afterAll(() => {
+  if (MODEL) closeTestbed();
+});
+
+/** A fresh scratch copy of the testbed's Home folder for one tool case. */
+async function freshWorkspace(): Promise<string> {
+  if (workspace) await fs.rm(workspace, { recursive: true, force: true });
+  workspace = await fs.mkdtemp(join(tmpdir(), 'fildos-chat-eval-'));
+  await fs.cp(ix.abs('Home'), join(workspace, 'Home'), { recursive: true });
+  return workspace;
+}
+
+async function snapshotTree(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await fs.readdir(dir, { recursive: true, withFileTypes: true })) {
+    out.push(relative(dir, join(e.parentPath, e.name)));
+  }
+  return out.sort();
+}
+
+async function runCase(c: ChatCase): Promise<CaseResult> {
+  const ws = c.kind === 'tool' ? await freshWorkspace() : ix.root;
+  const inWs = (rel: string) => join(ws, ...rel.split('/'));
+  const cwd = c.cwd ? inWs(c.cwd) : undefined;
+  const toDeps: ChatToolDeps = {
+    trashItem: (path) => fs.rm(path, { recursive: true }),
+    remap: () => {},
+    dropIndex: async () => {},
+    extract: extractText,
+    search: (q, k) => search(ix, q, k),
+    home: () => ws,
+  };
+  const payload: ChatSendPayload = {
+    requestId: `eval-${seq++}`,
+    prompt: c.prompt,
+    history: [],
+    mentions: [],
+    command: c.kind === 'find' ? 'find' : undefined,
+    cwd,
+  };
+  const built = await buildChat(payload, {
+    extract: extractText,
+    list: listDir,
+    search: (q, k) => search(ix, q, k),
+  });
+  const calls: ChatToolCall[] = [];
+  onToolCall = (callId, name, params) => {
+    void executeChatTool(name, (params ?? {}) as Record<string, unknown>, cwd, toDeps).then(({ call, result }) => {
+      calls.push(call);
+      resolveTool(callId, result);
+    });
+  };
+  const before = c.readOnly ? await snapshotTree(ws) : null;
+  const started = performance.now();
+  const answer = (await handle({
+    id: seq,
+    type: 'chat',
+    modelId: MODEL!,
+    requestId: payload.requestId,
+    system: assembleSystem(built, { cwd }),
+    history: [],
+    prompt: built.prompt,
+    tools: true,
+  })) as string;
+  const seconds = (performance.now() - started) / 1000;
+  onToolCall = null;
+
+  const toolNames = calls.map((t) => t.name);
+  const sourcePaths = [
+    ...(built.hits ?? []).map((h) => h.path),
+    ...calls.flatMap((t) => t.paths ?? []),
+  ].map((p) => relative(ws, p).split(sep).join('/'));
+  const lower = answer.toLowerCase();
+
+  let disk: boolean | null = null;
+  if (c.exists || c.absent || c.readOnly) {
+    const exists = await Promise.all((c.exists ?? []).map((p) => fs.stat(inWs(p)).then(() => true, () => false)));
+    const absent = await Promise.all((c.absent ?? []).map((p) => fs.stat(inWs(p)).then(() => false, () => true)));
+    const unchanged = before ? JSON.stringify(before) === JSON.stringify(await snapshotTree(ws)) : true;
+    disk = exists.every(Boolean) && absent.every(Boolean) && unchanged && !(c.readOnly && toolNames.some((n) => MUTATING.has(n)));
+  }
+  return {
+    prompt: c.prompt,
+    kind: c.kind,
+    retrieved: c.expectSource ? sourcePaths.includes(c.expectSource) : null,
+    cited: c.expectSource ? lower.includes(basename(c.expectSource).toLowerCase().replace(/\.\w+$/, '')) : null,
+    answered: c.answerAny ? c.answerAny.some((a) => lower.includes(a.toLowerCase())) : null,
+    tool: c.expectTool ? toolNames.includes(c.expectTool) : null,
+    disk,
+    tools: toolNames,
+    seconds,
+    answer: answer.slice(0, 400),
+  };
+}
+
+const rate = (rows: CaseResult[], key: 'retrieved' | 'cited' | 'answered' | 'tool' | 'disk') => {
+  const scored = rows.filter((r) => r[key] !== null);
+  return scored.length ? scored.filter((r) => r[key]).length / scored.length : null;
+};
+
+describe.skipIf(!MODEL)('chat eval', () => {
+  it('measures retrieval, citations, answers and tool use', async () => {
+    const results: CaseResult[] = [];
+    for (const c of CASES) results.push(await runCase(c));
+
+    const mark = (v: boolean | null) => (v === null ? '-' : v ? 'yes' : 'NO');
+    console.log(`\nChat eval — model ${MODEL}, embeddings ${ix.kind}`);
+    console.log(
+      table(
+        ['kind', 'prompt', 'retrieved', 'cited', 'answer', 'tool', 'disk', 's'],
+        results.map((r) => [r.kind, r.prompt.slice(0, 48), mark(r.retrieved), mark(r.cited), mark(r.answered), mark(r.tool), mark(r.disk), r.seconds.toFixed(1)]),
+      ),
+    );
+    const summary = {
+      retrieved: rate(results, 'retrieved'),
+      cited: rate(results, 'cited'),
+      answered: rate(results, 'answered'),
+      tool: rate(results, 'tool'),
+      disk: rate(results, 'disk'),
+      meanSeconds: results.reduce((s, r) => s + r.seconds, 0) / results.length,
+    };
+    console.log(
+      `\n${Object.entries(summary)
+        .map(([k, v]) => `${k}: ${v === null ? '-' : k === 'meanSeconds' ? `${(v as number).toFixed(1)} s` : pct(v as number)}`)
+        .join('  ')}`,
+    );
+    for (const r of results.filter((x) => x.answered === false || x.tool === false || x.disk === false)) {
+      console.log(`\n[${r.kind}] ${r.prompt}\n  tools: ${r.tools.join(', ') || '(none)'}\n  answer: ${r.answer.replace(/\s+/g, ' ')}`);
+    }
+    const file = await writeResults('chat', ix.kind, { model: MODEL, summary, cases: results });
+    console.log(`\nWrote ${file}`);
+  }, 3_600_000);
+});
