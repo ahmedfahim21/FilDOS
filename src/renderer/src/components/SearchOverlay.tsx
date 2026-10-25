@@ -6,6 +6,7 @@ import { useAi } from '@/state/ai';
 import { baseName, parentOf } from '@/lib/path';
 import { resolveDroppedPaths } from '@/lib/dragState';
 import { fileLogo } from '@/lib/fileLogo';
+import { Marked, markedWords } from '@/lib/marks';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -17,19 +18,34 @@ import {
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Icon } from './Icon';
 import { TagDot } from './TagDots';
+import { PagePreview } from './PagePreview';
 
 type Scope = 'folder' | 'all';
 type Modified = 'any' | 'day' | 'week' | 'month';
 
 /** One unified result row, whatever lane it came from. */
+/** The query's words worth highlighting on a page (when the snippet marked none). */
+function queryWords(query: string): string[] {
+  return [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => [...w].length >= 3))];
+}
+
+/** The PDF page a hit points at, if it points at one. */
+function pageOf(hit: SemanticHit): number | undefined {
+  return hit.segment === 'page' && hit.loc ? hit.loc : undefined;
+}
+
 interface Row {
   entry: Entry;
-  /** Secondary line: snippet (AI) or path. */
+  /** Secondary line: snippet (AI, words marked «like this») or path. */
   sub: string;
   /** AI relevance in [0,1]; undefined for name/recents rows. */
   score?: number;
   /** The single strongest result — gets the "Best" pill. */
   best?: boolean;
+  /** PDF page the hit points at (1-based), when it points at one. */
+  page?: number;
+  /** Below the clear matches: folded under "weaker matches" until expanded. */
+  weak?: boolean;
 }
 
 interface Section {
@@ -178,6 +194,10 @@ export function SearchOverlay({
   const [tagId, setTagId] = useState<number | null>(null);
   const [modified, setModified] = useState<Modified>('any');
   const [aiHits, setAiHits] = useState<SemanticHit[]>([]);
+  /** How many of aiHits are clear matches; the rest fold as weaker ones. */
+  const [aiStrong, setAiStrong] = useState(0);
+  const [showWeak, setShowWeak] = useState(false);
+  const [preview, setPreview] = useState<{ path: string; name: string; page: number; words: string[] } | null>(null);
   const [nameHits, setNameHits] = useState<SearchHit[]>([]);
   const [tagFiles, setTagFiles] = useState<Entry[]>([]);
   const [recents, setRecents] = useState<RecentItem[]>([]);
@@ -206,6 +226,7 @@ export function SearchOverlay({
     setSimilarFile(seedFile ?? null);
     setActiveIx(0);
     setAiHits([]);
+    setAiStrong(0);
     setNameHits([]);
     window.recents.list(12).then((r) => r.ok && setRecents(r.data));
     // Focus after the panel mounts.
@@ -217,10 +238,11 @@ export function SearchOverlay({
   // own handler stops propagation before this fires).
   useEffect(() => {
     if (!open) return;
-    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // With a page preview up, Escape closes only the preview (Radix handles it).
+    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && !preview && onClose();
     window.addEventListener('keydown', onEsc);
     return () => window.removeEventListener('keydown', onEsc);
-  }, [open, onClose]);
+  }, [open, onClose, preview]);
 
   const scopePath = scope === 'folder' && rootPath ? rootPath : undefined;
 
@@ -253,8 +275,10 @@ export function SearchOverlay({
         if (reqRef.current !== id) return;
         setLoading(false);
         setNameHits([]);
-        if (r.ok) setAiHits(r.data);
-        else {
+        if (r.ok) {
+          setAiHits(r.data);
+          setAiStrong(r.data.length);
+        } else {
           setAiHits([]);
           notifyError(r.error);
           setSimilarFile(null);
@@ -271,7 +295,15 @@ export function SearchOverlay({
       if (ai.ready) {
         window.index.search(q, { rootPath: scopePath, k: 20 }).then((r) => {
           if (reqRef.current !== id) return;
-          setAiHits(r.ok ? r.data : []);
+          if (r.ok) {
+            setAiHits(r.data.hits);
+            setAiStrong(r.data.strong);
+          } else {
+            setAiHits([]);
+            setAiStrong(0);
+            notifyError(r.error);
+          }
+          setShowWeak(false);
           done.semantic = true;
           settle();
         });
@@ -378,7 +410,7 @@ export function SearchOverlay({
     if (similarFile) {
       const rows = aiHits
         .filter((h) => passes(h))
-        .map((h, i) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score, best: i === 0 }));
+        .map((h, i) => ({ entry: h, sub: h.snippet || h.relativePath, score: h.score, best: i === 0, page: pageOf(h) }));
       return rows.length
         ? [{ title: 'Similar files', icon: 'sparkles' as const, iconClass: 'text-mint', rows }]
         : [];
@@ -389,12 +421,12 @@ export function SearchOverlay({
     // Filename evidence is high-precision, so it anchors the score; semantic
     // relevance is discounted against it, and a file found by both lanes gets a
     // corroboration bump.
-    const byPath = new Map<string, { entry: Entry; snippet?: string; sem: number }>();
-    for (const h of aiHits) {
-      if (passes(h)) byPath.set(h.path, { entry: h, snippet: h.snippet, sem: h.score });
-    }
+    const byPath = new Map<string, { entry: Entry; snippet?: string; sem: number; page?: number; semWeak: boolean }>();
+    aiHits.forEach((h, i) => {
+      if (passes(h)) byPath.set(h.path, { entry: h, snippet: h.snippet, sem: h.score, page: pageOf(h), semWeak: i >= aiStrong });
+    });
     for (const h of nameHits) {
-      if (passes(h) && !byPath.has(h.path)) byPath.set(h.path, { entry: h, sem: 0 });
+      if (passes(h) && !byPath.has(h.path)) byPath.set(h.path, { entry: h, sem: 0, semWeak: false });
     }
     const NAME_WEIGHT = [0, 0.72, 0.9, 1] as const; // by nameMatchTier
     const fused = [...byPath.values()]
@@ -406,6 +438,9 @@ export function SearchOverlay({
           entry: r.entry,
           sub: r.snippet?.trim() ? r.snippet : pretty(r.entry.path),
           score: r.sem > 0 ? r.sem : undefined,
+          page: r.page,
+          // A weaker meaning match stays weak unless its name matches too.
+          weak: r.semWeak && nameScore === 0,
           rank: Math.max(nameScore, semScore) + corroborated,
         };
       })
@@ -414,12 +449,24 @@ export function SearchOverlay({
           b.rank - a.rank || (b.score ?? 0) - (a.score ?? 0) || a.entry.path.length - b.entry.path.length,
       )
       .slice(0, 50)
-      .map(({ entry, sub, score }, i) => ({ entry, sub, score, best: i === 0 }));
+      .map(({ entry, sub, score, page, weak }, i) => ({ entry, sub, score, page, weak, best: i === 0 && !weak }));
 
-    return fused.length
-      ? [{ title: 'Results', icon: 'sparkles' as const, iconClass: 'text-mint', rows: fused }]
-      : [];
-  }, [text, similarFile, aiHits, nameHits, tagFiles, recents, typeKeys, tagId, tagMap, modified, tags, home]);
+    const strongRows = fused.filter((r) => !r.weak);
+    const weakRows = fused.filter((r) => r.weak);
+    const out: Section[] = [];
+    if (strongRows.length) out.push({ title: 'Results', icon: 'sparkles' as const, iconClass: 'text-mint', rows: strongRows });
+    if (weakRows.length && (showWeak || !strongRows.length)) {
+      out.push({ title: 'Weaker matches', icon: 'search' as const, iconClass: '', rows: weakRows });
+    }
+    return out;
+  }, [text, similarFile, aiHits, aiStrong, showWeak, nameHits, tagFiles, recents, typeKeys, tagId, tagMap, modified, tags, home]);
+
+  /** Weaker matches folded under the results (a toggle instead of rows), until expanded. */
+  const foldedWeak = useMemo(() => {
+    if (showWeak || similarFile || !text.trim() || !sections.some((sec) => sec.title === 'Results')) return 0;
+    const shown = new Set(sections.flatMap((sec) => sec.rows.map((r) => r.entry.path)));
+    return aiHits.slice(aiStrong).filter((h) => !shown.has(h.path)).length;
+  }, [showWeak, similarFile, text, sections, aiHits, aiStrong]);
 
   const flat = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
@@ -494,324 +541,351 @@ export function SearchOverlay({
   let ix = -1; // running flat index across sections
 
   return (
-    <div
-      className="animate-in fade-in-0 bg-ink/20 fixed inset-0 z-50 backdrop-blur-[3px] duration-150"
-      onMouseDown={onClose}
-      role="dialog"
-      aria-label="Search"
-    >
+    <>
       <div
-        className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[10vh] w-180 max-w-[94vw] duration-150"
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={onKeyDown}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
+        className="animate-in fade-in-0 bg-ink/20 fixed inset-0 z-50 backdrop-blur-[3px] duration-150"
+        onMouseDown={onClose}
+        role="dialog"
+        aria-label="Search"
       >
-        {/* The scoop comet orbiting the panel edge. */}
-        <div className="scoop-trail absolute -inset-px rounded-[14px] -m-px" aria-hidden />
-
         <div
-          className={cn(
-            'material relative flex flex-col overflow-hidden rounded-xl shadow-2xl',
-            dragOver && 'ring-mint/50 ring-2 ring-inset',
-          )}
+          className="animate-in fade-in-0 zoom-in-95 relative mx-auto mt-[10vh] w-180 max-w-[94vw] duration-150"
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={onKeyDown}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
         >
-          {/* ── Input row ── */}
-          <div className="border-border flex h-13 shrink-0 items-center gap-2.5 border-b px-4">
-            <Icon
-              name="sparkles"
-              size={16}
-              className={cn('shrink-0', aiReady ? 'text-mint' : 'text-muted-foreground')}
-            />
-            {similarFile && (
-              <span className="bg-mint/10 text-foreground ring-mint/30 flex max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ring-1">
-                <img
-                  src={fileLogo(pseudoEntry(similarFile, baseName(similarFile), 0))}
-                  alt=""
-                  width={13}
-                  height={13}
-                />
-                <span className="truncate">{baseName(similarFile)}</span>
-                <button
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={() => setSimilarFile(null)}
-                  aria-label="Clear similar-file search"
-                >
-                  <Icon name="close" size={11} />
-                </button>
-              </span>
-            )}
-            <input
-              ref={inputRef}
-              className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 select-text border-0 bg-transparent text-[15px] outline-none"
-              placeholder={
-                similarFile
-                  ? 'Showing files similar to this one'
-                  : dragOver
-                    ? 'Drop to find similar files…'
-                    : 'Search by name, meaning, or tag…'
-              }
-              value={text}
-              readOnly={!!similarFile}
-              onChange={(e) => setText(e.target.value)}
-            />
-            {loading ? (
-              <svg
-                role="img"
-                className="text-mint shrink-0 animate-spin motion-reduce:animate-none"
-                width={15}
-                height={15}
-                viewBox="0 0 20 20"
-                fill="none"
-                aria-label="Searching"
-              >
-                <circle cx={10} cy={10} r={8} stroke="currentColor" strokeWidth={2} strokeDasharray="18 37" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <Kbd className="shrink-0">esc</Kbd>
-            )}
-          </div>
+          {/* The scoop comet orbiting the panel edge. */}
+          <div className="scoop-trail absolute -inset-px rounded-[14px] -m-px" aria-hidden />
 
-          {/* ── Filter chips — wraps, never scrolls ── */}
-          <div className="border-border flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3.5 py-2.5">
-            {/* Scope: segmented pill — only when a folder is behind the overlay. */}
-            {rootPath && (
-              <div className="bg-muted mr-1 flex h-6 shrink-0 items-center rounded-full p-0.5 text-2xs">
-                {(['all', 'folder'] as Scope[]).map((s) => (
+          <div
+            className={cn(
+              'material relative flex flex-col overflow-hidden rounded-xl shadow-2xl',
+              dragOver && 'ring-mint/50 ring-2 ring-inset',
+            )}
+          >
+            {/* ── Input row ── */}
+            <div className="border-border flex h-13 shrink-0 items-center gap-2.5 border-b px-4">
+              <Icon
+                name="sparkles"
+                size={16}
+                className={cn('shrink-0', aiReady ? 'text-mint' : 'text-muted-foreground')}
+              />
+              {similarFile && (
+                <span className="bg-mint/10 text-foreground ring-mint/30 flex max-w-56 shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs ring-1">
+                  <img
+                    src={fileLogo(pseudoEntry(similarFile, baseName(similarFile), 0))}
+                    alt=""
+                    width={13}
+                    height={13}
+                  />
+                  <span className="truncate">{baseName(similarFile)}</span>
                   <button
-                    key={s}
-                    onClick={() => setScope(s)}
-                    className={cn(
-                      'ease-snappy h-5 rounded-full px-2 transition duration-150',
-                      scope === s
-                        ? 'bg-background text-foreground font-medium shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => setSimilarFile(null)}
+                    aria-label="Clear similar-file search"
                   >
-                    {s === 'all' ? 'Everywhere' : 'This folder'}
+                    <Icon name="close" size={11} />
                   </button>
-                ))}
-              </div>
-            )}
-
-            {TYPE_FILTERS.map((f) => {
-              const active = typeKeys.has(f.key);
-              return (
-                <button
-                  key={f.key}
-                  onClick={() =>
-                    setTypeKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(f.key)) next.delete(f.key);
-                      else next.add(f.key);
-                      return next;
-                    })
-                  }
-                  className={cn(CHIP_BASE, active ? cn(f.active, 'font-medium') : CHIP_IDLE)}
+                </span>
+              )}
+              <input
+                ref={inputRef}
+                className="text-foreground placeholder:text-muted-foreground min-w-0 flex-1 select-text border-0 bg-transparent text-[15px] outline-none"
+                placeholder={
+                  similarFile
+                    ? 'Showing files similar to this one'
+                    : dragOver
+                      ? 'Drop to find similar files…'
+                      : 'Search by name, meaning, or tag…'
+                }
+                value={text}
+                readOnly={!!similarFile}
+                onChange={(e) => setText(e.target.value)}
+              />
+              {loading ? (
+                <svg
+                  role="img"
+                  className="text-mint shrink-0 animate-spin motion-reduce:animate-none"
+                  width={15}
+                  height={15}
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  aria-label="Searching"
                 >
-                  <span className={cn('size-1.5 rounded-full', f.dot)} />
-                  {f.label}
-                </button>
-              );
-            })}
+                  <circle cx={10} cy={10} r={8} stroke="currentColor" strokeWidth={2} strokeDasharray="18 37" strokeLinecap="round" />
+                </svg>
+              ) : (
+                <Kbd className="shrink-0">esc</Kbd>
+              )}
+            </div>
 
-            {tags.length > 0 && (
+            {/* ── Filter chips — wraps, never scrolls ── */}
+            <div className="border-border flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3.5 py-2.5">
+              {/* Scope: segmented pill — only when a folder is behind the overlay. */}
+              {rootPath && (
+                <div className="bg-muted mr-1 flex h-6 shrink-0 items-center rounded-full p-0.5 text-2xs">
+                  {(['all', 'folder'] as Scope[]).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setScope(s)}
+                      className={cn(
+                        'ease-snappy h-5 rounded-full px-2 transition duration-150',
+                        scope === s
+                          ? 'bg-background text-foreground font-medium shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {s === 'all' ? 'Everywhere' : 'This folder'}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {TYPE_FILTERS.map((f) => {
+                const active = typeKeys.has(f.key);
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() =>
+                      setTypeKeys((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(f.key)) next.delete(f.key);
+                        else next.add(f.key);
+                        return next;
+                      })
+                    }
+                    className={cn(CHIP_BASE, active ? cn(f.active, 'font-medium') : CHIP_IDLE)}
+                  >
+                    <span className={cn('size-1.5 rounded-full', f.dot)} />
+                    {f.label}
+                  </button>
+                );
+              })}
+
+              {tags.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={cn(CHIP_BASE, activeTag ? 'font-medium' : CHIP_IDLE)}
+                      style={
+                        activeTag
+                          ? {
+                              color: activeTag.color,
+                              borderColor: `${activeTag.color}59`,
+                              background: `${activeTag.color}1a`,
+                            }
+                          : undefined
+                      }
+                    >
+                      {activeTag ? (
+                        <>
+                          <TagDot color={activeTag.color} size={8} />
+                          {activeTag.name}
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="tag" size={11} /> Tag
+                        </>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-40">
+                    <DropdownMenuRadioGroup
+                      value={String(tagId ?? '')}
+                      onValueChange={(v) => setTagId(v ? Number(v) : null)}
+                    >
+                      <DropdownMenuRadioItem value="">Any tag</DropdownMenuRadioItem>
+                      {tags.map((t) => (
+                        <DropdownMenuRadioItem key={t.id} value={String(t.id)}>
+                          <TagDot color={t.color} size={9} /> {t.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className={cn(CHIP_BASE, activeTag ? 'font-medium' : CHIP_IDLE)}
-                    style={
-                      activeTag
-                        ? {
-                            color: activeTag.color,
-                            borderColor: `${activeTag.color}59`,
-                            background: `${activeTag.color}1a`,
-                          }
-                        : undefined
-                    }
-                  >
-                    {activeTag ? (
-                      <>
-                        <TagDot color={activeTag.color} size={8} />
-                        {activeTag.name}
-                      </>
-                    ) : (
-                      <>
-                        <Icon name="tag" size={11} /> Tag
-                      </>
+                    className={cn(
+                      CHIP_BASE,
+                      modified !== 'any'
+                        ? 'border-blueberry/40 bg-blueberry/10 text-blueberry font-medium'
+                        : CHIP_IDLE,
                     )}
+                  >
+                    <Icon name="clock" size={11} />
+                    {MODIFIED_OPTIONS.find((o) => o.value === modified)?.label}
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-40">
+                <DropdownMenuContent align="start" className="min-w-36">
                   <DropdownMenuRadioGroup
-                    value={String(tagId ?? '')}
-                    onValueChange={(v) => setTagId(v ? Number(v) : null)}
+                    value={modified}
+                    onValueChange={(v) => setModified(v as Modified)}
                   >
-                    <DropdownMenuRadioItem value="">Any tag</DropdownMenuRadioItem>
-                    {tags.map((t) => (
-                      <DropdownMenuRadioItem key={t.id} value={String(t.id)}>
-                        <TagDot color={t.color} size={9} /> {t.name}
+                    {MODIFIED_OPTIONS.map((o) => (
+                      <DropdownMenuRadioItem key={o.value} value={o.value}>
+                        {o.label}
                       </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
+            </div>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className={cn(
-                    CHIP_BASE,
-                    modified !== 'any'
-                      ? 'border-blueberry/40 bg-blueberry/10 text-blueberry font-medium'
-                      : CHIP_IDLE,
+            {/* ── Results ── */}
+            <div ref={listRef} className="max-h-[54vh] flex-1 overflow-y-auto py-1.5">
+              {flat.length === 0 ? (
+                <div className="flex flex-col items-center gap-2.5 px-6 py-12 text-center">
+                  <div className="bg-muted flex size-10 items-center justify-center rounded-full">
+                    <Icon
+                      name={text.trim() || similarFile ? 'search' : 'sparkles'}
+                      size={17}
+                      className="text-muted-foreground"
+                    />
+                  </div>
+                  <div className="text-muted-foreground text-sm">
+                    {loading
+                      ? 'Searching…'
+                      : text.trim() || similarFile
+                        ? 'No matches.'
+                        : 'Type to search — or drop a file here to find similar ones.'}
+                  </div>
+                  {!ai.enabled && (
+                    <div className="text-muted-foreground text-2xs">
+                      Enable AI in Settings to also search by meaning.
+                    </div>
                   )}
-                >
-                  <Icon name="clock" size={11} />
-                  {MODIFIED_OPTIONS.find((o) => o.value === modified)?.label}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-36">
-                <DropdownMenuRadioGroup
-                  value={modified}
-                  onValueChange={(v) => setModified(v as Modified)}
-                >
-                  {MODIFIED_OPTIONS.map((o) => (
-                    <DropdownMenuRadioItem key={o.value} value={o.value}>
-                      {o.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* ── Results ── */}
-          <div ref={listRef} className="max-h-[54vh] flex-1 overflow-y-auto py-1.5">
-            {flat.length === 0 ? (
-              <div className="flex flex-col items-center gap-2.5 px-6 py-12 text-center">
-                <div className="bg-muted flex size-10 items-center justify-center rounded-full">
-                  <Icon
-                    name={text.trim() || similarFile ? 'search' : 'sparkles'}
-                    size={17}
-                    className="text-muted-foreground"
-                  />
                 </div>
-                <div className="text-muted-foreground text-sm">
-                  {loading
-                    ? 'Searching…'
-                    : text.trim() || similarFile
-                      ? 'No matches.'
-                      : 'Type to search — or drop a file here to find similar ones.'}
-                </div>
-                {!ai.enabled && (
-                  <div className="text-muted-foreground text-2xs">
-                    Enable AI in Settings to also search by meaning.
-                  </div>
-                )}
-              </div>
-            ) : (
-              sections.map((section) => (
-                <div key={section.title}>
-                  <div className="text-muted-foreground flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-3xs font-semibold tracking-wider uppercase">
-                    {section.tagColor ? (
-                      <TagDot color={section.tagColor} size={8} />
-                    ) : (
-                      <Icon name={section.icon} size={11} className={section.iconClass} />
-                    )}
-                    {section.title}
-                  </div>
-                  {section.rows.map((row) => {
-                    ix++;
-                    const i = ix;
-                    // Rows are ordered by fused relevance (filename evidence +
-                    // meaning + keywords + reranker), which no single number
-                    // honestly represents — so no pseudo-percentages: just a
-                    // "Best" pill on the top match and the order itself.
-                    const isBest = !!row.best;
-                    return (
-                      <div
-                        key={`${section.title}:${row.entry.path}`}
-                        data-ix={i}
-                        className={cn(
-                          'mx-2 flex cursor-default items-center gap-3 rounded-lg px-2.5 py-2',
-                          i === activeIx && 'bg-foreground/6',
-                        )}
-                        onMouseMove={() => setActiveIx(i)}
-                        onClick={() => activate(row)}
-                      >
-                        <img
-                          src={fileLogo(row.entry)}
-                          alt=""
-                          width={20}
-                          height={20}
-                          draggable={false}
-                          className="shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-foreground truncate text-sm" title={row.entry.path}>
-                            {row.entry.name}
+              ) : (
+                sections.map((section) => (
+                  <div key={section.title}>
+                    <div className="text-muted-foreground flex items-center gap-1.5 px-4 pt-2.5 pb-1 text-3xs font-semibold tracking-wider uppercase">
+                      {section.tagColor ? (
+                        <TagDot color={section.tagColor} size={8} />
+                      ) : (
+                        <Icon name={section.icon} size={11} className={section.iconClass} />
+                      )}
+                      {section.title}
+                    </div>
+                    {section.rows.map((row) => {
+                      ix++;
+                      const i = ix;
+                      // Rows are ordered by fused relevance (filename evidence +
+                      // meaning + keywords), which no single number
+                      // honestly represents — so no pseudo-percentages: just a
+                      // "Best" pill on the top match and the order itself.
+                      const isBest = !!row.best;
+                      return (
+                        <div
+                          key={`${section.title}:${row.entry.path}`}
+                          data-ix={i}
+                          className={cn(
+                            'mx-2 flex cursor-default items-center gap-3 rounded-lg px-2.5 py-2',
+                            i === activeIx && 'bg-foreground/6',
+                          )}
+                          onMouseMove={() => setActiveIx(i)}
+                          onClick={() => activate(row)}
+                        >
+                          <img
+                            src={fileLogo(row.entry)}
+                            alt=""
+                            width={20}
+                            height={20}
+                            draggable={false}
+                            className="shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-foreground truncate text-sm" title={row.entry.path}>
+                              {row.entry.name}
+                            </div>
+                            <div className="text-muted-foreground truncate text-2xs">
+                              <Marked text={row.sub} />
+                            </div>
                           </div>
-                          <div className="text-muted-foreground truncate text-2xs">{row.sub}</div>
+                          {row.page && (
+                            <button
+                              className="border-border text-muted-foreground hover:text-foreground hover:bg-foreground/6 shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-3xs"
+                              title={`Preview page ${row.page}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreview({ path: row.entry.path, name: row.entry.name, page: row.page!, words: markedWords(row.sub).length ? markedWords(row.sub) : queryWords(text) });
+                              }}
+                            >
+                              p. {row.page}
+                            </button>
+                          )}
+                          {isBest && (
+                            <span
+                              className="bg-mint/15 text-mint shrink-0 rounded-sm px-1.5 py-0.5 text-3xs font-medium"
+                              title="Strongest match"
+                            >
+                              Best
+                            </span>
+                          )}
+                          {i === activeIx && !isBest && (
+                            <Kbd className="shrink-0 px-1 py-px">↵</Kbd>
+                          )}
                         </div>
-                        {isBest && (
-                          <span
-                            className="bg-mint/15 text-mint shrink-0 rounded-sm px-1.5 py-0.5 text-3xs font-medium"
-                            title="Strongest match"
-                          >
-                            Best
-                          </span>
-                        )}
-                        {i === activeIx && !isBest && (
-                          <Kbd className="shrink-0 px-1 py-px">↵</Kbd>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))
-            )}
-          </div>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+              {foldedWeak > 0 && (
+                <button
+                  className="text-muted-foreground hover:text-foreground hover:bg-foreground/6 mx-2 mb-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-2xs"
+                  onClick={() => setShowWeak(true)}
+                >
+                  <Icon name="chevron" size={11} />
+                  {foldedWeak} weaker {foldedWeak === 1 ? 'match' : 'matches'}
+                </button>
+              )}
+            </div>
 
-          {/* ── Footer hints ── */}
-          <div className="border-border text-muted-foreground flex shrink-0 items-center justify-between gap-3 border-t px-4 py-1.5 text-3xs">
-            <span className="flex items-center gap-1.5">
-              <KbdGroup>
-                <Kbd>↑</Kbd>
-                <Kbd>↓</Kbd>
-              </KbdGroup>
-              Navigate ·<Kbd>↵</Kbd> Open ·
-              <KbdGroup>
-                <Kbd>{modKey}</Kbd>
-                <Kbd>↵</Kbd>
-              </KbdGroup>
-              Show in Folder
-            </span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span
-                className={cn(
-                  'size-1.5 shrink-0 rounded-full',
-                  similarFile || aiReady ? 'bg-mint' : 'bg-muted-foreground/40',
-                )}
-              />
-              <span className="truncate">
-                {similarFile
-                  ? 'Similarity search'
-                  : aiReady
-                    ? 'Meaning + name search'
-                    : 'Name search'}
-                {' · '}
-                {scopePath ? baseName(scopePath) || scopePath : 'Everywhere'}
+            {/* ── Footer hints ── */}
+            <div className="border-border text-muted-foreground flex shrink-0 items-center justify-between gap-3 border-t px-4 py-1.5 text-3xs">
+              <span className="flex items-center gap-1.5">
+                <KbdGroup>
+                  <Kbd>↑</Kbd>
+                  <Kbd>↓</Kbd>
+                </KbdGroup>
+                Navigate ·<Kbd>↵</Kbd> Open ·
+                <KbdGroup>
+                  <Kbd>{modKey}</Kbd>
+                  <Kbd>↵</Kbd>
+                </KbdGroup>
+                Show in Folder
               </span>
-            </span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={cn(
+                    'size-1.5 shrink-0 rounded-full',
+                    similarFile || aiReady ? 'bg-mint' : 'bg-muted-foreground/40',
+                  )}
+                />
+                <span className="truncate">
+                  {similarFile
+                    ? 'Similarity search'
+                    : aiReady
+                      ? 'Meaning + name search'
+                      : 'Name search'}
+                  {' · '}
+                  {scopePath ? baseName(scopePath) || scopePath : 'Everywhere'}
+                </span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      {/* A sibling, not a child: the preview's clicks must not reach the overlay's close-on-mousedown. */}
+      {preview && <PagePreview {...preview} onClose={() => setPreview(null)} />}
+    </>
   );
 }
