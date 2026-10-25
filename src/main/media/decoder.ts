@@ -1,9 +1,9 @@
-import { net, session, WebContentsView, type Session } from 'electron';
+import { session, WebContentsView, type Session } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { isVideo } from '../ai/index/extract';
 import { DECODER_HTML } from './decoderPage';
+import { fileResponse } from './fileResponse';
 import { AUDIO_RATE, FRAME_MAX_SIDE, frameTimes, type DecodedMedia, type Frame } from './signals';
 
 /**
@@ -44,8 +44,8 @@ export class MediaDecoder {
       const token = /^\/media\/([\w-]+)$/.exec(url.pathname)?.[1];
       const path = token ? this.tokens.get(token) : undefined;
       if (!path) return new Response('Forbidden', { status: 403 });
-      // file:// through net.fetch streams the file and honours Range requests (video seeking).
-      return net.fetch(pathToFileURL(path).toString(), { headers: req.headers });
+      // Ranged responses: seeking the video to sample frames needs them.
+      return fileResponse(path, req.headers.get('range'));
     });
     this.ses = ses;
     return ses;

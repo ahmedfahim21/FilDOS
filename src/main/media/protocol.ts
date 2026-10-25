@@ -1,11 +1,11 @@
-import { net, protocol } from 'electron';
+import { protocol } from 'electron';
 import { extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
 import { assertValidPath } from '../fs/service';
 import * as aiIndex from '../db/aiIndex';
 import { AUDIO_EXTENSIONS, VIDEO_EXTENSIONS } from '../ai/index/extract';
 import { DECODE_SCHEME } from './decoder';
+import { fileResponse } from './fileResponse';
 
 /**
  * `fildos-media://` — read-only access for the renderer to the bytes of
@@ -76,7 +76,7 @@ export async function mayServe(path: string): Promise<boolean> {
 export function handleMediaProtocol(): void {
   protocol.handle(MEDIA_SCHEME, async (req) => {
     const granted = grantedPath(req.url);
-    if (granted) return net.fetch(pathToFileURL(granted).toString(), { headers: req.headers });
+    if (granted) return fileResponse(granted, req.headers.get('range'));
     if (new URL(req.url).hostname === 'preview') return new Response('Forbidden', { status: 403 });
     let path: string;
     try {
@@ -87,7 +87,7 @@ export function handleMediaProtocol(): void {
       return new Response('Bad path', { status: 400 });
     }
     if (!(await mayServe(path))) return new Response('Forbidden', { status: 403 });
-    // file:// through net.fetch streams the file and honours Range requests.
-    return net.fetch(pathToFileURL(path).toString(), { headers: req.headers });
+    // Ranged responses, so a recording can start at its moment and seek.
+    return fileResponse(path, req.headers.get('range'));
   });
 }
