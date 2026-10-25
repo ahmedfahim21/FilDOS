@@ -57,6 +57,38 @@ function visionDevice(): EmbedDevice {
 /** Soft tokens per picture when the caller names no budget (the model's default). */
 const DEFAULT_VISION_BUDGET = 280;
 
+/**
+ * Most padded tokens (inputs × longest input) in one model call. The model
+ * returns per-token hidden states alongside the pooled vector; in Electron's
+ * utility process, outputs much past ~5 MB crash the process (exit code 5) —
+ * 8 inputs of ~600 tokens did, 4 did not — so batches are split to stay at
+ * ≤ 2048 × 512 floats (4 MB).
+ */
+export const MAX_CALL_TOKENS = 2048;
+
+/**
+ * Split inputs (by their token lengths, in order) into [start, end) runs whose
+ * padded size — count × longest — stays within `budget`. An input longer than
+ * the budget goes alone.
+ */
+export function tokenGroups(lengths: number[], budget: number): [number, number][] {
+  const groups: [number, number][] = [];
+  let start = 0;
+  let longest = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const nextLongest = Math.max(longest, lengths[i]);
+    if (i > start && nextLongest * (i - start + 1) > budget) {
+      groups.push([start, i]);
+      start = i;
+      longest = lengths[i];
+    } else {
+      longest = nextLongest;
+    }
+  }
+  if (lengths.length) groups.push([start, lengths.length]);
+  return groups;
+}
+
 /** Longest text input, in tokens. Chunks are ~512 tokens; this bounds a runaway one. */
 const MAX_TEXT_TOKENS = 2048;
 
@@ -278,9 +310,17 @@ async function embedText(modelId: string, texts: string[], role: EmbedRole = 'pa
   const def = defOf(modelId);
   const m = await multimodal(modelId);
   const prompted = texts.map((t, i) => promptedText(t, role, titles?.[i]));
-  return using(m, () => {
-    const inputs = m.tokenizer(prompted, { padding: true, truncation: true, max_length: MAX_TEXT_TOKENS });
-    return sentenceEmbeddings(m, inputs, texts.length, def.dim);
+  return using(m, async () => {
+    const lengths = prompted.map((t) =>
+      Math.min(MAX_TEXT_TOKENS, m.tokenizer([t], { padding: false, truncation: false }).input_ids.dims[1]),
+    );
+    const out: Float32Array[] = [];
+    for (const [start, end] of tokenGroups(lengths, MAX_CALL_TOKENS)) {
+      const group = prompted.slice(start, end);
+      const inputs = m.tokenizer(group, { padding: true, truncation: true, max_length: MAX_TEXT_TOKENS });
+      out.push(...(await sentenceEmbeddings(m, inputs, group.length, def.dim)));
+    }
+    return out;
   });
 }
 
