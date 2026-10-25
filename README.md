@@ -23,8 +23,8 @@
 </p>
 
 <p align="center">
-  <a href="https://fildos.cloud">Website</a> ·
-  <a href="https://docs.fildos.cloud">Docs</a> ·
+  <a href="https://fildos.ahmedfahim.dev">Website</a> ·
+  <a href="https://docs-fildos.ahmedfahim.dev">Docs</a> ·
   <a href="https://github.com/ahmedfahim21/FilDOS/issues">Issues</a> 
 </p>
 
