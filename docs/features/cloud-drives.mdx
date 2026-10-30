@@ -1,6 +1,6 @@
 ---
 title: Cloud Drives
-description: Browse Google Drive and Dropbox alongside local folders, through the same interface.
+description: Browse Google Drive, Dropbox, OneDrive, Amazon S3, and IPFS alongside local folders, through the same interface.
 ---
 
 FilDOS can mount cloud storage into the same window as your local files. Connect
@@ -13,18 +13,29 @@ list, grid, and gallery views you use everywhere else.
 
 ## Supported providers
 
-| Provider | Status |
-|----------|--------|
-| Google Drive | Supported |
-| Dropbox | Supported |
-| More backends | On the way |
+| Provider | Connects with | Delete |
+|----------|---------------|--------|
+| Google Drive | Sign-in (OAuth) | Moves to the provider's trash |
+| Dropbox | Sign-in (OAuth) | Deleted, restorable from Dropbox's deleted files |
+| OneDrive | Sign-in (OAuth) | Permanent |
+| Amazon S3 | Bucket, region, access key | Permanent |
+| IPFS | A write-capable Kubo RPC endpoint (public gateways are read-only) | Permanent |
 
-Cloud access is built on [`opendal`](https://opendal.apache.org/), so additional
-storage backends slot in behind the same interface.
+Google Drive and Dropbox have their own providers. OneDrive, S3, and IPFS run
+on [`opendal`](https://opendal.apache.org/), so further storage backends slot in
+behind the same interface.
+
+<Warning>
+  OpenDAL backends are object stores with no trash, so deleting a file on
+  OneDrive, S3, or IPFS from FilDOS removes it permanently.
+</Warning>
 
 ## Connecting a drive
 
-Click **Connect…** in the sidebar and complete the provider's OAuth flow.
+Click **Connect…** in the sidebar. Google Drive, Dropbox, and OneDrive open
+the provider's sign-in page in your browser (OAuth with PKCE); S3 and IPFS ask
+for their connection details in a form. Tokens and credentials are encrypted
+with your operating system's keyring before they are stored.
 
 For local development you'll need your own OAuth credentials: copy
 `.env.example` to `.env` and fill in the client IDs and secrets for the providers

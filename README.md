@@ -46,23 +46,27 @@ to take on faith.
 
 ## What FilDOS does
 
-- **A real file manager first.** List, grid, and gallery views, resizable
-  columns, inline rename, drag-and-drop, undo, tags,
-  recents, and per-folder view memory, the basics work before any AI does.
+- **A real file manager first.** List, grid, gallery, and column views,
+  resizable columns, inline rename, drag-and-drop, undo, tags, recents,
+  per-folder view memory, and Quick Look on Space. The basics work before any
+  AI does.
 - **Search by meaning.** Ask for "receipts from tax season" or "photos from the
   Japan trip" and FilDOS finds files by what's in them, not just their names.
-  Text, code, PDFs, DOCX, and images (via CLIP) are all indexed.
-- **Private, on-device AI.** Indexing and embedding run locally over WASM;
-  nothing is uploaded, and the index lives in a local database.
+  Text, PDFs, DOCX, pictures, audio, and video are indexed with one on-device
+  model (EmbeddingGemma 2), and a hit opens at the matching page or moment.
+  When nothing matches, search says so instead of showing the nearest noise.
+- **Private, on-device AI.** Indexing and embedding run locally on ONNX
+  Runtime (CPU); nothing is uploaded, and the index lives in a local database.
 - **Chat with your files.** An on-device LLM (llama.cpp) that can `@file` and
-  `#folder` mention your data, run `/find` searches, and act on files
-  (create/move/rename/delete) with your approval, every exchange is saved so
-  you can resume it later.
+  `#folder` mention your data, run `/find` searches, and act on files (create,
+  copy, move, rename, delete to the Trash). Every action is recoverable:
+  deletes go to the OS Trash, nothing is overwritten, and each action is shown
+  as it happens. Every exchange is saved so you can resume it later.
 - **Canvas.** A GPU-rendered knowledge graph of your files, built from
   embedding similarity, extracted entities, and temporal sessions. A visual
   answer to "how does this connect to the rest of my work."
-- **Your clouds, one window.** Browse Google Drive and Dropbox alongside local
-  folders through the same interface, with more storage backends on the way.
+- **Your clouds, one window.** Browse Google Drive, Dropbox, OneDrive, Amazon
+  S3, and IPFS alongside local folders through the same interface.
 - **Hide from AI.** Exclude specific files, folders, or extensions from
   indexing and chat so the assistant never sees what you don't want it to.
 - **Bring your own model.** A built-in catalog of local models (Llama, Qwen,
@@ -154,7 +158,8 @@ on a headless Linux machine, run it under `xvfb-run`.
 
 Please run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`
 before opening a pull request. CI runs lint, typecheck, unit/integration
-tests, and the end-to-end smoke test on Ubuntu, macOS, and Windows. See
+tests, and the end-to-end smoke test on Ubuntu, macOS, and Windows, plus the
+AI eval smoke suite on Ubuntu. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## Tech stack
@@ -162,10 +167,12 @@ tests, and the end-to-end smoke test on Ubuntu, macOS, and Windows. See
 - Electron, React, TypeScript, electron-vite
 - Tailwind CSS v4 and Radix primitives
 - SQLite (`node:sqlite`) with Drizzle ORM
-- `@huggingface/transformers` (WASM) for on-device embeddings and reranking
+- `@huggingface/transformers` on `onnxruntime-node` for on-device embeddings
+  (EmbeddingGemma 2) and entity extraction
+- MiniSearch (BM25) for keyword search
 - `node-llama-cpp` for the on-device assistant chat
 - `@cosmos.gl/graph` (GPU/WebGL) for the Canvas knowledge graph
-- `opendal` for cloud storage backends
+- `opendal` for the S3, IPFS, and OneDrive backends
 - Vitest and Playwright for testing
 
 ## Contributing

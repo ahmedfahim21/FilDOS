@@ -10,7 +10,7 @@
 - **Quick Look**: press Space on any file to preview pictures, PDF pages, recordings, text, code and documents in place.
 - **Ask AI**: chat with your files through a local LLM (llama.cpp; Llama, Qwen, Gemma, Phi, Mistral, DeepSeek, or any GGUF). Mention files and folders, run `/find`, and let it create, copy, move or rename files — deletes go to the OS Trash.
 - **Canvas**: a knowledge graph of how your files connect, by meaning, people and places, tags and time.
-- **A real file manager**: list, grid, gallery and column views, tags, recents, undo, drag and drop, Google Drive and Dropbox side by side with local folders.
+- **A real file manager**: list, grid, gallery and column views, tags, recents, undo, drag and drop, and Google Drive, Dropbox, OneDrive, Amazon S3 and IPFS side by side with local folders.
 - **Private by default**: secrets (.env, keys, certificates, credentials) are never indexed, and any file, folder or file type can be hidden from AI.
 
 ## Technology

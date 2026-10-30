@@ -43,12 +43,12 @@ const GROUPS: Group[] = [
     title: "Search & retrieval",
     items: [
       { label: "Semantic search by meaning", status: "shipped" },
-      { label: "Image search with on-device CLIP", status: "shipped" },
+      { label: "Search pictures, audio & video with one on-device model", status: "shipped" },
+      { label: "Hits open at the matching page or moment", status: "shipped" },
       { label: "Drag a file onto search to find similar", status: "shipped" },
       { label: "Natural language filters", status: "planned" },
       { label: "Unified search across local + cloud", status: "planned" },
       { label: "OCR for images & scanned PDFs", status: "planned" },
-      { label: "Search within video", status: "planned" },
     ],
   },
   {
@@ -82,9 +82,9 @@ const GROUPS: Group[] = [
     title: "Browse & preview",
     items: [
       { label: "List, grid, gallery & column views", status: "shipped" },
-      { label: "Cloud storage — Drive, Dropbox, OneDrive", status: "shipped" },
+      { label: "Cloud storage — Drive, Dropbox, OneDrive, S3, IPFS", status: "shipped" },
       { label: "Recents & per-folder views", status: "shipped" },
-      { label: "In-app file previewer", status: "planned" },
+      { label: "Quick Look file preview", status: "shipped" },
       { label: "Guided onboarding & intro", status: "shipped" },
     ],
   },
